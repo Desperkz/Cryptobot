@@ -138,6 +138,10 @@ class StrategyConfig:
     mean_reversion_min_confluence: int = 4
     mean_reversion_require_divergence: bool = True
     mean_reversion_require_edge_confirmation: bool = True
+    mean_reversion_btc_direction_gate_enabled: bool = True
+    mean_reversion_btc_direction_gate_pct: Decimal = Decimal("0.012")
+    mean_reversion_order_flow_gate_enabled: bool = True
+    mean_reversion_min_order_flow_score: Decimal = Decimal("0.25")
     trend_pullback_min_volume_ratio: Decimal = Decimal("1.10")
     trend_pullback_min_trend_strength: Decimal = Decimal("0.35")
     trend_pullback_min_depth_atr: Decimal = Decimal("0.25")
@@ -710,6 +714,18 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ),
             mean_reversion_require_edge_confirmation=bool(
                 raw["strategy"].get("mean_reversion_require_edge_confirmation", True)
+            ),
+            mean_reversion_btc_direction_gate_enabled=bool(
+                raw["strategy"].get("mean_reversion_btc_direction_gate_enabled", True)
+            ),
+            mean_reversion_btc_direction_gate_pct=to_decimal(
+                raw["strategy"].get("mean_reversion_btc_direction_gate_pct", "0.012")
+            ),
+            mean_reversion_order_flow_gate_enabled=bool(
+                raw["strategy"].get("mean_reversion_order_flow_gate_enabled", True)
+            ),
+            mean_reversion_min_order_flow_score=to_decimal(
+                raw["strategy"].get("mean_reversion_min_order_flow_score", "0.25")
             ),
             trend_pullback_min_volume_ratio=to_decimal(
                 raw["strategy"].get("trend_pullback_min_volume_ratio", "1.10")

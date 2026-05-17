@@ -109,6 +109,10 @@ strategy:
   mean_reversion_min_confluence: 4
   mean_reversion_require_divergence: true
   mean_reversion_require_edge_confirmation: true
+  mean_reversion_btc_direction_gate_enabled: true
+  mean_reversion_btc_direction_gate_pct: 0.012
+  mean_reversion_order_flow_gate_enabled: true
+  mean_reversion_min_order_flow_score: 0.25
   trend_pullback_min_volume_ratio: 1.10
   trend_pullback_min_trend_strength: 0.35
   trend_pullback_min_depth_atr: 0.25

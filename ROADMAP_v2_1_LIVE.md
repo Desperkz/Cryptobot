@@ -152,6 +152,7 @@ Status legend:
   - Done: promoted from `shadow` to `paper` for v2.1 paper trading after bot 2.0 evidence showed strong MR contribution.
   - Done: `MAINNET_LIVE` remains protected because paper-mode strategies do not execute in mainnet and the live allow-list still contains only `SQUEEZE_BREAKOUT`.
   - Done: added stricter exhaustion rules: RSI extreme, ATR deviation, divergence, volume confirmation, reversal wick/absorption/sweep confirmation, and confluence scoring.
+  - Done: added `MR_CONTEXT` gate before paper entry; MR is blocked when BTC 4h impulse is strongly against the trade or order-flow/liquidation context is hostile.
   - Done: `/strategy-scorecard` now summarizes candidate evidence from shadow signals: average confidence, average confluence, divergence, volume, edge, and reversal counts.
   - Require separate v2.1 paper/testnet evidence before enabling beyond paper observation.
 - `[x]` P4-04 Add `TREND_PULLBACK` candidate.

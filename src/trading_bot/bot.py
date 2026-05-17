@@ -342,6 +342,28 @@ class TradingBot:
             )
             signal, annotation = self._annotate_order_flow(signal, candles_15m, asset.metrics)
             await self._record_order_flow_annotation(signal, annotation)
+            mr_context_rejection = _mean_reversion_context_rejection_reason(
+                signal,
+                btc_4h_change,
+                annotation,
+                self.config.strategy,
+            )
+            if mr_context_rejection:
+                filter_type, reason = mr_context_rejection
+                logger.info("MR context gate rejected %s: %s", signal.symbol, reason)
+                try:
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_signal_strategy(signal),
+                        confidence=str(signal.confidence),
+                        filter_type=filter_type,
+                        reason=reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_MR_CONTEXT_GATE", reason)
+                continue
             oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
             filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
             if filter_decision.allowed:
@@ -1048,6 +1070,65 @@ def _trade_status(trade: dict[str, Any]) -> str:
 
 def _same_symbol_strategy(signal: Signal, trade: dict[str, Any]) -> bool:
     return trade.get("symbol") == signal.symbol and _trade_strategy(trade) == _signal_strategy(signal)
+
+
+MR_ORDER_FLOW_AGAINST_FLAGS = {
+    "taker_flow_against",
+    "book_imbalance_against",
+    "aggressive_delta_against",
+    "liquidity_sweep_against",
+    "absorption_against",
+    "structure_break_against",
+    "crowded_long_funding",
+    "crowded_short_funding",
+}
+MR_ORDER_FLOW_SEVERE_FLAGS = {
+    "liquidation_cascade",
+    "adverse_liquidity_nearby",
+}
+
+
+def _mean_reversion_context_rejection_reason(
+    signal: Signal,
+    btc_4h_change: Decimal | None,
+    annotation: OrderFlowAnnotation,
+    strategy_config: Any,
+) -> tuple[str, str] | None:
+    if _signal_strategy(signal) != "MEAN_REVERSION":
+        return None
+
+    if getattr(strategy_config, "mean_reversion_btc_direction_gate_enabled", True) and btc_4h_change is not None:
+        threshold = abs(Decimal(str(getattr(strategy_config, "mean_reversion_btc_direction_gate_pct", "0.012"))))
+        if threshold > 0:
+            if signal.direction == Direction.SHORT and btc_4h_change >= threshold:
+                return (
+                    "MR_CONTEXT",
+                    f"MR short blocked: BTC 4h impulse {btc_4h_change:.2%} is upward.",
+                )
+            if signal.direction == Direction.LONG and btc_4h_change <= -threshold:
+                return (
+                    "MR_CONTEXT",
+                    f"MR long blocked: BTC 4h impulse {btc_4h_change:.2%} is downward.",
+                )
+
+    if getattr(strategy_config, "mean_reversion_order_flow_gate_enabled", True):
+        min_score = Decimal(str(getattr(strategy_config, "mean_reversion_min_order_flow_score", "0.25")))
+        risk_flags = set(annotation.risk_flags)
+        against_flags = risk_flags.intersection(MR_ORDER_FLOW_AGAINST_FLAGS)
+        severe_flags = risk_flags.intersection(MR_ORDER_FLOW_SEVERE_FLAGS)
+        if annotation.alignment == "against":
+            return (
+                "MR_CONTEXT",
+                f"MR blocked: order-flow alignment is against the signal; flags={','.join(sorted(risk_flags)) or 'none'}.",
+            )
+        if annotation.score < min_score and (severe_flags or len(against_flags) >= 2):
+            flags = ",".join(sorted(severe_flags or against_flags))
+            return (
+                "MR_CONTEXT",
+                f"MR blocked: weak order-flow score {annotation.score:.2f} below {min_score:.2f}; flags={flags}.",
+            )
+
+    return None
 
 
 def _strategy_reentry_policy_reason(
