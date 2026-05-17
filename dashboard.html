@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #00ff88;
+    --accent2: #ff4466;
+    --accent3: #4488ff;
+    --text: #e8e8f0;
+    --muted: #555570;
+    --card: #13131c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; position: relative; z-index: 1; }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,255,136,0.08);
+    border: 1px solid rgba(0,255,136,0.2);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 60px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: var(--card);
+    margin-bottom: 40px;
+  }
+
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(0,255,136,0.04); }
+  .upload-zone.hidden { display: none; }
+
+  .upload-icon { font-size: 48px; margin-bottom: 16px; }
+
+  .upload-zone h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .upload-zone p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .upload-zone p strong { color: var(--accent); }
+
+  #fileInput { display: none; }
+
+  /* Dashboard */
+  #dashboard { display: none; }
+  #dashboard.visible { display: block; }
+
+  /* Metrics grid */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .metric {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .metric:hover { border-color: var(--accent); }
+
+  .metric::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent-color, var(--accent));
+  }
+
+  .metric-label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .metric-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent-color, var(--accent));
+  }
+
+  .metric-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* Charts row */
+  .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 32px; }
+
+  @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .chart-wrap { position: relative; }
+
+  /* Trades table */
+  .table-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+
+  .table-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .table-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .badge {
+    background: rgba(0,255,136,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(0,255,136,0.2);
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  th {
+    padding: 10px 24px;
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 14px 24px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .tag-long { background: rgba(0,255,136,0.15); color: var(--accent); }
+  .tag-short { background: rgba(255,68,102,0.15); color: var(--accent2); }
+  .tag-open { background: rgba(68,136,255,0.15); color: var(--accent3); }
+
+  .pnl-pos { color: var(--accent); }
+  .pnl-neg { color: var(--accent2); }
+  .pnl-zero { color: var(--muted); }
+
+  /* Signals table */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* Empty state */
+  .empty {
+    padding: 48px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+  /* Reload btn */
+  .auto-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .auto-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+  .auto-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,136,0.08); }
+
+  .countdown {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .mode-badge {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--accent3);
+    text-transform: uppercase;
+  }
+
+  .no-data {
+    padding: 80px;
+    text-align: center;
+  }
+
+  .no-data h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--accent);
+  }
+
+  .no-data p { color: var(--muted); font-size: 13px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">BOT<span>DASH</span></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="mode-badge" id="modeLabel">—</span>
+      <div class="status-pill"><div class="dot"></div>PAPER TRADING</div>
+    </div>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="upload-icon">📂</div>
+    <h2>Открой базу данных</h2>
+    <p>Перетащи файл <strong>trading_bot.sqlite3</strong> сюда<br>или нажми чтобы выбрать<br><br>
+    Файл находится в: <strong>F:\Боты\Новый бот\data\trading_bot.sqlite3</strong></p>
+    <input type="file" id="fileInput" accept=".sqlite3,.sqlite,.db">
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-size:12px;color:var(--muted)" id="dbInfo">—</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="countdown" id="countdown"></span>
+        <button class="auto-btn" id="autoBtn" onclick="toggleAuto()">
+          <span id="autoBtnIcon">▶</span> Авто-обновление
+        </button>
+        <button class="auto-btn" onclick="manualRefresh()" title="Обновить сейчас">↻ Обновить</button>
+        <button class="auto-btn" onclick="document.getElementById('uploadZone').classList.remove('hidden');document.getElementById('dashboard').classList.remove('visible');stopAuto()">
+          ↩ Другой файл
+        </button>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics" id="metrics"></div>
+
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">Кривая баланса (Paper)</div>
+        <div class="chart-wrap" style="height:220px">
+          <canvas id="equityChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Win / Loss</div>
+        <div class="chart-wrap" style="height:220px">
+          <canvas id="winChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two col -->
+    <div class="two-col">
+      <!-- By symbol -->
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">По монетам</div>
+        </div>
+        <div id="bySymbol"></div>
+      </div>
+      <!-- Signals -->
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Последние сигналы</div>
+          <span class="badge" id="sigCount">0</span>
+        </div>
+        <div id="signalsTable"></div>
+      </div>
+    </div>
+
+    <!-- Trades -->
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">Все сделки</div>
+        <span class="badge" id="tradeCount">0</span>
+      </div>
+      <div id="tradesTable"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let equityChartInst = null;
+let winChartInst = null;
+let fileHandle = null;
+let autoInterval = null;
+let countdownInterval = null;
+let secondsLeft = 60;
+const REFRESH_SEC = 60;
+
+// Upload zone
+const zone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+zone.addEventListener('click', () => {
+  // Try File System Access API first for auto-refresh support
+  if (window.showOpenFilePicker) {
+    pickFileWithHandle();
+  } else {
+    fileInput.click();
+  }
+});
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+async function pickFileWithHandle() {
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'SQLite Database', accept: { 'application/x-sqlite3': ['.sqlite3', '.sqlite', '.db'] } }]
+    });
+    fileHandle = handle;
+    await loadFromHandle();
+  } catch(e) {
+    if (e.name !== 'AbortError') fileInput.click();
+  }
+}
+
+async function loadFromHandle() {
+  if (!fileHandle) return;
+  const file = await fileHandle.getFile();
+  await loadFile(file);
+}
+
+async function manualRefresh() {
+  if (fileHandle) {
+    await loadFromHandle();
+  } else {
+    fileInput.click();
+  }
+}
+
+function toggleAuto() {
+  if (autoInterval) {
+    stopAuto();
+  } else {
+    startAuto();
+  }
+}
+
+function startAuto() {
+  if (!fileHandle) {
+    alert('Для авто-обновления открой файл кнопкой (не перетаскиванием). Нажми "Другой файл" и выбери базу заново.');
+    return;
+  }
+  const btn = document.getElementById('autoBtn');
+  btn.classList.add('active');
+  document.getElementById('autoBtnIcon').textContent = '⏸';
+  secondsLeft = REFRESH_SEC;
+  updateCountdown();
+  countdownInterval = setInterval(() => {
+    secondsLeft--;
+    updateCountdown();
+    if (secondsLeft <= 0) {
+      secondsLeft = REFRESH_SEC;
+      loadFromHandle();
+    }
+  }, 1000);
+  autoInterval = true;
+}
+
+function stopAuto() {
+  clearInterval(countdownInterval);
+  autoInterval = null;
+  const btn = document.getElementById('autoBtn');
+  if (btn) {
+    btn.classList.remove('active');
+    document.getElementById('autoBtnIcon').textContent = '▶';
+  }
+  document.getElementById('countdown').textContent = '';
+}
+
+function updateCountdown() {
+  document.getElementById('countdown').textContent = `обновление через ${secondsLeft}с`;
+}
+
+async function loadFile(file) {
+  const SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` });
+  const buf = await file.arrayBuffer();
+  const db = new SQL.Database(new Uint8Array(buf));
+  zone.classList.add('hidden');
+  document.getElementById('dashboard').classList.add('visible');
+  document.getElementById('dbInfo').textContent = `${file.name} · ${(file.size/1024).toFixed(1)} KB · обновлено: ${new Date(file.lastModified).toLocaleString('ru')}`;
+  renderDashboard(db);
+}
+
+function q(db, sql) {
+  try {
+    const res = db.exec(sql);
+    if (!res.length) return [];
+    return res[0].values.map(row => {
+      const obj = {};
+      res[0].columns.forEach((c, i) => obj[c] = row[i]);
+      return obj;
+    });
+  } catch(e) { return []; }
+}
+
+function renderDashboard(db) {
+  const trades = q(db, "SELECT * FROM trades ORDER BY id DESC");
+  const signals = q(db, "SELECT * FROM signals ORDER BY id DESC LIMIT 50");
+
+  document.getElementById('tradeCount').textContent = trades.length;
+  document.getElementById('sigCount').textContent = signals.length;
+
+  const closed = trades.filter(t => t.status === 'CLOSED' || t.realized_pnl != 0);
+  const wins = closed.filter(t => parseFloat(t.realized_pnl) > 0);
+  const losses = closed.filter(t => parseFloat(t.realized_pnl) < 0);
+  const open = trades.filter(t => t.status === 'OPEN' || t.status === 'ACTIVE');
+  const totalPnl = closed.reduce((s, t) => s + parseFloat(t.realized_pnl || 0), 0);
+  const winrate = closed.length ? (wins.length / closed.length * 100) : 0;
+  const grossWin = wins.reduce((s,t) => s + parseFloat(t.realized_pnl||0), 0);
+  const grossLoss = Math.abs(losses.reduce((s,t) => s + parseFloat(t.realized_pnl||0), 0));
+  const pf = grossLoss > 0 ? grossWin / grossLoss : grossWin;
+  const avgR = closed.length ? closed.reduce((s,t) => s + parseFloat(t.r_multiple||0), 0) / closed.length : 0;
+
+  // Metrics
+  const metrics = [
+    { label: 'Всего сделок', value: trades.length, sub: `${open.length} открытых`, color: 'var(--accent3)' },
+    { label: 'Winrate', value: closed.length ? winrate.toFixed(1)+'%' : '—', sub: `${wins.length}W / ${losses.length}L`, color: winrate >= 50 ? 'var(--accent)' : 'var(--accent2)' },
+    { label: 'Profit Factor', value: closed.length ? pf.toFixed(2) : '—', sub: pf >= 1.2 ? '✅ Цель достигнута' : pf > 0 ? '⏳ Ниже цели 1.2' : '—', color: pf >= 1.2 ? 'var(--accent)' : 'var(--accent2)' },
+    { label: 'Итог PnL', value: closed.length ? (totalPnl >= 0 ? '+' : '') + '$'+totalPnl.toFixed(2) : '—', sub: `Avg R: ${avgR.toFixed(3)}`, color: totalPnl >= 0 ? 'var(--accent)' : 'var(--accent2)' },
+    { label: 'Сигналов', value: signals.length, sub: 'всего найдено', color: 'var(--accent3)' },
+  ];
+
+  document.getElementById('metrics').innerHTML = metrics.map(m => `
+    <div class="metric" style="--accent-color:${m.color}">
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-value">${m.value}</div>
+      <div class="metric-sub">${m.sub}</div>
+    </div>
+  `).join('');
+
+  // Equity curve
+  if (equityChartInst) equityChartInst.destroy();
+  const startingEquity = 250;
+  let equity = startingEquity;
+  const eqPoints = [{ x: 0, y: equity }];
+  const sortedClosed = [...closed].sort((a,b) => a.id - b.id);
+  sortedClosed.forEach((t, i) => {
+    equity += parseFloat(t.realized_pnl || 0);
+    eqPoints.push({ x: i+1, y: parseFloat(equity.toFixed(2)) });
+  });
+
+  const eqColor = equity >= startingEquity ? '#00ff88' : '#ff4466';
+  equityChartInst = new Chart(document.getElementById('equityChart'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: eqPoints,
+        borderColor: eqColor,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: true,
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0,0,0,200);
+          g.addColorStop(0, eqColor + '33');
+          g.addColorStop(1, eqColor + '00');
+          return g;
+        }
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` $${c.parsed.y.toFixed(2)}` } } },
+      scales: {
+        x: { type: 'linear', ticks: { color: '#555570', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#555570', font: { size: 10 }, callback: v => '$'+v }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+
+  // Win/Loss donut
+  if (winChartInst) winChartInst.destroy();
+  if (closed.length) {
+    winChartInst = new Chart(document.getElementById('winChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Прибыльные', 'Убыточные'],
+        datasets: [{ data: [wins.length, losses.length], backgroundColor: ['#00ff88', '#ff4466'], borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#555570', font: { size: 11, family: 'Space Mono' }, padding: 16 } },
+          tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed} (${(c.parsed/closed.length*100).toFixed(0)}%)` } }
+        },
+        cutout: '65%'
+      }
+    });
+  } else {
+    document.getElementById('winChart').parentElement.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Нет закрытых сделок</div>';
+  }
+
+  // By symbol
+  const bySymbol = {};
+  closed.forEach(t => {
+    if (!bySymbol[t.symbol]) bySymbol[t.symbol] = { trades: 0, wins: 0, pnl: 0 };
+    bySymbol[t.symbol].trades++;
+    if (parseFloat(t.realized_pnl) > 0) bySymbol[t.symbol].wins++;
+    bySymbol[t.symbol].pnl += parseFloat(t.realized_pnl || 0);
+  });
+
+  const symRows = Object.entries(bySymbol).sort((a,b) => b[1].pnl - a[1].pnl);
+  document.getElementById('bySymbol').innerHTML = symRows.length ? `
+    <table>
+      <thead><tr><th>Монета</th><th>WR%</th><th>PnL</th></tr></thead>
+      <tbody>${symRows.map(([sym, d]) => `
+        <tr>
+          <td>${sym}</td>
+          <td>${(d.wins/d.trades*100).toFixed(0)}% <span style="color:var(--muted)">(${d.trades})</span></td>
+          <td class="${d.pnl>=0?'pnl-pos':'pnl-neg'}">${d.pnl>=0?'+':''}$${d.pnl.toFixed(2)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '<div class="empty"><div class="empty-icon">📊</div>Нет данных</div>';
+
+  // Signals
+  document.getElementById('signalsTable').innerHTML = signals.length ? `
+    <table>
+      <thead><tr><th>Монета</th><th>Направление</th><th>Вход</th><th>Стратегия</th></tr></thead>
+      <tbody>${signals.slice(0,15).map(s => {
+        let reason = s.reason || '';
+        let strat = reason.includes('MEAN_REVERSION') ? 'MR' : 'TREND';
+        return `<tr>
+          <td>${s.symbol}</td>
+          <td><span class="tag tag-${s.direction?.toLowerCase()}">${s.direction}</span></td>
+          <td>$${parseFloat(s.entry_price||0).toFixed(2)}</td>
+          <td style="color:var(--muted);font-size:11px">${strat}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : '<div class="empty"><div class="empty-icon">📡</div>Сигналов пока нет</div>';
+
+  // Trades
+  document.getElementById('tradesTable').innerHTML = trades.length ? `
+    <table>
+      <thead><tr><th>#</th><th>Монета</th><th>Направление</th><th>Вход</th><th>Стоп</th><th>TP</th><th>PnL</th><th>R</th><th>Статус</th></tr></thead>
+      <tbody>${trades.map(t => {
+        const pnl = parseFloat(t.realized_pnl || 0);
+        const r = parseFloat(t.r_multiple || 0);
+        const isOpen = t.status === 'OPEN' || t.status === 'ACTIVE' || pnl === 0;
+        return `<tr>
+          <td style="color:var(--muted)">${t.id}</td>
+          <td>${t.symbol}</td>
+          <td><span class="tag tag-${t.direction?.toLowerCase()}">${t.direction}</span></td>
+          <td>$${parseFloat(t.entry_price||0).toFixed(2)}</td>
+          <td style="color:var(--accent2)">$${parseFloat(t.stop_loss||0).toFixed(2)}</td>
+          <td style="color:var(--accent)">$${parseFloat(t.take_profit||0).toFixed(2)}</td>
+          <td class="${pnl>0?'pnl-pos':pnl<0?'pnl-neg':'pnl-zero'}">${isOpen?'—':(pnl>=0?'+':'')+'$'+pnl.toFixed(2)}</td>
+          <td class="${r>0?'pnl-pos':r<0?'pnl-neg':'pnl-zero'}">${isOpen?'—':r.toFixed(2)+'R'}</td>
+          <td><span class="tag ${isOpen?'tag-open':pnl>0?'tag-long':'tag-short'}">${t.status||'—'}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` :
+    `<div class="no-data">
+      <h2>Сделок пока нет</h2>
+      <p>Бот в режиме PAPER_TRADING.<br>Сделки появятся как только стратегия найдёт<br>подходящий сигнал и откроет виртуальную позицию.</p>
+    </div>`;
+}
+</script>
+</body>
+</html>

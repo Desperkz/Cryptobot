@@ -1,0 +1,15 @@
+services:
+  trading-bot:
+    build: .
+    container_name: binance-usdm-safety-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    command: ["trading-bot", "serve", "--host", "0.0.0.0", "--port", "8000"]
+

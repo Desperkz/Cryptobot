@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>БОТ V2.1 // ТОРГОВЫЙ ТЕРМИНАЛ</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+/* ── ТЕМЫ ── */
+[data-theme="dark"] {
+  --bg: #0a0c0f;
+  --bg2: #0f1215;
+  --bg3: #141820;
+  --border: #1e2530;
+  --border2: #252d3a;
+  --green: #00ff9d;
+  --green-dim: #00c97a;
+  --red: #ff3b5c;
+  --red-dim: #c42d47;
+  --yellow: #ffd700;
+  --blue: #4d9fff;
+  --text: #e2e8f0;
+  --text-dim: #8a9ab0;
+  --text-muted: #4a5568;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --scanline: rgba(0,255,157,0.012);
+}
+
+[data-theme="light"] {
+  --bg: #f0f2f5;
+  --bg2: #ffffff;
+  --bg3: #f7f8fa;
+  --border: #e2e6ed;
+  --border2: #d0d5de;
+  --green: #00a86b;
+  --green-dim: #007a4d;
+  --red: #e03a55;
+  --red-dim: #b52c43;
+  --yellow: #c8960a;
+  --blue: #2b7de9;
+  --text: #1a202c;
+  --text-dim: #4a5568;
+  --text-muted: #a0aec0;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --scanline: transparent;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  min-height: 100vh;
+  transition: background 0.3s, color 0.3s;
+  overflow-x: hidden;
+}
+
+[data-theme="dark"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* ── HEADER ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+
+.logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.15em;
+  color: var(--green);
+}
+
+[data-theme="dark"] .logo { text-shadow: 0 0 20px rgba(0,255,157,0.4); }
+.logo span { color: var(--text-muted); }
+
+.header-right { display: flex; align-items: center; gap: 16px; }
+
+.clock { color: var(--text-muted); font-size: 12px; }
+
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  background: var(--bg3);
+}
+
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  animation: blink 2s infinite;
+}
+
+[data-theme="dark"] .dot { box-shadow: 0 0 8px var(--green); }
+.dot.red { background: var(--red); animation: none; }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* Переключатель темы */
+.theme-toggle {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--bg3);
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  transition: all 0.2s;
+  user-select: none;
+}
+.theme-toggle:hover { border-color: var(--green); color: var(--green); }
+
+/* ── LAYOUT ── */
+.main {
+  padding: 20px 24px 72px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-areas:
+    "m1 m2 m3 m4 m5 m6"
+    "pos pos sig sig sq sq"
+    "eq eq eq log log log"
+    "tr tr tr tr tr tr"
+    "sc sc sc sc sc sc"
+    "rj rj rj rj rj rj";
+}
+
+/* ── КАРТОЧКА МЕТРИКИ ── */
+.metric-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 18px 20px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.metric-card:hover {
+  border-color: var(--border2);
+  box-shadow: var(--shadow);
+}
+
+/* Цветная полоска снизу */
+.metric-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-color, var(--green)), transparent);
+  opacity: 0.7;
+}
+
+.metric-card.green-accent { --accent-color: var(--green); }
+.metric-card.red-accent { --accent-color: var(--red); }
+.metric-card.yellow-accent { --accent-color: var(--yellow); }
+.metric-card.blue-accent { --accent-color: var(--blue); }
+
+.metric-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* Анимированное значение */
+.metric-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+  transition: color 0.4s;
+  position: relative;
+}
+
+.metric-value.green { color: var(--green); }
+.metric-value.red { color: var(--red); }
+.metric-value.yellow { color: var(--yellow); }
+.metric-value.blue { color: var(--blue); }
+
+[data-theme="dark"] .metric-value.green { text-shadow: 0 0 24px rgba(0,255,157,0.35); }
+[data-theme="dark"] .metric-value.red { text-shadow: 0 0 20px rgba(255,59,92,0.3); }
+
+/* Блик при обновлении */
+@keyframes flash {
+  0% { opacity: 1; }
+  30% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.metric-value.updating { animation: flash 0.5s ease; }
+
+.metric-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-delta {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.metric-delta.up { background: rgba(0,255,157,0.12); color: var(--green); }
+.metric-delta.down { background: rgba(255,59,92,0.12); color: var(--red); }
+
+/* Спарклайн в карточке */
+.sparkline { margin-top: 10px; }
+.sparkline canvas { width: 100%; height: 28px; display: block; }
+
+/* ── CARD ── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.card-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.card-badge {
+  font-size: 10px; color: var(--text-muted);
+  padding: 2px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+}
+
+.card-badge.live {
+  border-color: var(--green);
+  color: var(--green);
+  animation: blink 2s infinite;
+}
+
+/* ── ПОЗИЦИИ ── */
+.card.pos-card { grid-area: pos; }
+
+.pos-table { width: 100%; }
+
+.pos-row {
+  display: grid;
+  grid-template-columns: 90px 55px 85px 85px 85px 90px 1fr;
+  gap: 8px; align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.pos-row:hover { background: var(--bg3); }
+.pos-row:last-child { border-bottom: none; }
+
+.pos-row.header {
+  font-size: 10px; letter-spacing: 0.1em;
+  color: var(--text-muted); text-transform: uppercase;
+  background: var(--bg3);
+  padding: 7px 16px;
+}
+
+.dir-long { color: var(--green); font-weight: 700; }
+.dir-short { color: var(--red); font-weight: 700; }
+.pnl-pos { color: var(--green); font-weight: 600; }
+.pnl-neg { color: var(--red); font-weight: 600; }
+.sym { color: var(--blue); font-weight: 600; }
+
+/* ── СИГНАЛЫ ── */
+.card.sig-card { grid-area: sig; }
+
+.sig-list { max-height: 240px; overflow-y: auto; }
+.sig-list::-webkit-scrollbar { width: 3px; }
+.sig-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.sig-row {
+  display: grid;
+  grid-template-columns: 75px 80px 50px 1fr;
+  gap: 8px; align-items: start;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.sig-row:last-child { border-bottom: none; }
+.sig-time { color: var(--text-muted); font-size: 11px; }
+.sig-reason { color: var(--text-dim); font-size: 11px; line-height: 1.4; }
+
+/* ── SQUEEZE ── */
+.card.sq-card { grid-area: sq; }
+
+.sq-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.sq-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
+  transition: all 0.3s;
+}
+
+.sq-item.active { border-color: var(--yellow); }
+.sq-item.strong { border-color: var(--green); }
+
+[data-theme="dark"] .sq-item.active { box-shadow: 0 0 12px rgba(255,215,0,0.15); }
+[data-theme="dark"] .sq-item.strong { box-shadow: 0 0 14px rgba(0,255,157,0.2); }
+
+.sq-sym { font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+.sq-val { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+.sq-val.none { color: var(--text-muted); }
+.sq-val.mid { color: var(--yellow); }
+.sq-val.high { color: var(--green); }
+[data-theme="dark"] .sq-val.high { text-shadow: 0 0 12px rgba(0,255,157,0.4); }
+.sq-label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-top: 2px; }
+
+/* ── EQUITY ── */
+.card.eq-card { grid-area: eq; }
+.eq-canvas-wrap { padding: 12px 16px; }
+canvas { width: 100%; display: block; }
+
+/* ── ЛОГ ── */
+.card.log-card { grid-area: log; }
+
+.log-wrap {
+  height: 180px; overflow-y: auto;
+  padding: 8px 14px;
+  font-size: 11px; line-height: 1.7;
+}
+
+.log-wrap::-webkit-scrollbar { width: 3px; }
+.log-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.ll { color: var(--text-dim); }
+.ll.warn { color: var(--yellow); }
+.ll.err { color: var(--red); }
+.ll.sq { color: var(--blue); }
+.ll.sig { color: var(--green); }
+
+/* ── СДЕЛКИ ── */
+.card.tr-card { grid-area: tr; }
+
+/* ── STRATEGY SCORECARD ── */
+.card.sc-card { grid-area: sc; }
+
+.sc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.sc-muted { color: var(--text-muted); font-size: 11px; }
+.sc-gate {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.sc-gate-PROMOTABLE { color: var(--green); border-color: rgba(0,255,157,0.45); }
+.sc-gate-PROMOTE { color: var(--green); border-color: rgba(0,255,157,0.45); box-shadow: 0 0 10px rgba(0,255,157,0.18); }
+.sc-gate-WATCH { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
+.sc-gate-BLOCKED { color: var(--red); border-color: rgba(255,59,92,0.45); }
+.sc-gate-TESTING { color: var(--blue); border-color: rgba(74,144,255,0.45); }
+
+/* ── ОТКАЗЫ ФИЛЬТРОВ ── */
+.card.rj-card { grid-area: rj; }
+
+.rj-stats {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rj-badge {
+  font-size: 11px; padding: 3px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+}
+
+.rj-badge .rj-count {
+  font-weight: 700; margin-left: 5px;
+  font-family: 'Syne', sans-serif;
+}
+
+.rj-badge.btc { border-color: rgba(255,59,92,0.4); color: var(--red); }
+.rj-badge.utc { border-color: rgba(77,159,255,0.4); color: var(--blue); }
+.rj-badge.oi { border-color: rgba(255,215,0,0.4); color: var(--yellow); }
+.rj-badge.corr { border-color: rgba(0,255,157,0.3); color: var(--green); }
+.rj-badge.risk { border-color: rgba(255,59,92,0.4); color: var(--red); }
+.rj-badge.ml { border-color: rgba(77,159,255,0.4); color: var(--blue); }
+.rj-badge.shadow { border-color: rgba(255,215,0,0.35); color: var(--yellow); }
+
+.rj-table { width: 100%; border-collapse: collapse; }
+.rj-table th {
+  font-size: 10px; letter-spacing: 0.1em;
+  color: var(--text-muted); text-transform: uppercase;
+  text-align: left; padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  white-space: nowrap;
+}
+.rj-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-dim);
+}
+.rj-table tr:last-child td { border-bottom: none; }
+.rj-table tr:hover td { background: var(--bg3); }
+
+.ftype { font-size: 10px; padding: 2px 7px; border-radius: 2px; font-weight: 600; }
+.ftype-BTC_DROP { background: rgba(255,59,92,0.15); color: var(--red); }
+.ftype-UTC { background: rgba(77,159,255,0.15); color: var(--blue); }
+.ftype-OI { background: rgba(255,215,0,0.15); color: var(--yellow); }
+.ftype-CORRELATION { background: rgba(0,255,157,0.12); color: var(--green); }
+.ftype-RISK { background: rgba(255,59,92,0.15); color: var(--red); }
+.ftype-ML { background: rgba(77,159,255,0.15); color: var(--blue); }
+.ftype-SHADOW_RISK, .ftype-SHADOW_COOLDOWN { background: rgba(255,215,0,0.15); color: var(--yellow); }
+.ftype-OTHER { background: var(--bg3); color: var(--text-muted); }
+
+.tr-table { width: 100%; border-collapse: collapse; }
+
+.tr-table th {
+  font-size: 10px; letter-spacing: 0.1em;
+  color: var(--text-muted); text-transform: uppercase;
+  text-align: left; padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  white-space: nowrap;
+}
+
+.tr-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-dim);
+}
+
+.tr-table tr:last-child td { border-bottom: none; }
+.tr-table tr:hover td { background: var(--bg3); }
+
+.status-closed { color: var(--text-muted); }
+.status-open { color: var(--yellow); }
+
+/* ── НИЖНЯЯ ПАНЕЛЬ ── */
+.footer {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
+}
+
+.btn {
+  padding: 6px 16px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn:hover { border-color: var(--green); color: var(--green); }
+.btn.danger { border-color: rgba(224,58,85,0.4); color: var(--red); }
+.btn.danger:hover { background: rgba(255,59,92,0.08); border-color: var(--red); }
+
+.footer-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 10px;
+  color: var(--text-muted); font-size: 11px;
+}
+
+.progress-bar { width: 50px; height: 2px; background: var(--border2); border-radius: 1px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--green); border-radius: 1px; transition: width 1s linear; }
+
+/* ── ПУСТОЕ СОСТОЯНИЕ ── */
+.empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px; letter-spacing: 0.05em; }
+
+/* Анимация появления строк */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animated { animation: fadeIn 0.3s ease; }
+
+@media (max-width: 1280px) {
+  .main {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "m1 m2 m3"
+      "m4 m5 m6"
+      "pos pos pos"
+      "sig sig sq"
+      "eq eq eq"
+      "log log log"
+      "tr tr tr"
+      "sc sc sc"
+      "rj rj rj";
+  }
+  .sq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  body { font-size: 12px; }
+  header {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .header-right { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .logo { font-size: 15px; letter-spacing: 0.08em; }
+  .main {
+    padding: 12px 12px 132px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "m1" "m2" "m3" "m4" "m5" "m6"
+      "pos" "sig" "sq" "eq" "log" "tr" "sc" "rj";
+  }
+  .metric-card { padding: 14px 16px; }
+  .metric-value { font-size: 24px; }
+  .card-header { gap: 8px; align-items: flex-start; }
+  .card-title { letter-spacing: 0.08em; }
+  .pos-row.header { display: none; }
+  .pos-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+  }
+  .sig-row { grid-template-columns: 58px 72px 46px minmax(0, 1fr); }
+  .sig-reason, .ll, td { overflow-wrap: anywhere; }
+  .sq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
+  .footer {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+  .btn { flex: 1 1 calc(50% - 8px); padding: 7px 8px; }
+  .footer-right { flex-basis: 100%; margin-left: 0; justify-content: space-between; }
+  .progress-bar { flex: 1; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">БОТ <span>//</span> V2.1</div>
+  <div class="header-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="theme-toggle" onclick="toggleTheme()" id="theme-btn">☀ Светлая</div>
+    <div class="status-pill" id="status-pill">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">ПОДКЛЮЧЕНИЕ...</span>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- МЕТРИКИ -->
+  <div class="metric-card green-accent" id="mc-pnl">
+    <div class="metric-label">Общий PnL</div>
+    <div class="metric-value green" id="m-pnl">—</div>
+    <div class="metric-sub"><span>USDT</span><span class="metric-delta" id="d-pnl"></span></div>
+  </div>
+
+  <div class="metric-card" id="mc-wr">
+    <div class="metric-label">Винрейт</div>
+    <div class="metric-value" id="m-wr">—</div>
+    <div class="metric-sub" id="m-trades">0 сделок</div>
+  </div>
+
+  <div class="metric-card" id="mc-pf">
+    <div class="metric-label">Profit Factor</div>
+    <div class="metric-value" id="m-pf">—</div>
+    <div class="metric-sub">валовая прибыль / убыток</div>
+  </div>
+
+  <div class="metric-card" id="mc-r">
+    <div class="metric-label">Средний R</div>
+    <div class="metric-value" id="m-r">—</div>
+    <div class="metric-sub">на сделку</div>
+  </div>
+
+  <div class="metric-card" id="mc-dd">
+    <div class="metric-label">Макс. Просадка</div>
+    <div class="metric-value" id="m-dd">—</div>
+    <div class="metric-sub">от пика</div>
+  </div>
+
+  <div class="metric-card blue-accent" id="mc-eq">
+    <div class="metric-label">Баланс</div>
+    <div class="metric-value blue" id="m-eq">—</div>
+    <div class="metric-sub" id="m-eq-start">USDT · старт $250</div>
+    <div class="sparkline"><canvas id="spark" height="28"></canvas></div>
+  </div>
+
+  <!-- ПОЗИЦИИ -->
+  <div class="card pos-card">
+    <div class="card-header">
+      <div class="card-title">Открытые позиции</div>
+      <div class="card-badge live" id="pos-count">0 активных</div>
+    </div>
+    <div class="pos-row header">
+      <span>Символ</span><span>Напр.</span><span>Вход</span><span>Стоп</span><span>Тейк</span><span>Цена</span><span>PnL</span>
+    </div>
+    <div id="pos-body"><div class="empty">Нет открытых позиций</div></div>
+  </div>
+
+  <!-- СИГНАЛЫ -->
+  <div class="card sig-card">
+    <div class="card-header">
+      <div class="card-title">Последние сигналы</div>
+      <div class="card-badge">последние 20</div>
+    </div>
+    <div class="sig-list" id="sig-body"><div class="empty">Нет сигналов</div></div>
+  </div>
+
+  <!-- SQUEEZE МОНИТОР -->
+  <div class="card sq-card">
+    <div class="card-header">
+      <div class="card-title">Squeeze монитор</div>
+      <div class="card-badge">из логов</div>
+    </div>
+    <div class="sq-grid" id="sq-grid"></div>
+  </div>
+
+  <!-- EQUITY CURVE -->
+  <div class="card eq-card">
+    <div class="card-header">
+      <div class="card-title">Кривая баланса</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div id="strat-strip" style="display:flex;gap:12px;font-size:11px"></div>
+        <div class="card-badge" id="eq-start-badge">старт $250</div>
+      </div>
+    </div>
+    <div class="eq-canvas-wrap"><canvas id="eq-canvas" height="150"></canvas></div>
+  </div>
+
+  <!-- ЛОГ -->
+  <div class="card log-card">
+    <div class="card-header">
+      <div class="card-title">Лог бота</div>
+      <div class="card-badge live">прямой эфир</div>
+    </div>
+    <div class="log-wrap" id="log-wrap">
+      <div class="ll">Подключение к боту...</div>
+    </div>
+  </div>
+
+  <!-- ИСТОРИЯ СДЕЛОК -->
+  <div class="card tr-card">
+    <div class="card-header">
+      <div class="card-title">История сделок</div>
+      <div class="card-badge">последние 30</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tr-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Символ</th><th>Напр.</th><th>Стратегия</th>
+            <th>Вход</th><th>Стоп</th><th>Тейк</th><th>Статус</th>
+            <th>PnL</th><th>R</th><th>Дата</th>
+          </tr>
+        </thead>
+        <tbody id="tr-body">
+          <tr><td colspan="11" class="empty">Нет сделок</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- STRATEGY SCORECARD -->
+  <div class="card sc-card">
+    <div class="card-header">
+      <div class="card-title">Strategy scorecard</div>
+      <div id="sc-total" class="card-badge">0 стратегий</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tr-table sc-table">
+        <thead>
+          <tr>
+            <th>Стратегия</th><th>Gate</th><th>Shadow Gate</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
+            <th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
+            <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
+          </tr>
+        </thead>
+        <tbody id="sc-body">
+          <tr><td colspan="15" class="empty">Нет данных по стратегиям</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ОТКАЗЫ ФИЛЬТРОВ -->
+  <div class="card rj-card">
+    <div class="card-header">
+      <div class="card-title">Журнал отказов фильтров</div>
+      <div id="rj-total" class="card-badge">0 отказов</div>
+    </div>
+    <div class="rj-stats" id="rj-stats"></div>
+    <div style="overflow-x:auto">
+      <table class="rj-table">
+        <thead>
+          <tr>
+            <th>Время</th><th>Символ</th><th>Напр.</th><th>Стратегия</th>
+            <th>Фильтр</th><th>Причина</th>
+          </tr>
+        </thead>
+        <tbody id="rj-body">
+          <tr><td colspan="6" class="empty">Нет отказов</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <button class="btn" onclick="refreshAll()">⟳ Обновить</button>
+  <button class="btn danger" onclick="emergencyStop()">⚠ Аварийная остановка</button>
+  <button class="btn" onclick="clearStop()">✓ Снять стоп</button>
+  <button class="btn" onclick="restartBot()">↺ Перезапуск</button>
+  <div class="footer-right">
+    <span id="last-update">—</span>
+    <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
+    <span id="cdown">15с</span>
+  </div>
+</div>
+
+<script>
+const PUBLIC_API = 'http://78.140.246.186:8888';
+const API = (() => {
+  const params = new URLSearchParams(location.search);
+  const explicit = params.get('api') || localStorage.getItem('botApi');
+  if (explicit) return explicit.replace(/\/$/, '');
+  if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin;
+  return PUBLIC_API;
+})();
+const INTERVAL = 15;
+let cdownVal = INTERVAL, cdownTimer;
+let configLoaded = false;
+let refreshInFlight = null;
+let resizeRaf = 0;
+const htmlCache = new Map();
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[ch]));
+function setHTML(id, html) {
+  if (htmlCache.get(id) === html) return;
+  htmlCache.set(id, html);
+  $(id).innerHTML = html;
+}
+
+// ── ТЕМА ──
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-btn').textContent = isDark ? '☾ Тёмная' : '☀ Светлая';
+  drawEquity(lastCurve);
+  drawSpark(lastCurve);
+}
+
+// ── ЧАСЫ ──
+const pad2 = v => String(v).padStart(2, '0');
+function tzOffsetLabel(date = new Date()) {
+  const offset = -date.getTimezoneOffset();
+  if (offset === 0) return 'UTC';
+  const sign = offset >= 0 ? '+' : '-';
+  const abs = Math.abs(offset);
+  const hours = Math.floor(abs / 60);
+  const minutes = abs % 60;
+  return `UTC${sign}${hours}${minutes ? ':' + pad2(minutes) : ''}`;
+}
+function tick() {
+  const d = new Date();
+  document.getElementById('clock').textContent =
+    `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} ${tzOffsetLabel(d)}`;
+}
+setInterval(tick, 1000); tick();
+
+// ── API ──
+async function get(path) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  const r = await fetch(API + path, { cache: 'no-store', signal: ctrl.signal });
+  clearTimeout(timer);
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+
+// ── АНИМАЦИЯ ЧИСЛА ──
+function animateNum(el, target, decimals=2, prefix='', suffix='') {
+  const start = parseFloat(el.dataset.val || '0');
+  if (Number.isFinite(start) && Math.abs(start - target) < 1e-9 && el.textContent !== '—') {
+    el.textContent = prefix + target.toFixed(decimals) + suffix;
+    return;
+  }
+  const dur = 600, fps = 30, steps = dur/1000*fps;
+  let step = 0;
+  const inc = (target - start) / steps;
+  el.dataset.val = target;
+  const run = () => {
+    step++;
+    const v = step >= steps ? target : start + inc * step;
+    el.textContent = prefix + v.toFixed(decimals) + suffix;
+    if (step < steps) requestAnimationFrame(run);
+  };
+  el.classList.add('updating');
+  setTimeout(() => el.classList.remove('updating'), 600);
+  requestAnimationFrame(run);
+}
+
+// ── ФОРМАТИРОВАНИЕ ──
+const fmt = (v,d=2) => v==null ? '—' : Number(v).toFixed(d);
+const fmtDate = s => s ? s.slice(0,16).replace('T',' ') : '—';
+function parseUtcTimestamp(value) {
+  if (!value) return null;
+  let text = String(value).trim();
+  if (!text) return null;
+  text = text.replace(' ', 'T');
+  if (!/([zZ]|[+-]\d{2}:?\d{2})$/.test(text)) text += 'Z';
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+const fmtLocalDate = s => {
+  const d = parseUtcTimestamp(s);
+  return d ? `${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : 'вЂ”';
+};
+const fmtLocalTime = s => {
+  const d = parseUtcTimestamp(s);
+  return d ? `${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : '-';
+};
+const dirCls = d => d==='LONG' ? 'dir-long' : 'dir-short';
+const pnlCls = v => v>0 ? 'pnl-pos' : v<0 ? 'pnl-neg' : '';
+const stratName = s => ({
+  MEAN_REVERSION: 'MR',
+  SQUEEZE_BREAKOUT: 'SQZ',
+  TREND_PULLBACK: 'TPB',
+  LIQUIDITY_SWEEP_REVERSAL: 'LSR',
+  VWAP_REVERSION: 'VWR',
+  VWAP_REVERSION_WATCH: 'VWR-W',
+  MOMENTUM_CONTINUATION: 'MOM',
+  RANGE_GRID: 'GRID'
+})[s] || s || '—';
+
+let lastCurve = [250];
+let startEquity = 250;
+
+async function loadConfig(force=false) {
+  if (configLoaded && !force) return;
+  try {
+    const d = await get('/config');
+    startEquity = d.initial_equity_usdt || 250;
+    document.getElementById('m-eq-start').textContent = 'USDT · старт $' + startEquity.toFixed(0);
+    document.getElementById('eq-start-badge').textContent = 'старт $' + startEquity.toFixed(0);
+    configLoaded = true;
+  } catch(e) { console.error('config', e); }
+}
+
+// ── СТАТУС ──
+async function loadStatus() {
+  try {
+    const d = await get('/status');
+    const ok = d.bot === 'active';
+    document.getElementById('status-dot').className = 'dot' + (ok ? '' : ' red');
+    document.getElementById('status-text').textContent =
+      ok ? `БОТ АКТИВЕН · ПМ ${d.paper_monitor === 'active' ? 'АКТИВЕН' : 'СТОП'}` : 'ОФЛАЙН';
+  } catch {
+    document.getElementById('status-dot').className = 'dot red';
+    document.getElementById('status-text').textContent = 'НЕТ СВЯЗИ';
+  }
+}
+
+// ── МЕТРИКИ ──
+async function loadStats() {
+  try {
+    const d = await get('/stats');
+    const pnl = d.total_pnl || 0;
+    const eq = (d.initial_equity || startEquity) + pnl;
+    lastCurve = d.equity_curve || [startEquity];
+
+    // PnL
+    const pnlEl = document.getElementById('m-pnl');
+    animateNum(pnlEl, pnl, 2, pnl>=0?'+':'');
+    pnlEl.className = 'metric-value ' + (pnl>=0?'green':'red');
+    document.getElementById('mc-pnl').className = 'metric-card ' + (pnl>=0?'green':'red') + '-accent';
+
+    // Винрейт
+    const wrEl = document.getElementById('m-wr');
+    animateNum(wrEl, d.winrate||0, 1, '', '%');
+    const wrColor = d.winrate>=50?'green':d.winrate>=40?'yellow':'red';
+    wrEl.className = 'metric-value ' + wrColor;
+    document.getElementById('mc-wr').className = 'metric-card ' + wrColor + '-accent';
+    document.getElementById('m-trades').textContent =
+      `${d.trades} сделок (${d.wins}П/${d.losses}У)`;
+
+    // PF
+    const pfEl = document.getElementById('m-pf');
+    animateNum(pfEl, d.profit_factor||0, 2);
+    const pfColor = d.profit_factor>=1.2?'green':d.profit_factor>=1?'yellow':'red';
+    pfEl.className = 'metric-value ' + pfColor;
+    document.getElementById('mc-pf').className = 'metric-card ' + pfColor + '-accent';
+
+    // Avg R
+    const rEl = document.getElementById('m-r');
+    animateNum(rEl, d.avg_r||0, 3, d.avg_r>=0?'+':'');
+    rEl.className = 'metric-value ' + (d.avg_r>0?'green':'red');
+
+    // DD
+    const ddEl = document.getElementById('m-dd');
+    animateNum(ddEl, d.max_drawdown||0, 1, '', '%');
+    const ddColor = d.max_drawdown>-10?'green':d.max_drawdown>-20?'yellow':'red';
+    ddEl.className = 'metric-value ' + ddColor;
+    document.getElementById('mc-dd').className = 'metric-card ' + ddColor + '-accent';
+
+    // Баланс
+    const eqEl = document.getElementById('m-eq');
+    animateNum(eqEl, eq, 2, '$');
+    eqEl.className = 'metric-value ' + (eq>=startEquity?'blue':'red');
+
+    // Разбивка по стратегиям
+    const stripHtml = Object.entries(d.by_strategy||{}).map(([k,v])=>{
+      const wr = v.trades>0 ? Math.round(v.wins/v.trades*100) : 0;
+      const col = v.pnl>=0 ? 'var(--green)' : 'var(--red)';
+      return `<span style="color:${col}">${esc(stratName(k))}: ${wr}% · ${v.pnl>=0?'+':''}${fmt(v.pnl)} USDT</span>`;
+    }).join('<span style="color:var(--border2)"> | </span>');
+    setHTML('strat-strip', stripHtml);
+
+    drawEquity(lastCurve);
+    drawSpark(lastCurve);
+  } catch(e) { console.error('stats', e); }
+}
+
+async function loadStrategyScorecard() {
+  try {
+    const data = await get('/strategy-scorecard');
+    const rows = data.strategies || [];
+    const summary = data.summary || {};
+    document.getElementById('sc-total').textContent =
+      `${summary.strategies || 0} стратегий · ${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
+    if (!rows.length) {
+      setHTML('sc-body', '<tr><td colspan="15" class="empty">Нет данных по стратегиям</td></tr>');
+      return;
+    }
+    setHTML('sc-body', rows.map(s => {
+      const pnl = s.total_pnl ?? s.realized_pnl ?? 0;
+      const gate = s.gate || {};
+      const gateStatus = ['PROMOTABLE', 'BLOCKED', 'WATCH'].includes(gate.status) ? gate.status : 'WATCH';
+      const gateLabel = gateStatus === 'PROMOTABLE' ? 'OK' : gateStatus;
+      const failedChecks = gate.failed_checks || [];
+      const gateTitle = (gate.checks || [])
+        .filter(c => !c.passed)
+        .map(c => `${c.id}: ${c.value} / ${c.threshold}`)
+        .join('\n') || 'all checks passed';
+      const mode = s.strategy_mode && s.strategy_mode !== 'unknown' ? String(s.strategy_mode).toUpperCase() : '';
+      const shadow = s.shadow_signals ? `SH ${s.shadow_signals}` : '';
+      const sp = s.shadow_paper || {};
+      const sg = s.shadow_gate || {};
+      const sgStatus = ['PROMOTE', 'WATCH', 'TESTING'].includes(sg.status) ? sg.status : 'TESTING';
+      const sgTitle = (sg.checks || [])
+        .filter(c => !c.passed)
+        .map(c => `${c.id}: ${c.value} / ${c.threshold}`)
+        .join('\n') || 'shadow checks passed';
+      const sgLabel = sgStatus === 'PROMOTE' ? 'PROMOTE TO PAPER' : sgStatus;
+      const spTrades = (sp.closed_trades || sp.open_trades) ? `SP ${sp.closed_trades || 0}/${sp.open_trades || 0}` : '';
+      const spPnl = (sp.closed_trades || sp.open_trades) ? `${(sp.total_pnl || 0) >= 0 ? '+' : ''}${fmt(sp.total_pnl || 0)}` : '';
+      const diagnostics = s.candidate_evidence?.diagnostics || {};
+      const diagLine = diagnostics.total ? `DG ${diagnostics.total}` : '';
+      const modeLine = [mode, shadow, spTrades, spPnl, diagLine].filter(Boolean).join(' · ');
+      const clusters = s.trade_clusters || {};
+      const clusterCount = s.closed_trade_clusters ?? clusters.closed_clusters ?? s.closed_trades ?? 0;
+      const clusterHint = clusters.multi_trade_clusters
+        ? `${clusters.multi_trade_clusters} сер. · max ${clusters.largest_size || 0}`
+        : '';
+      const displayWinrate = s.cluster_winrate ?? s.winrate ?? 0;
+      const displayPf = s.cluster_profit_factor ?? s.profit_factor ?? 0;
+      const displayAvgR = s.cluster_avg_r ?? s.avg_r ?? 0;
+      const displayFrequency = s.closed_trade_clusters_per_day ?? s.closed_trades_per_day ?? 0;
+      const rejectTags = Object.entries(s.rejections_by_type || {}).slice(0,3).map(([k,v]) =>
+        `<span class="sc-tag">${esc(k)} ${v}</span>`
+      );
+      const diagTags = Object.entries(diagnostics.by_reason || {}).slice(0,3).map(([k,v]) =>
+        `<span class="sc-tag" title="VWR diagnostics">${esc(k)} ${v}</span>`
+      );
+      const rejectHtml = [...rejectTags, ...diagTags].join('') || '<span class="sc-muted">нет</span>';
+      const symbolHtml = Object.entries(s.by_symbol || {})
+        .sort((a,b) => Math.abs(b[1].realized_pnl || 0) - Math.abs(a[1].realized_pnl || 0))
+        .slice(0,3)
+        .map(([sym,v]) => `<span class="sc-tag">${esc(sym.replace('USDT',''))} ${v.realized_pnl>=0?'+':''}${fmt(v.realized_pnl)}</span>`)
+        .join('') || '<span class="sc-muted">—</span>';
+      return `<tr>
+        <td class="sym">${esc(stratName(s.strategy))}${modeLine ? `<div class="sc-muted">${esc(modeLine)}</div>` : ''}</td>
+        <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
+        <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
+        <td>${s.closed_trades || 0}</td>
+        <td>${clusterCount}${clusterHint ? `<div class="sc-muted">${esc(clusterHint)}</div>` : ''}</td>
+        <td class="${s.open_trades ? 'status-open' : 'status-closed'}">${s.open_trades || 0}</td>
+        <td class="${pnlCls(pnl)}">${pnl>=0?'+':''}${fmt(pnl)}</td>
+        <td>${fmt(displayWinrate,1)}%</td>
+        <td>${fmt(displayPf,2)}</td>
+        <td class="${pnlCls(displayAvgR)}">${displayAvgR>=0?'+':''}${fmt(displayAvgR,3)}</td>
+        <td class="${pnlCls(s.max_drawdown)}">${fmt(s.max_drawdown,1)}%</td>
+        <td>${fmt(displayFrequency,2)}/д</td>
+        <td><div class="sc-tags">${rejectHtml}</div></td>
+        <td><div class="sc-tags">${symbolHtml}</div></td>
+        <td class="sc-muted">${fmtLocalTime(s.last_trade_at)}</td>
+      </tr>`;
+    }).join(''));
+  } catch(e) { console.error('strategy-scorecard', e); }
+}
+
+// ── СПАРКЛАЙН ──
+function drawSpark(curve) {
+  const c = document.getElementById('spark');
+  const ctx = c.getContext('2d');
+  const W = c.offsetWidth || 200;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = W * dpr; c.height = 28 * dpr;
+  c.style.height = '28px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (curve.length < 2) return;
+  ctx.clearRect(0,0,W,28);
+  const mn=Math.min(...curve), mx=Math.max(...curve), rng=mx-mn||1;
+  const xS = W/(curve.length-1);
+  const toX = i => i*xS;
+  const toY = v => 24-(v-mn)/rng*20;
+  const last = curve[curve.length-1];
+  const isUp = last >= startEquity;
+  ctx.beginPath();
+  ctx.strokeStyle = isUp ? 'var(--green)' : 'var(--red)';
+  ctx.lineWidth = 1.5;
+  curve.forEach((v,i) => i===0 ? ctx.moveTo(toX(0),toY(v)) : ctx.lineTo(toX(i),toY(v)));
+  ctx.stroke();
+}
+
+// ── EQUITY CURVE ──
+function drawEquity(curve) {
+  const canvas = document.getElementById('eq-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 600;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = 150 * dpr;
+  canvas.style.height = '150px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const H = 150;
+  const pad = {t:12, r:16, b:28, l:56};
+  const w = W-pad.l-pad.r, h = H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+
+  if (curve.length < 2) {
+    ctx.fillStyle = 'var(--text-muted)';
+    ctx.font = '11px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ожидание сделок...', W/2, H/2);
+    return;
+  }
+
+  const mn=Math.min(...curve,startEquity), mx=Math.max(...curve,startEquity), rng=mx-mn||1;
+  const xS = w/(curve.length-1);
+  const toX = i => pad.l+i*xS;
+  const toY = v => pad.t+h-(v-mn)/rng*h;
+  const isDark = document.documentElement.getAttribute('data-theme')==='dark';
+
+  // Сетка
+  for (let i=0; i<=4; i++) {
+    const y = pad.t+i*h/4;
+    const val = mx-i*rng/4;
+    ctx.strokeStyle = isDark ? 'rgba(30,37,48,0.9)' : 'rgba(226,230,237,0.8)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle = isDark ? 'rgba(74,85,104,0.7)' : 'rgba(160,174,192,0.9)';
+    ctx.font = '10px JetBrains Mono';
+    ctx.textAlign = 'right';
+    ctx.fillText('$'+val.toFixed(0), pad.l-6, y+3);
+  }
+
+  // Базовая линия $250
+  const baseY = toY(startEquity);
+  ctx.strokeStyle = isDark ? 'rgba(74,85,104,0.5)' : 'rgba(160,174,192,0.6)';
+  ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(pad.l,baseY); ctx.lineTo(W-pad.r,baseY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = isDark ? 'rgba(74,85,104,0.5)' : 'rgba(160,174,192,0.7)';
+  ctx.font = '9px JetBrains Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText('$'+startEquity.toFixed(0), W-pad.r+2, baseY+3);
+
+  const last = curve[curve.length-1];
+  const isUp = last >= startEquity;
+  const isUp2 = last >= startEquity;
+  const grad = ctx.createLinearGradient(0,pad.t,0,H);
+  if (isUp2) {
+    grad.addColorStop(0, isDark?'rgba(0,255,157,0.25)':'rgba(0,168,107,0.15)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+  } else {
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, isDark?'rgba(255,59,92,0.2)':'rgba(224,58,85,0.12)');
+  }
+  ctx.beginPath();
+  ctx.moveTo(toX(0),toY(curve[0]));
+  curve.forEach((v,i)=>{ if(i>0) ctx.lineTo(toX(i),toY(v)); });
+  ctx.lineTo(toX(curve.length-1), H-pad.b);
+  ctx.lineTo(toX(0), H-pad.b);
+  ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  ctx.strokeStyle = isUp2 ? (isDark?'#00ff9d':'#00a86b') : (isDark?'#ff3b5c':'#e03a55');
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  curve.forEach((v,i)=>i===0?ctx.moveTo(toX(0),toY(v)):ctx.lineTo(toX(i),toY(v)));
+  ctx.stroke();
+
+  // Точка
+  ctx.beginPath();
+  ctx.arc(toX(curve.length-1),toY(last),4,0,Math.PI*2);
+  ctx.fillStyle = isUp2?(isDark?'#00ff9d':'#00a86b'):(isDark?'#ff3b5c':'#e03a55');
+  ctx.fill();
+  ctx.fillStyle = isDark?'var(--text)':'var(--text)';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText('$'+last.toFixed(2), toX(curve.length-1)+8, toY(last)+4);
+}
+
+// ── ПОЗИЦИИ ──
+async function loadPositions() {
+  try {
+    const data = await get('/positions');
+    document.getElementById('pos-count').textContent = data.length + ' активных';
+    if (!data.length) { setHTML('pos-body', '<div class="empty">Нет открытых позиций</div>'); return; }
+    setHTML('pos-body', data.map(p => {
+      const pnl = p.unrealized_pnl;
+      const r = p.pnl_r;
+      return `<div class="pos-row animated">
+        <span class="sym">${esc(p.symbol)}</span>
+        <span class="${dirCls(p.direction)}">${p.direction==='LONG'?'ЛОНГ':'ШОРТ'}</span>
+        <span>$${fmt(p.entry_price,4)}</span>
+        <span style="color:var(--red-dim)">$${fmt(p.stop_loss,4)}</span>
+        <span style="color:var(--green-dim)">$${fmt(p.take_profit,4)}</span>
+        <span>${p.current_price?'$'+fmt(p.current_price,4):'—'}</span>
+        <span class="${pnlCls(pnl)}">${pnl!=null?(pnl>=0?'+':'')+fmt(pnl)+' USDT ('+fmt(r,2)+'R)':'—'}</span>
+      </div>`;
+    }).join(''));
+  } catch(e) { console.error('pos', e); }
+}
+
+// ── СИГНАЛЫ ──
+async function loadSignals() {
+  try {
+    const data = await get('/signals');
+    if (!data.length) { setHTML('sig-body', '<div class="empty">Сигналов пока нет</div>'); return; }
+    setHTML('sig-body', data.slice(0,20).map(s => {
+      const t = fmtLocalTime(s.created_at);
+      let strat=''; let regime=''; let strategyMode='';
+      try {
+        const m = JSON.parse(s.metadata||'{}');
+        const sm = m.signal_metadata || m;
+        strat = stratName(sm.strategy||'');
+        regime = sm.regime||'';
+        strategyMode = sm.strategy_mode||'';
+      } catch{}
+      const reason = s.reason||'';
+      const shownReason = (strategyMode === 'shadow' ? '[SHADOW] ' : '') + reason;
+      const shortReason = reason.length>70 ? reason.slice(0,70)+'…' : reason;
+      return `<div class="sig-row animated">
+        <span class="sig-time">${t.slice(5)}</span>
+        <span class="sym">${esc(s.symbol)}</span>
+        <span class="${dirCls(s.direction)}">${s.direction==='LONG'?'ЛОНГ':'ШОРТ'}</span>
+        <span class="sig-reason" title="${esc(shownReason)}">${esc(shortReason)}</span>
+      </div>`;
+    }).join(''));
+  } catch(e) { console.error('sig', e); }
+}
+
+// ── SQUEEZE МОНИТОР (из логов) ──
+async function loadSqueeze(logData=null) {
+  try {
+    const logs = logData || await get('/logs');
+    const sqMap = {};
+    logs.filter(l=>l.includes('SQZ ')).forEach(l => {
+      const m = l.match(/SQZ\s+([A-Z0-9]+):\s+squeeze=(True|False)(?:\s+release=(True|False))?\s+bars=(\d+)(?:\s+min=(\d+))?/);
+      if (m) sqMap[m[1]] = {
+        active: m[2] === 'True',
+        release: m[3] === 'True',
+        bars: parseInt(m[4]),
+        minBars: m[5] ? parseInt(m[5]) : null
+      };
+    });
+
+    const symbols = Object.keys(sqMap).slice(0,8);
+    if (!symbols.length) { setHTML('sq-grid', '<div class="empty" style="grid-column:1/-1">Нет данных squeeze</div>'); return; }
+
+    setHTML('sq-grid', symbols.map(sym => {
+      const s = sqMap[sym];
+      const bars = s.bars;
+      const cls = s.release ? 'strong' : !s.active ? '' : bars >= 10 ? 'strong' : 'active';
+      const valCls = s.release ? 'high' : !s.active ? 'none' : bars >= 10 ? 'high' : 'mid';
+      const label = s.release ? 'РЕЛИЗ' : s.active ? 'БАРЫ' + (s.minBars ? ` / МИН ${s.minBars}` : '') : 'НЕТ СЖАТИЯ';
+      return `<div class="sq-item ${cls}">
+        <div class="sq-sym">${esc(sym.replace('USDT',''))}</div>
+        <div class="sq-val ${valCls}">${bars}</div>
+        <div class="sq-label">${label}</div>
+      </div>`;
+    }).join(''));
+  } catch(e) { console.error('sq', e); }
+}
+
+// ── ЛОГ ──
+async function loadLogs(logData=null) {
+  try {
+    const data = logData || await get('/logs');
+    const wrap = document.getElementById('log-wrap');
+    const html = data.slice(-80).map(line => {
+      let cls = 'll';
+      if (line.includes('ERROR')||line.includes('Traceback')) cls+=' err';
+      else if (line.includes('WARNING')) cls+=' warn';
+      else if (line.includes('SQZ')) cls+=' sq';
+      else if (line.includes('signal')||line.includes('Signal')) cls+=' sig';
+      return `<div class="${cls}">${esc(line)}</div>`;
+    }).join('');
+    setHTML('log-wrap', html);
+    wrap.scrollTop = wrap.scrollHeight;
+  } catch(e) { console.error('log', e); }
+}
+
+// ── СДЕЛКИ ──
+async function loadTrades() {
+  try {
+    const data = await get('/trades');
+    if (!data.length) {
+      setHTML('tr-body', '<tr><td colspan="11" class="empty">Нет сделок</td></tr>'); return;
+    }
+    setHTML('tr-body', data.slice(0,30).map(t => {
+      let strat='—';
+      try { strat = stratName(JSON.parse(t.metadata||'{}')?.signal_metadata?.strategy); } catch{}
+      const pnl = parseFloat(t.realized_pnl||0);
+      const r = parseFloat(t.r_multiple||0);
+      const closed = t.status==='CLOSED';
+      return `<tr>
+        <td style="color:var(--text-muted)">${t.id}</td>
+        <td class="sym">${esc(t.symbol)}</td>
+        <td class="${dirCls(t.direction)}">${t.direction==='LONG'?'Л':'Ш'}</td>
+        <td style="color:var(--text-muted);font-size:11px">${esc(strat)}</td>
+        <td>$${fmt(t.entry_price,4)}</td>
+        <td style="color:var(--red-dim)">$${fmt(t.stop_loss,4)}</td>
+        <td style="color:var(--green-dim)">$${fmt(t.take_profit,4)}</td>
+        <td class="${closed?'status-closed':'status-open'}">${closed?'ЗАКРЫТА':'ОТКРЫТА'}</td>
+        <td class="${pnlCls(pnl)}">${closed?(pnl>=0?'+':'')+fmt(pnl):'—'}</td>
+        <td class="${pnlCls(r)}">${closed?(r>=0?'+':'')+fmt(r,2)+'R':'—'}</td>
+        <td style="color:var(--text-muted);font-size:11px">${fmtLocalTime(t.created_at)}</td>
+      </tr>`;
+    }).join(''));
+  } catch(e) { console.error('tr', e); }
+}
+
+// ── ОТКАЗЫ ФИЛЬТРОВ ──
+async function loadRejections() {
+  try {
+    const [data, stats] = await Promise.all([get('/rejections'), get('/rejection-stats')]);
+
+    // Статистика по типам
+    document.getElementById('rj-total').textContent = (stats.total || 0) + ' отказов';
+    const typeColors = {
+      BTC_DROP:'btc', UTC:'utc', OI:'oi', CORRELATION:'corr',
+      RISK:'risk', ML:'ml', SHADOW_RISK:'shadow', SHADOW_COOLDOWN:'shadow', OTHER:'other'
+    };
+    if (stats.by_type && Object.keys(stats.by_type).length) {
+      setHTML('rj-stats', Object.entries(stats.by_type).map(([k,v]) =>
+        `<div class="rj-badge ${typeColors[k]||''}">${esc(k)}<span class="rj-count">${v}</span></div>`
+      ).join(''));
+    } else {
+      setHTML('rj-stats', '<span style="color:var(--text-muted);font-size:12px">Ожидание данных...</span>');
+    }
+
+    // Таблица отказов
+    if (!data.length || data[0]?.error) {
+      setHTML('rj-body', '<tr><td colspan="6" class="empty">Нет отказов</td></tr>');
+      return;
+    }
+    setHTML('rj-body', data.slice(0,50).map(r => {
+      const ftype = r.filter_type || 'OTHER';
+      const reason = (r.reason||'').length > 60 ? (r.reason||'').slice(0,60)+'…' : (r.reason||'');
+      const t = fmtLocalTime(r.created_at);
+      return `<tr>
+        <td style="color:var(--text-muted);font-size:11px">${t.slice(5)}</td>
+        <td class="sym">${esc(r.symbol)}</td>
+        <td class="${dirCls(r.direction)}">${r.direction==='LONG'?'Л':'Ш'}</td>
+        <td style="color:var(--text-muted);font-size:11px">${esc(stratName(r.strategy))}</td>
+        <td><span class="ftype ftype-${esc(ftype)}">${esc(ftype)}</span></td>
+        <td style="color:var(--text-dim);font-size:11px" title="${esc(r.reason||'')}">${esc(reason)}</td>
+      </tr>`;
+    }).join(''));
+  } catch(e) { console.error('rj', e); }
+}
+
+// ── УПРАВЛЕНИЕ ──
+async function emergencyStop() {
+  if (!confirm('Активировать аварийную остановку?')) return;
+  await fetch(API+'/emergency-stop',{method:'POST'});
+  alert('Аварийная остановка активирована');
+  refreshAll();
+}
+
+async function clearStop() {
+  await fetch(API+'/clear-emergency-stop',{method:'POST'});
+  alert('Остановка снята');
+  refreshAll();
+}
+
+async function restartBot() {
+  if (!confirm('Перезапустить бот v2.1?')) return;
+  await fetch(API+'/restart',{method:'POST'});
+  setTimeout(refreshAll, 3000);
+}
+
+// ── АВТО-ОБНОВЛЕНИЕ ──
+async function refreshAll(forceConfig=false) {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    document.getElementById('last-update').textContent = 'обновление...';
+    await loadConfig(forceConfig);
+    const logsPromise = get('/logs').catch(e => {
+      console.error('logs', e);
+      return [];
+    });
+    await Promise.all([
+      loadStatus(),
+      loadStats(),
+      loadPositions(),
+      loadSignals(),
+      loadTrades(),
+      loadStrategyScorecard(),
+      loadRejections(),
+      logsPromise.then(logs => Promise.all([loadSqueeze(logs), loadLogs(logs)])),
+    ]);
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString('ru');
+    resetCountdown();
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+function resetCountdown() {
+  cdownVal = INTERVAL;
+  clearInterval(cdownTimer);
+  cdownTimer = setInterval(() => {
+    cdownVal--;
+    document.getElementById('cdown').textContent = cdownVal + 'с';
+    document.getElementById('prog').style.width = Math.min(100, (INTERVAL-cdownVal)/INTERVAL*100) + '%';
+    if (cdownVal <= 0) {
+      clearInterval(cdownTimer);
+      refreshAll();
+    }
+  }, 1000);
+}
+
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => { drawEquity(lastCurve); drawSpark(lastCurve); });
+});
+refreshAll();
+</script>
+</body>
+</html>

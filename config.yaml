@@ -1,0 +1,267 @@
+mode: PAPER_TRADING
+
+exchange:
+  mainnet_base_url: "https://fapi.binance.com"
+  testnet_base_url: "https://demo-fapi.binance.com"
+  websocket_mainnet_url: "wss://fstream.binance.com"
+  websocket_testnet_url: "wss://fstream.binancefuture.com"
+  recv_window_ms: 5000
+  request_timeout_sec: 15
+  max_retries: 4
+
+safety:
+  enable_mainnet_live: false
+  mainnet_confirmation: ""
+  required_mainnet_confirmation: "I_UNDERSTAND_MAINNET_RISK"
+  production_unlock_file: "data/production_unlock.json"
+  require_backtest_approval_for_mainnet: true
+  require_paper_approval_for_mainnet: true
+  max_mainnet_risk_per_trade_pct: 0.0025
+  max_mainnet_concurrent_positions: 1
+  max_mainnet_leverage: 2
+  mainnet_allowed_strategies: ["SQUEEZE_BREAKOUT"]
+  emergency_stop_file: "data/emergency_stop.flag"
+  allow_hedge_mode: false
+  require_stop_loss: true
+  require_take_profit: true
+  block_new_trade_if_any_position: false
+  block_new_trade_if_same_symbol: true
+  adopt_manual_positions: true
+  repair_missing_protection: false
+  reconcile_orders_on_start: true
+  require_exclusive_live_bot: true
+  live_conflicting_service_names: ["trading-bot", "trading-bot-v2"]
+  emergency_cancel_orders_in_live: true
+  emergency_close_positions_in_live: false
+
+account:
+  starting_deposit_tenge: 100000
+  starting_deposit_usdt: 1000   # укажи свой реальный баланс в USDT
+  manual_tenge_usdt_rate: null
+  quote_asset: "USDT"
+
+trading:
+  timeframes: ["15m", "1h", "4h"]  # 15m отключён — на нём 49% WR, только 1h сигналы
+  poll_interval_sec: 60
+  max_symbols: 10
+  margin_type: "ISOLATED"
+  position_mode: "ONE_WAY"
+  order_working_type: "MARK_PRICE"
+  min_backtest_trades: 30
+  min_backtest_profit_factor: 1.1
+  min_backtest_max_drawdown_pct: -25.0
+
+universe:
+  market_cap_top_n: 40
+  fetch_extra_top_n: 80
+  quote_asset: "USDT"
+  excluded_assets: ["USDT", "USDC", "DAI", "FDUSD", "TUSD", "BUSD", "WBTC", "STETH",
+                  "ETHUSDT", "DOTUSDT", "LINKUSDT", "AAVEUSDT", "UNIUSDT",
+                  "ATOMUSDT", "NEARUSDT", "APTUSDT", "SUIUSDT", "ARBUSDT",
+                  "OPUSDT", "ALGOUSDT"]
+  min_24h_quote_volume_usdt: 50000000
+  max_spread_bps: 8
+  min_order_book_top_liquidity_usdt: 100000
+  min_symbol_quality_score: 60
+  quality_spread_weight: 0.35
+  quality_liquidity_weight: 0.40
+  quality_volume_weight: 0.25
+  cache_ttl_sec: 1800
+
+strategy:
+  ema_fast: 20
+  ema_mid: 50
+  ema_slow: 200
+  rsi_period: 14
+  atr_period: 14
+  volume_lookback: 20
+  min_volume_ratio: 1.2   # снижено с 1.3 — компромисс между количеством и качеством
+  min_atr_pct: 0.15
+  max_atr_pct: 8.0
+  stop_atr_multiplier:
+    SCALPING: 1.2
+    INTRADAY: 1.8
+    SWING: 2.5
+  take_profit_rr:
+    SCALPING: 1.4
+    INTRADAY: 1.8
+    SWING: 2.3
+  use_funding_filter: true
+  max_abs_funding_rate: 0.0008
+  enabled_strategies: ["MEAN_REVERSION", "SQUEEZE_BREAKOUT"]  # SQZ/MR execute; retuned candidates are shadow-only
+  strategy_modes:
+    SQUEEZE_BREAKOUT: paper
+    MEAN_REVERSION: paper
+    TREND_PULLBACK: shadow
+    LIQUIDITY_SWEEP_REVERSAL: shadow
+    VWAP_REVERSION: shadow
+    VWAP_REVERSION_WATCH: shadow
+    MOMENTUM_CONTINUATION: shadow
+    RANGE_GRID: shadow
+    TREND_FOLLOWING: shadow
+  mean_reversion_deviation_atr: 2.0
+  mean_reversion_rsi_oversold: 25       # ужесточено с 28 — только экстремальные входы
+  mean_reversion_rsi_overbought: 75     # ужесточено с 72
+  mean_reversion_stop_atr_multiplier: 1.0
+  mean_reversion_take_profit_rr: 1.1    # снижено с 1.4 — TP достигается чаще
+  mean_reversion_min_volume_ratio: 1.05
+  mean_reversion_min_edge_score: 0.40
+  mean_reversion_min_confluence: 4
+  mean_reversion_require_divergence: true
+  mean_reversion_require_edge_confirmation: true
+  trend_pullback_min_volume_ratio: 1.10
+  trend_pullback_min_trend_strength: 0.35
+  trend_pullback_min_depth_atr: 0.25
+  trend_pullback_max_depth_atr: 2.20
+  trend_pullback_stop_atr_multiplier: 1.20
+  trend_pullback_take_profit_rr: 1.60
+  trend_pullback_min_confluence: 4
+  trend_pullback_min_edge_score: 0.25
+  liquidity_sweep_lookback: 18
+  liquidity_sweep_stop_atr_multiplier: 1.35
+  liquidity_sweep_take_profit_rr: 1.35
+  liquidity_sweep_min_edge_score: 0.58
+  vwap_reversion_lookback: 96
+  vwap_reversion_deviation_atr: 4.50
+  vwap_reversion_max_deviation_atr: 6.00
+  vwap_reversion_min_volume_ratio: 1.35
+  vwap_reversion_watch_deviation_atr: 1.80
+  vwap_reversion_watch_max_deviation_atr: 8.00
+  vwap_reversion_watch_min_volume_ratio: 1.05
+  vwap_reversion_stop_atr_multiplier: 1.00
+  vwap_reversion_take_profit_rr: 1.15
+  momentum_continuation_min_volume_ratio: 1.90
+  momentum_continuation_stop_atr_multiplier: 1.60
+  momentum_continuation_take_profit_rr: 1.30
+  momentum_continuation_min_edge_score: 0.70
+  range_grid_lookback: 48
+  range_grid_stop_atr_multiplier: 1.00
+  range_grid_take_profit_rr: 0.80
+  funding_carry_filter_enabled: true
+  funding_carry_penalty_threshold: 0.0005
+  funding_carry_block_threshold: 0.0012
+
+market_filters:
+  use_open_interest_filter: true
+  oi_drop_cascade_pct: -5.0
+  oi_rise_longs_blocked_pct: 3.0
+  btc_4h_drop_filter_enabled: true
+  btc_4h_max_drop_pct: -0.03
+  block_longs_when_btc_weak: true
+  block_all_when_btc_weak: false
+  utc_session_filter_enabled: true
+  avoid_utc_hours: [0, 1, 2, 3, 4, 5, 6, 7]
+  high_confidence_squeeze_session_override: true
+  high_confidence_squeeze_min_confidence: 0.80
+  high_confidence_squeeze_allowed_hours: [0, 1]
+  use_self_learning_filters: true
+
+risk:
+  risk_per_trade_pct: 0.02
+  aggressive_risk_threshold_pct: 0.05
+  max_concurrent_positions: 4
+  max_leverage: 5
+  default_leverage: 3
+  max_daily_loss_pct: 0.06
+  cooldown_after_losses: 2
+  cooldown_minutes: 120
+  symbol_cooldown_after_loss_minutes: 120
+  strategy_reentry_cooldown_minutes: 45
+  scale_in_enabled: false
+  max_scale_ins_per_symbol_strategy: 2
+  scale_in_risk_multiplier: 0.50
+  scale_in_min_unrealized_r: 0.25
+  scale_in_independent_signal_minutes: 60
+  trade_cluster_window_minutes: 60
+  max_portfolio_risk_pct: 0.15
+  max_correlated_group_risk_pct: 0.10
+  max_margin_usage_pct: 0.90
+  min_reward_risk: 1.0   # снижено под MeanReversion RR 1.1 (с запасом)
+  taker_fee_bps: 4.0
+  slippage_bps: 5.0
+  funding_buffer_bps: 1.0
+  liquidation_buffer_pct: 0.03
+  require_liquidation_check_in_live: true
+  adaptive_kelly_enabled: true
+  kelly_lookback_trades: 50
+  kelly_fraction: 0.50
+  kelly_min_risk_pct: 0.005
+  kelly_max_risk_pct: 0.03
+  correlation_groups:
+    majors: ["BTCUSDT", "ETHUSDT"]
+    l1_beta: ["SOLUSDT", "BNBUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "NEARUSDT"]
+
+trade_management:
+  user_stream_required_for_live: true
+  user_stream_stale_after_sec: 20
+  user_stream_reconnect_backoff_sec: 5
+  rest_reconciliation_when_stale: true
+  partial_take_profits:
+    - name: "TP1"
+      reward_risk: 0.6    # 55% от дистанции — быстрый частичный выход
+      fraction: 0.50
+      move_stop_to_breakeven: true
+    - name: "TP2"
+      reward_risk: 1.1    # финальный выход на целевом RR
+      fraction: 0.50
+      activate_trailing: true
+  breakeven_offset_bps: 2.0
+  trailing_enabled: true
+  trailing_activation_reward_risk: 0.8
+  trailing_callback_rate_pct:
+    SCALPING: 0.30
+    INTRADAY: 0.40
+    SWING: 1.20
+  trailing_client_side: false
+
+edge_filters:
+  enabled: true
+  order_book_imbalance_min: 0.08
+  taker_buy_ratio_long_min: 0.53
+  taker_buy_ratio_short_max: 0.47
+  open_interest_change_min_pct: 0.0
+  liquidity_sweep_lookback: 12
+  liquidity_sweep_threshold_bps: 12
+  absorption_wick_body_ratio: 1.8
+  aggressive_flow_delta_min: 0.08
+  structure_break_lookback: 20
+  liquidation_zone_distance_bps: 35
+  liquidation_cluster_filter_enabled: false
+
+ml:
+  enabled: false
+  min_prediction_confidence: 0.60
+  model_path: "data/ml/model.json"
+  training_data_path: "data/ml/features.jsonl"
+  retrain_min_trades: 500
+  decision_min_trades: 500
+  validation_report_path: "data/ml/walk_forward_report.json"
+  require_validation_improvement_for_live: true
+  min_validation_trade_coverage: 0.50
+  adaptive_thresholds_enabled: true
+
+analytics:
+  min_trades_for_adaptation: 30
+  min_expectancy_r: 0.05
+  min_winrate: 0.42
+  disable_symbol_after_bad_trades: 20
+  segment_min_trades: 12
+  rsi_bucket_size: 4
+  atr_bucket_size_pct: 0.4
+  bad_segment_expectancy_r: -0.10
+
+database:
+  url: "sqlite+aiosqlite:///data/trading_bot.sqlite3"
+  postgres_url: ""
+
+telegram:
+  enabled: true
+  send_daily_report_utc: "21:00"
+
+web:
+  host: "0.0.0.0"
+  port: 8000
+
+logging:
+  level: "INFO"
+  file: "logs/trading_bot.log"

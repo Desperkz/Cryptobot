@@ -1,0 +1,1166 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from collections import defaultdict
+from dataclasses import replace
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+from trading_bot.config import AppConfig
+from trading_bot.data_provider import BinanceUSDMClient, CoinGeckoClient, MarketDataProvider
+from trading_bot.database import Database
+from trading_bot.execution import ExecutionReconciler
+from trading_bot.analytics import SelfLearningEngine
+from trading_bot.market_regime_detector import MarketRegimeDetector
+from trading_bot.market_universe import MarketUniverseBuilder
+from trading_bot.market_filters import MarketEntryFilter
+from trading_bot.ml import MLSignalFilter
+from trading_bot.models import Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
+from trading_bot.order_manager import OrderManager
+from trading_bot.position_manager import PositionManager
+from trading_bot.risk_manager import KellyRiskSizer, CorrelationFilter, RiskError, RiskManager
+from trading_bot.strategy_engine.edge import EdgeAnalyzer
+from trading_bot.strategy_engine.candidate_strategies import (
+    LiquiditySweepReversalStrategy,
+    MomentumContinuationStrategy,
+    RangeGridStrategy,
+    VwapReversionStrategy,
+)
+from trading_bot.strategy_engine.mean_reversion import MeanReversionStrategy
+from trading_bot.strategy_engine.multi_timeframe import MultiTimeframeStrategy
+from trading_bot.strategy_engine.router import StrategyRouter
+from trading_bot.strategy_engine.squeeze_breakout import SqueezeBreakoutStrategy
+from trading_bot.strategy_engine.trend_pullback import TrendPullbackStrategy
+from trading_bot.style_selector import StyleSelector
+from trading_bot.telegram_notifier import TelegramNotifier
+from trading_bot.trade_manager.protection import ProtectionManager
+from trading_bot.trade_manager.supervisor import TradeSupervisor
+from trading_bot.disaster_mode import DisasterDetector, DisasterConfig, DisasterLevel
+
+
+logger = logging.getLogger(__name__)
+
+
+class TradingBot:
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
+        self.db = Database(config.database.url)
+        self.binance = BinanceUSDMClient(
+            base_url=config.rest_base_url,
+            api_key=config.api_key,
+            api_secret=config.api_secret,
+            recv_window_ms=config.exchange.recv_window_ms,
+            timeout_sec=config.exchange.request_timeout_sec,
+            max_retries=config.exchange.max_retries,
+        )
+        self.coingecko = CoinGeckoClient(api_key=config.secrets.coingecko_api_key)
+        self.market_data = MarketDataProvider(self.binance)
+        self.positions = PositionManager(self.binance if config.is_live else None)
+        self.risk = RiskManager(config.risk, config.trade_management)
+        self.orders = OrderManager(config, self.binance if config.is_live else None, self.positions)
+        self.reconciler = ExecutionReconciler(config, self.binance if config.is_live else None)
+        self.protection = ProtectionManager(config, self.binance if config.is_live else None)
+        self.supervisor = TradeSupervisor(config, self.binance, self.positions, self.protection)
+        self.regime = MarketRegimeDetector(config.strategy)
+        self.styles = StyleSelector(config.universe.max_spread_bps, config.universe.min_24h_quote_volume_usdt)
+        self.edge_analyzer = EdgeAnalyzer(config.edge_filters)
+        self._squeeze = SqueezeBreakoutStrategy(config.strategy, self.regime)
+        self._trend_pullback = TrendPullbackStrategy(config.strategy, self.regime, self.edge_analyzer)
+        self._liquidity_sweep_reversal = LiquiditySweepReversalStrategy(config.strategy, self.edge_analyzer)
+        self._vwap_reversion = VwapReversionStrategy(config.strategy)
+        self._momentum_continuation = MomentumContinuationStrategy(config.strategy, self.regime, self.edge_analyzer)
+        self._range_grid = RangeGridStrategy(config.strategy, self.regime)
+        self.strategy = StrategyRouter(
+            trend=MultiTimeframeStrategy(config.strategy, self.regime, self.styles, config.edge_filters),
+            mean_reversion=MeanReversionStrategy(config.strategy, self.regime, self.edge_analyzer),
+            squeeze_breakout=self._squeeze,
+            trend_pullback=self._trend_pullback,
+            liquidity_sweep_reversal=self._liquidity_sweep_reversal,
+            vwap_reversion=self._vwap_reversion,
+            momentum_continuation=self._momentum_continuation,
+            range_grid=self._range_grid,
+            enabled_strategies=config.strategy.execution_strategies(config.mode),
+            shadow_strategies=config.strategy.shadow_strategies(),
+            config=config.strategy,
+        )
+        self.entry_filter = MarketEntryFilter(config.market_filters)
+        self.corr_filter = CorrelationFilter(threshold=0.7, lookback=48)
+        self.self_learning = SelfLearningEngine(config.analytics)
+        self.kelly = KellyRiskSizer(config.risk)
+        self.ml_filter = MLSignalFilter(
+            config.ml.model_path,
+            config.ml.min_prediction_confidence,
+            enabled=config.ml.enabled,
+            training_data_path=config.ml.training_data_path,
+            retrain_min_trades=config.ml.retrain_min_trades,
+            decision_min_trades=config.ml.decision_min_trades,
+        )
+        self.universe = MarketUniverseBuilder(config.universe, self.binance, self.coingecko, self.market_data)
+        self.telegram = TelegramNotifier(
+            token=config.secrets.telegram_bot_token,
+            chat_id=config.secrets.telegram_chat_id,
+            enabled=config.telegram.enabled,
+        )
+        self.supervisor.set_warning_callback(self.telegram.risk_warning)
+        self.supervisor.set_trade_closed_callback(self._mark_trade_closed)
+        self.disaster = DisasterDetector(
+            config=DisasterConfig(
+                api_max_consecutive_failures=3,
+                ws_stale_after_sec=30.0,
+                max_spread_bps_disaster=50.0,
+                max_consecutive_losses=5,
+                max_daily_loss_pct=0.08,
+                recovery_cooldown_sec=300.0,
+            ),
+            warn_callback=self.telegram.risk_warning,
+            emergency_callback=self._handle_emergency,
+        )
+        self._emergency_actions_applied = False
+        self._strategy_diagnostic_seen: dict[tuple[str, str, str], float] = {}
+
+    async def start(self) -> None:
+        warnings = self.config.validate()
+        await self.db.connect()
+        await self._restore_risk_state()
+        await self._sync_paper_positions()
+        await self._sync_live_positions_from_exchange(required=True)
+        await self.telegram.startup(self.config.mode.value)
+        if self.config.is_live and self.config.safety.adopt_manual_positions:
+            adopted = await self.positions.adopt_remote_positions()
+            for position in adopted:
+                await self.telegram.risk_warning(
+                    f"Adopted external position {position.symbol}; protection reconciliation is required."
+                )
+        if self.config.is_live and self.config.safety.reconcile_orders_on_start:
+            issues = await self.reconciler.reconcile()
+            for issue in issues:
+                logger.warning("Execution reconciliation issue: %s", issue)
+                await self.telegram.risk_warning(f"{issue.symbol}: {issue.message}")
+        if self.config.is_live:
+            await self.supervisor.start()
+            if self.config.trade_management.user_stream_required_for_live:
+                healthy = await self.supervisor.wait_until_healthy(timeout_sec=15)
+                if not healthy:
+                    raise RuntimeError("Live mode requires a healthy Binance user data stream before trading.")
+        for warning in warnings:
+            logger.warning(warning)
+            await self.telegram.risk_warning(warning)
+
+    async def stop(self) -> None:
+        await self.supervisor.stop()
+        await self.telegram.shutdown()
+        await self.db.close()
+        await self.coingecko.close()
+        await self.binance.close()
+        await self.telegram.close()
+
+    async def _restore_risk_state(self) -> None:
+        try:
+            saved = await self.db.load_risk_state()
+        except Exception:
+            logger.exception("Could not restore risk state.")
+            return
+        if not saved:
+            await self._rebuild_risk_state_from_trades()
+            return
+        cooldown = None
+        if saved["cooldown_until"]:
+            cooldown = datetime.fromisoformat(saved["cooldown_until"])
+            if cooldown < datetime.now(timezone.utc):
+                cooldown = None
+        self.risk.state.losing_streak = int(saved["losing_streak"])
+        self.risk.state.cooldown_until = cooldown
+        self.risk.state.realized_pnl_today = Decimal(saved["realized_pnl_today"])
+        self.risk.state.pnl_date_utc = (
+            saved.get("pnl_date_utc")
+            or _date_from_iso_like(saved.get("updated_at"))
+            or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        )
+
+    async def _rebuild_risk_state_from_trades(self) -> None:
+        try:
+            trades = await self.db.recent_trades(10_000)
+        except Exception:
+            logger.exception("Could not rebuild risk state from trade history.")
+            return
+        closed = [trade for trade in trades if trade.get("status") == "CLOSED"]
+        if not closed:
+            return
+
+        realized_today = Decimal("0")
+        for trade in closed:
+            if _trade_closed_today_utc(trade.get("closed_at") or trade.get("created_at")):
+                realized_today += _decimal_or_zero(trade.get("realized_pnl"))
+
+        losing_streak = 0
+        for trade in closed:
+            pnl = _decimal_or_zero(trade.get("realized_pnl"))
+            if pnl < 0:
+                losing_streak += 1
+                continue
+            break
+
+        self.risk.state.realized_pnl_today = realized_today
+        self.risk.state.losing_streak = losing_streak
+        self.risk.state.cooldown_until = None
+        self.risk.state.pnl_date_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            await self._persist_risk_state()
+        except Exception:
+            logger.exception("Could not persist rebuilt risk state.")
+
+    async def _persist_risk_state(self) -> None:
+        state = self.risk.state
+        cooldown = state.cooldown_until.isoformat() if state.cooldown_until else None
+        await self.db.save_risk_state(
+            state.losing_streak,
+            cooldown,
+            str(state.realized_pnl_today),
+            state.pnl_date_utc or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        )
+
+    async def run_forever(self) -> None:
+        await self.start()
+        try:
+            while True:
+                if self.emergency_stop_active():
+                    logger.critical("Emergency stop is active; no new cycles will run.")
+                    if self.config.is_live and not self._emergency_actions_applied:
+                        await self._apply_live_emergency_stop()
+                        self._emergency_actions_applied = True
+                    await asyncio.sleep(self.config.trading.poll_interval_sec)
+                    continue
+                self._emergency_actions_applied = False
+                await self.run_cycle()
+                await asyncio.sleep(self.config.trading.poll_interval_sec)
+        finally:
+            await self.stop()
+
+    async def run_cycle(self) -> None:
+        await self._sync_paper_positions()
+        await self._sync_live_positions_from_exchange()
+
+        # ── Disaster Mode ────────────────────────────────────────────────────
+        disaster_level = await self.disaster.check()
+        if self.disaster.requires_position_close:
+            await self._close_all_positions("emergency disaster mode")
+            return
+        if self.disaster.blocks_new_entries:
+            logger.warning("Disaster mode ACTIVE (%s): новые входы заблокированы", disaster_level.value)
+            return
+
+        # ── Стандартный цикл ─────────────────────────────────────────────────
+        if self.config.is_live:
+            if self.config.trade_management.user_stream_required_for_live and not self.supervisor.is_healthy():
+                await self.telegram.risk_warning("User stream is stale/disconnected; new entries are blocked.")
+                self.disaster.record_api_failure()
+                await self.supervisor.reconcile_managed_trades()
+                return
+            self.disaster.record_api_success()
+            await self.supervisor.reconcile_managed_trades()
+
+        try:
+            assets = await self.universe.build()
+            self.disaster.record_api_success()
+        except Exception as exc:
+            self.disaster.record_api_failure()
+            logger.error("Universe build failed: %s", exc)
+            await self.telegram.api_error(f"Universe build error: {exc}")
+            return
+
+        symbols = [asset.symbol for asset in assets]
+        logger.info("Universe: %s", symbols)
+        await self.telegram.universe(symbols)
+
+        equity = await self.current_equity_usdt()
+        btc_4h_change = await self._btc_4h_change()
+        recent_trades = await self.db.recent_trades(10_000)
+        adaptive_thresholds = (
+            self.self_learning.adaptive_thresholds(recent_trades)
+            if self.config.market_filters.use_self_learning_filters
+            else {}
+        )
+        effective_risk_pct = self.kelly.risk_pct(recent_trades)
+
+        for asset in assets:
+            if await self.positions.has_position_for_symbol(asset.symbol):
+                logger.info("Active %s position exists; skipping same-symbol entry.", asset.symbol)
+                continue
+
+            try:
+                candles_15m, candles_1h, candles_4h = await asyncio.gather(
+                    self.market_data.candles(asset.symbol, "15m", limit=500),
+                    self.market_data.candles(asset.symbol, "1h", limit=500),
+                    self.market_data.candles(asset.symbol, "4h", limit=500),
+                )
+                self.disaster.record_api_success()
+            except Exception as exc:
+                self.disaster.record_api_failure()
+                logger.warning("Skipping %s: candle fetch failed: %s", asset.symbol, exc)
+                await self.telegram.api_error(f"{asset.symbol} candle fetch error: {exc}")
+                continue
+
+            price_move_15m = None
+            if len(candles_15m) >= 2:
+                last = float(candles_15m[-1].close)
+                prev = float(candles_15m[-2].close)
+                if prev > 0:
+                    price_move_15m = (last - prev) / prev * 100
+
+            asset_disaster = await self.disaster.check(
+                spread_bps=float(asset.metrics.spread_bps) if asset.metrics else None,
+                liquidity_usdt=float(asset.metrics.top_book_liquidity_usdt) if asset.metrics else None,
+                funding_rate=float(asset.metrics.funding_rate) if asset.metrics and asset.metrics.funding_rate else None,
+                price_move_15m_pct=price_move_15m,
+            )
+            if self.disaster.blocks_new_entries:
+                logger.warning("Disaster check: пропуск %s — уровень %s", asset.symbol, asset_disaster.value)
+                break
+
+            self.corr_filter.update(asset.symbol, candles_1h)
+            shadow_signals = self.strategy.generate_shadow(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
+            await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
+            for shadow_signal in shadow_signals:
+                await self._record_shadow_signal(shadow_signal, asset.filters)
+            signal = self.strategy.generate(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
+            await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
+            if not signal:
+                continue
+            signal = self._annotate_signal_mode(
+                signal,
+                self.config.strategy.mode_for_strategy(signal.metadata.get("strategy", "")),
+            )
+            oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
+            filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
+            if filter_decision.allowed:
+                active_pos = await self.positions.active_positions()
+                corr_ok, corr_reason = self.corr_filter.allow_entry(signal.symbol, signal.direction, active_pos)
+                if not corr_ok:
+                    from trading_bot.market_filters import FilterDecision
+                    filter_decision = FilterDecision(False, corr_reason)
+            if not filter_decision.allowed:
+                logger.info("Entry filter rejected %s: %s", signal.symbol, filter_decision.reason)
+                try:
+                    _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
+                    _ftype = "CORRELATION" if "Corr(" in filter_decision.reason else (
+                        "OI" if "OI " in filter_decision.reason else (
+                        "UTC" if "UTC hour" in filter_decision.reason else (
+                        "BTC_DROP" if "BTC 4h" in filter_decision.reason else "OTHER")))
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_strat,
+                        confidence=str(signal.confidence),
+                        filter_type=_ftype,
+                        reason=filter_decision.reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_ENTRY_FILTER", filter_decision.reason)
+                continue
+            prediction = self.ml_filter.predict(signal)
+            if not prediction.allow_trade:
+                logger.info("ML rejected %s: %s confidence=%s", signal.symbol, prediction.reason, prediction.confidence)
+                try:
+                    _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_strat,
+                        confidence=str(signal.confidence),
+                        filter_type="ML",
+                        reason=f"ML: {prediction.reason} (conf={prediction.confidence})",
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "REJECTED_ML",
+                    f"{prediction.reason} (conf={prediction.confidence})",
+                )
+                continue
+            cooldown_reason = _symbol_loss_cooldown_reason(
+                signal.symbol,
+                recent_trades,
+                self.config.risk.symbol_cooldown_after_loss_minutes,
+            )
+            if cooldown_reason:
+                logger.info("Symbol cooldown rejected %s: %s", signal.symbol, cooldown_reason)
+                try:
+                    _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_strat,
+                        confidence=str(signal.confidence),
+                        filter_type="RISK",
+                        reason=cooldown_reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_COOLDOWN", cooldown_reason)
+                continue
+            reentry_reason = _strategy_reentry_policy_reason(
+                signal,
+                recent_trades,
+                self.config.risk.strategy_reentry_cooldown_minutes,
+                self.config.risk.scale_in_enabled,
+                self.config.risk.max_scale_ins_per_symbol_strategy,
+            )
+            if reentry_reason:
+                logger.info("Strategy re-entry rejected %s: %s", signal.symbol, reentry_reason)
+                try:
+                    _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_strat,
+                        confidence=str(signal.confidence),
+                        filter_type="RISK",
+                        reason=reentry_reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_REENTRY_POLICY", reentry_reason)
+                continue
+            await self.db.insert_signal(signal)
+            await self.telegram.signal(signal.symbol, signal.direction.value, signal.style.value, signal.reason)
+            try:
+                plan = self.risk.calculate_plan(
+                    signal=signal,
+                    equity_usdt=equity,
+                    filters=asset.filters,
+                    active_positions=await self.positions.active_positions(),
+                    live_mode=self.config.is_live,
+                    risk_per_trade_pct=effective_risk_pct,
+                )
+                for warning in plan.warnings:
+                    await self.telegram.risk_warning(warning)
+                result = await self.orders.execute(plan)
+                if self.config.is_live and result.accepted:
+                    self.supervisor.register_plan(plan, result)
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "ACCEPTED_TRADE" if result.accepted else "REJECTED_ORDER",
+                    result.message,
+                )
+                await self.db.insert_trade(
+                    plan,
+                    self.config.mode.value,
+                    "ACCEPTED",
+                    {
+                        "message": result.message,
+                        "trade_id": result.trade_id,
+                        "client_order_ids": result.client_order_ids,
+                        "entry_order": result.entry_order,
+                        "stop_order": result.stop_order,
+                        "take_profit_orders": list(result.take_profit_orders),
+                        "signal_metadata": plan.signal_metadata,
+                        **_trade_cluster_metadata(
+                            signal,
+                            recent_trades,
+                            self.config.risk.trade_cluster_window_minutes,
+                        ),
+                        "partial_take_profits": [
+                            {
+                                "name": target.name,
+                                "price": str(target.price),
+                                "quantity": str(target.quantity),
+                                "fraction": str(target.fraction),
+                                "reward_risk": str(target.reward_risk),
+                                "move_stop_to_breakeven": target.move_stop_to_breakeven,
+                                "activate_trailing": target.activate_trailing,
+                            }
+                            for target in plan.partial_take_profits
+                        ],
+                        "filled_partial_targets": [],
+                    },
+                )
+                await self.telegram.trade_opened(
+                    plan.symbol, str(plan.quantity), str(plan.entry_price), str(plan.stop_loss), str(plan.take_profit)
+                )
+                logger.info("Trade accepted: %s", result.message)
+                continue
+            except RiskError as exc:
+                logger.warning("Risk rejected %s: %s", signal.symbol, exc)
+                await self.telegram.risk_warning(str(exc))
+                try:
+                    _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_strat,
+                        confidence=str(signal.confidence),
+                        filter_type="RISK",
+                        reason=str(exc),
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_RISK", str(exc))
+            except Exception as exc:
+                logger.exception("Execution error for %s", signal.symbol)
+                self.disaster.record_api_failure()
+                await self.telegram.api_error(str(exc))
+
+    def _annotate_signal_mode(self, signal: Signal, strategy_mode: str, shadow_only: bool = False) -> Signal:
+        metadata = {
+            **dict(signal.metadata),
+            "strategy_mode": strategy_mode,
+        }
+        if shadow_only:
+            metadata["shadow_only"] = True
+        return replace(signal, metadata=metadata)
+
+    async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
+        shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
+        logger.info(
+            "Shadow signal recorded: %s %s strategy=%s confidence=%s",
+            shadow_signal.symbol,
+            shadow_signal.direction.value,
+            shadow_signal.metadata.get("strategy", "UNKNOWN"),
+            shadow_signal.confidence,
+        )
+        try:
+            await self.db.insert_signal(shadow_signal)
+        except Exception:
+            logger.exception("Failed to record shadow signal for %s", shadow_signal.symbol)
+        await self._record_ml_feature_snapshot(
+            shadow_signal,
+            "SHADOW_SIGNAL",
+            "candidate strategy shadow-only; no order attempted",
+        )
+        await self._open_shadow_paper_trade(shadow_signal, filters)
+
+    async def _open_shadow_paper_trade(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
+        strategy = _signal_strategy(signal)
+        if not signal.is_tradeable:
+            return
+        if signal.stop_loss is None or signal.take_profit is None:
+            return
+        try:
+            if await self.db.has_open_shadow_trade(signal.symbol, strategy):
+                logger.info("Shadow paper %s %s already open; skipping duplicate.", strategy, signal.symbol)
+                return
+            shadow_history = await self.db.recent_shadow_trades(limit=500)
+            reentry_reason = _strategy_reentry_policy_reason(
+                signal=signal,
+                trades=shadow_history,
+                cooldown_minutes=self.config.risk.strategy_reentry_cooldown_minutes,
+                scale_in_enabled=False,
+                max_scale_ins_per_symbol_strategy=0,
+            )
+            if reentry_reason:
+                logger.info("Shadow paper %s %s re-entry blocked: %s", strategy, signal.symbol, reentry_reason)
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "SHADOW_PAPER_REJECTED_COOLDOWN",
+                    reentry_reason,
+                )
+                return
+        except Exception:
+            logger.exception("Failed to check shadow paper re-entry policy for %s %s", strategy, signal.symbol)
+            return
+        try:
+            equity = await self.current_equity_usdt()
+        except Exception:
+            logger.exception("Failed to calculate compounding equity for shadow paper %s %s", strategy, signal.symbol)
+            equity = self.config.account.initial_equity_usdt
+        if equity is None or equity <= 0:
+            return
+        plan_metadata: dict[str, Any] = {
+            "equity_used": str(equity),
+            "risk_per_trade_pct": str(self.config.risk.risk_per_trade_pct),
+        }
+        if filters is not None:
+            try:
+                plan = self.risk.calculate_plan(
+                    signal=signal,
+                    equity_usdt=equity,
+                    filters=filters,
+                    active_positions=[],
+                    live_mode=False,
+                    risk_per_trade_pct=self.config.risk.risk_per_trade_pct,
+                )
+            except RiskError as exc:
+                logger.info("Shadow paper rejected by risk manager for %s %s: %s", strategy, signal.symbol, exc)
+                await self._record_ml_feature_snapshot(signal, "SHADOW_PAPER_REJECTED_RISK", str(exc))
+                return
+            quantity = plan.quantity
+            risk_amount = plan.risk_amount
+            plan_metadata.update(
+                {
+                    "notional": str(plan.notional),
+                    "initial_margin": str(plan.initial_margin),
+                    "leverage": str(plan.leverage),
+                    "risk_pct": str(plan.risk_pct),
+                    "risk_warnings": list(plan.warnings),
+                }
+            )
+        else:
+            quantity, risk_amount = self._fallback_shadow_size(signal, equity)
+            if quantity is None or risk_amount is None:
+                return
+            plan_metadata["sizing_fallback"] = True
+
+        if quantity <= 0 or risk_amount <= 0:
+            return
+        try:
+            await self.db.insert_shadow_trade(
+                signal=signal,
+                strategy=strategy,
+                quantity=str(quantity),
+                risk_amount=str(risk_amount),
+                metadata={
+                    "strategy": strategy,
+                    "strategy_mode": "shadow",
+                    "shadow_only": True,
+                    "shadow_paper": True,
+                    "source": "shadow_signal",
+                    "signal_reason": signal.reason,
+                    "signal_metadata": dict(signal.metadata or {}),
+                    **plan_metadata,
+                },
+            )
+            logger.info(
+                "Shadow paper opened: %s %s %s qty=%s risk=%s equity=%s",
+                strategy,
+                signal.symbol,
+                signal.direction.value,
+                quantity,
+                risk_amount,
+                equity,
+            )
+            await self._record_ml_feature_snapshot(
+                signal,
+                "SHADOW_PAPER_OPENED",
+                "virtual shadow-paper trade opened; no real/paper order attempted",
+            )
+        except Exception:
+            logger.exception("Failed to open shadow paper trade for %s %s", strategy, signal.symbol)
+
+    def _fallback_shadow_size(self, signal: Signal, equity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+        stop_distance = abs(signal.entry_price - signal.stop_loss)
+        if stop_distance <= 0:
+            return None, None
+        risk_amount = equity * self.config.risk.risk_per_trade_pct
+        if risk_amount <= 0:
+            return None, None
+        quantity = risk_amount / stop_distance
+        if quantity <= 0:
+            return None, None
+        return quantity, risk_amount
+
+    async def _record_ml_feature_snapshot(self, signal: Signal, decision: str, reason: str) -> None:
+        try:
+            await self.db.insert_ml_feature_snapshot(
+                symbol=signal.symbol,
+                direction=signal.direction.value,
+                strategy=_signal_strategy(signal),
+                confidence=str(signal.confidence),
+                decision=decision,
+                reason=reason,
+                features=self.ml_filter.features_for_signal(signal),
+                metadata=dict(signal.metadata or {}),
+            )
+        except Exception as exc:
+            logger.debug("ML feature snapshot failed for %s: %s", signal.symbol, exc)
+
+    async def _record_strategy_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
+        now = time.monotonic()
+        ttl_seconds = 900.0
+        for diagnostic in diagnostics:
+            if diagnostic.get("decision") == "SIGNAL":
+                continue
+            strategy = str(diagnostic.get("strategy") or "UNKNOWN")
+            symbol = str(diagnostic.get("symbol") or "UNKNOWN")
+            reason = str(diagnostic.get("block_reason") or "unknown")
+            if reason in {"not_evaluated", "insufficient_candles"}:
+                continue
+            key = (strategy, symbol, reason)
+            last_seen = self._strategy_diagnostic_seen.get(key)
+            if last_seen is not None and now - last_seen < ttl_seconds:
+                continue
+            self._strategy_diagnostic_seen[key] = now
+            direction = str(diagnostic.get("direction") or Direction.NONE.value)
+            confidence = str(diagnostic.get("confidence") or "0")
+            try:
+                await self.db.insert_ml_feature_snapshot(
+                    symbol=symbol,
+                    direction=direction,
+                    strategy=strategy,
+                    confidence=confidence,
+                    decision="STRATEGY_DIAGNOSTIC",
+                    reason=reason,
+                    features={},
+                    metadata={**diagnostic, "diagnostic": True},
+                )
+            except Exception as exc:
+                logger.debug("Strategy diagnostic snapshot failed for %s %s: %s", strategy, symbol, exc)
+
+    async def current_equity_usdt(self) -> Decimal:
+        if self.config.is_live:
+            balances = await self.binance.balance()
+            for balance in balances:
+                if balance.get("asset") == self.config.account.quote_asset:
+                    return Decimal(str(balance.get("availableBalance") or balance.get("balance") or "0"))
+            raise RuntimeError(f"No {self.config.account.quote_asset} futures balance found.")
+        equity = self.config.account.initial_equity_usdt
+        if equity is None:
+            raise RuntimeError(
+                "No USDT-equivalent starting equity configured. Set STARTING_DEPOSIT_USDT or MANUAL_TENGE_USDT_RATE."
+            )
+        if self.config.mode == TradingMode.PAPER_TRADING:
+            try:
+                summary = await self.db.pnl_summary()
+                return equity + Decimal(str(summary.get("realized_pnl") or "0"))
+            except Exception:
+                logger.exception("Could not include realized paper PnL in equity.")
+        return equity
+
+    async def _sync_paper_positions(self) -> None:
+        if self.config.mode != TradingMode.PAPER_TRADING:
+            return
+        try:
+            trades = await self.db.recent_trades(5_000)
+        except Exception:
+            logger.exception("Could not sync paper positions from database.")
+            return
+
+        open_rows: dict[str, dict] = {}
+        open_statuses = {"ACCEPTED", "OPEN", "ACTIVE"}
+        seen_symbols: set[str] = set()
+        for row in trades:
+            symbol = str(row.get("symbol", ""))
+            if (
+                not symbol
+                or symbol in seen_symbols
+                or row.get("mode") != TradingMode.PAPER_TRADING.value
+            ):
+                continue
+            seen_symbols.add(symbol)
+            if (
+                row.get("status") in open_statuses
+            ):
+                open_rows[symbol] = row
+
+        for position in self.positions.local_positions():
+            if position.source in {TradingMode.PAPER_TRADING.value, "PAPER_TRADING_DB"} and position.symbol not in open_rows:
+                self.positions.clear_local_position(position.symbol)
+
+        for symbol, row in open_rows.items():
+            try:
+                self.positions.set_local_position(
+                    Position(
+                        symbol=symbol,
+                        direction=Direction(str(row["direction"])),
+                        quantity=Decimal(str(row["quantity"])),
+                        entry_price=Decimal(str(row["entry_price"])),
+                        stop_loss=_optional_decimal(row.get("stop_loss")),
+                        take_profit=_optional_decimal(row.get("take_profit")),
+                        managed_by_bot=True,
+                        source="PAPER_TRADING_DB",
+                    )
+                )
+            except Exception:
+                logger.exception("Could not restore paper position %s from database row.", symbol)
+
+    async def _sync_live_positions_from_exchange(self, required: bool = False) -> None:
+        if not self.config.is_live:
+            return
+        try:
+            raw_positions = await self.binance.position_risk()
+            open_orders = await self.binance.open_orders()
+        except Exception:
+            logger.exception("Could not sync live positions from Binance.")
+            self.disaster.record_api_failure()
+            if required:
+                raise
+            return
+
+        orders_by_symbol: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for order in open_orders:
+            symbol = str(order.get("symbol", ""))
+            if symbol:
+                orders_by_symbol[symbol].append(order)
+
+        open_symbols: set[str] = set()
+        for item in raw_positions:
+            amount = to_decimal(item.get("positionAmt", "0"))
+            if amount == 0:
+                continue
+            symbol = str(item["symbol"])
+            open_symbols.add(symbol)
+            direction = Direction.LONG if amount > 0 else Direction.SHORT
+            symbol_orders = orders_by_symbol.get(symbol, [])
+            stop_loss, take_profit = _protection_prices(symbol_orders)
+            managed_by_bot = any(str(order.get("clientOrderId", "")).startswith("bot-") for order in symbol_orders)
+            entry_price = to_decimal(item.get("entryPrice", "0"))
+            mark_price = to_decimal(item.get("markPrice", "0"))
+            liquidation = item.get("liquidationPrice")
+            self.positions.set_local_position(
+                Position(
+                    symbol=symbol,
+                    direction=direction,
+                    quantity=abs(amount),
+                    entry_price=entry_price,
+                    mark_price=mark_price,
+                    liquidation_price=to_decimal(liquidation) if liquidation not in (None, "", "0") else None,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    managed_by_bot=managed_by_bot,
+                    unrealized_pnl=to_decimal(item.get("unRealizedProfit", "0")),
+                    source="BINANCE_RECONCILIATION",
+                )
+            )
+            await self.db.sync_live_position(
+                symbol=symbol,
+                direction=direction.value,
+                quantity=str(abs(amount)),
+                entry_price=str(entry_price),
+                stop_loss=str(stop_loss) if stop_loss is not None else None,
+                take_profit=str(take_profit) if take_profit is not None else None,
+                mode=self.config.mode.value,
+                status="OPEN",
+                metadata={
+                    "source": "BINANCE_RECONCILIATION",
+                    "managed_by_bot": managed_by_bot,
+                    "raw_position": item,
+                    "open_orders": symbol_orders,
+                },
+            )
+
+        await self.db.close_absent_live_positions(open_symbols, self.config.mode.value)
+        for position in self.positions.local_positions():
+            if position.source == "BINANCE_RECONCILIATION" and position.symbol not in open_symbols:
+                self.positions.clear_local_position(position.symbol)
+        self.disaster.record_api_success()
+
+    async def _btc_4h_change(self) -> Decimal | None:
+        if not self.config.market_filters.btc_4h_drop_filter_enabled:
+            return None
+        try:
+            candles = await self.market_data.candles("BTCUSDT", "4h", limit=2)
+        except Exception:
+            logger.exception("Could not fetch BTCUSDT 4h candles for market filter.")
+            return None
+        return self.entry_filter.btc_4h_change(candles)
+
+    async def _mark_trade_closed(self, symbol: str, realized_pnl: Decimal) -> None:
+        await self.db.mark_latest_trade_closed(symbol, str(realized_pnl))
+        self.risk.record_closed_trade(realized_pnl)
+        try:
+            await self._persist_risk_state()
+        except Exception:
+            logger.exception("Could not persist risk state.")
+        await self.telegram.trade_closed(symbol, str(realized_pnl))
+        # Обновляем disaster detector
+        try:
+            equity = await self.current_equity_usdt()
+            if equity > 0 and realized_pnl < 0:
+                self.disaster.record_loss(abs(realized_pnl) / equity)
+            elif realized_pnl > 0:
+                self.disaster.record_win()
+        except Exception:
+            pass
+
+    def emergency_stop_active(self) -> bool:
+        return Path(self.config.safety.emergency_stop_file).exists()
+
+    def activate_emergency_stop(self) -> None:
+        path = Path(self.config.safety.emergency_stop_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("emergency stop active\n", encoding="utf-8")
+        self.risk.emergency_stop()
+
+    async def status(self) -> dict:
+        await self.db.connect()
+        await self._restore_risk_state()
+        await self._sync_paper_positions()
+        try:
+            return {
+                "mode": self.config.mode.value,
+                "emergency_stop": self.emergency_stop_active(),
+                "active_positions": [
+                    {
+                        "symbol": position.symbol,
+                        "direction": position.direction.value,
+                        "quantity": str(position.quantity),
+                        "entry_price": str(position.entry_price),
+                        "mark_price": str(position.mark_price) if position.mark_price else None,
+                        "liquidation_price": str(position.liquidation_price) if position.liquidation_price else None,
+                        "unrealized_pnl": str(position.unrealized_pnl),
+                        "source": position.source,
+                    }
+                    for position in await self.positions.active_positions()
+                ],
+                "pnl": await self.db.pnl_summary(),
+            }
+        finally:
+            await self.db.close()
+
+    async def _handle_emergency(self, message: str) -> None:
+        logger.critical("EMERGENCY: %s", message)
+        await self.telegram.risk_warning(f"EMERGENCY: {message}")
+        await self._close_all_positions(f"emergency: {message}")
+        self.activate_emergency_stop()
+
+    async def _close_all_positions(self, reason: str) -> None:
+        logger.critical("Закрываем все позиции: %s", reason)
+        try:
+            active = await self.positions.active_positions()
+            for position in active:
+                try:
+                    await self.orders.close_position(position, reason="disaster_mode")
+                    logger.info("Позиция %s закрыта", position.symbol)
+                except Exception as exc:
+                    logger.exception("Не удалось закрыть %s: %s", position.symbol, exc)
+        except Exception as exc:
+            logger.exception("Ошибка закрытия: %s", exc)
+
+
+    async def _apply_live_emergency_stop(self) -> None:
+        logger.critical("Applying live emergency-stop actions.")
+        if self.config.safety.emergency_cancel_orders_in_live:
+            try:
+                open_orders = await self.binance.open_orders()
+                for symbol in {str(order.get("symbol", "")) for order in open_orders if order.get("symbol")}:
+                    try:
+                        await self.binance.cancel_all_orders(symbol)
+                        logger.critical("Canceled open live orders for %s due to emergency stop.", symbol)
+                    except Exception:
+                        logger.exception("Could not cancel live orders for %s during emergency stop.", symbol)
+            except Exception:
+                logger.exception("Could not fetch open live orders during emergency stop.")
+        if self.config.safety.emergency_close_positions_in_live:
+            await self._close_all_positions("manual emergency stop")
+        else:
+            active = await self.positions.active_positions()
+            if active:
+                await self.telegram.risk_warning(
+                    "Emergency stop is active: open orders were cancelled, "
+                    "but live positions were left open because emergency_close_positions_in_live=false."
+                )
+
+
+def _optional_decimal(value: object) -> Decimal | None:
+    if value in (None, "", "None"):
+        return None
+    return Decimal(str(value))
+
+
+def _decimal_or_zero(value: object) -> Decimal:
+    try:
+        return Decimal(str(value or "0"))
+    except Exception:
+        return Decimal("0")
+
+
+def _protection_prices(orders: list[dict[str, Any]]) -> tuple[Decimal | None, Decimal | None]:
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    for order in orders:
+        order_type = str(order.get("type", ""))
+        stop_price = order.get("stopPrice")
+        if stop_price in (None, "", "0"):
+            continue
+        if order_type in {"STOP", "STOP_MARKET", "TRAILING_STOP_MARKET"} and stop_loss is None:
+            stop_loss = _optional_decimal(stop_price)
+        elif order_type in {"TAKE_PROFIT", "TAKE_PROFIT_MARKET"} and take_profit is None:
+            take_profit = _optional_decimal(stop_price)
+    return stop_loss, take_profit
+
+
+def _signal_strategy(signal: Signal) -> str:
+    metadata = signal.metadata or {}
+    return str(metadata.get("strategy") or "UNKNOWN")
+
+
+ACTIVE_TRADE_STATUSES = {"ACCEPTED", "OPEN", "ACTIVE"}
+
+
+def _trade_metadata(trade: dict[str, Any]) -> dict[str, Any]:
+    raw = trade.get("metadata") or {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(str(raw))
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _trade_strategy(trade: dict[str, Any]) -> str:
+    metadata = _trade_metadata(trade)
+    signal_metadata = metadata.get("signal_metadata")
+    if isinstance(signal_metadata, dict) and signal_metadata.get("strategy"):
+        return str(signal_metadata["strategy"])
+    return str(metadata.get("strategy") or "UNKNOWN")
+
+
+def _trade_status(trade: dict[str, Any]) -> str:
+    return str(trade.get("status") or "").upper()
+
+
+def _same_symbol_strategy(signal: Signal, trade: dict[str, Any]) -> bool:
+    return trade.get("symbol") == signal.symbol and _trade_strategy(trade) == _signal_strategy(signal)
+
+
+def _strategy_reentry_policy_reason(
+    signal: Signal,
+    trades: list[dict[str, Any]],
+    cooldown_minutes: int,
+    scale_in_enabled: bool,
+    max_scale_ins_per_symbol_strategy: int,
+) -> str | None:
+    strategy = _signal_strategy(signal)
+    same_trades = [trade for trade in trades if _same_symbol_strategy(signal, trade)]
+    active_trades = [trade for trade in same_trades if _trade_status(trade) in ACTIVE_TRADE_STATUSES]
+    if active_trades:
+        if not scale_in_enabled:
+            active_id = active_trades[0].get("id", "?")
+            return f"Active {signal.symbol} {strategy} trade #{active_id} already exists; re-entry is blocked."
+        if len(active_trades) > max(0, max_scale_ins_per_symbol_strategy):
+            return (
+                f"{signal.symbol} {strategy} scale-in limit reached "
+                f"({len(active_trades)}/{max_scale_ins_per_symbol_strategy})."
+            )
+        return (
+            f"{signal.symbol} {strategy} scale-in mode is enabled, but live scale-in execution is still gated; "
+            "new add-ons require a separate positive-position/independent-signal check."
+        )
+
+    if cooldown_minutes <= 0:
+        return None
+
+    now = datetime.now(timezone.utc)
+    for trade in same_trades:
+        if _trade_status(trade) != "CLOSED":
+            continue
+        closed_at = _parse_datetime_utc(trade.get("closed_at") or trade.get("created_at"))
+        if closed_at is None:
+            continue
+        elapsed_min = (now - closed_at).total_seconds() / 60
+        if elapsed_min < cooldown_minutes:
+            remaining = max(1, int(cooldown_minutes - elapsed_min))
+            return (
+                f"{signal.symbol} {strategy} re-entry cooldown is active "
+                f"for ~{remaining} more minutes."
+            )
+        return None
+    return None
+
+
+def _trade_cluster_metadata(
+    signal: Signal,
+    trades: list[dict[str, Any]],
+    window_minutes: int,
+) -> dict[str, Any]:
+    window_minutes = max(1, int(window_minutes or 60))
+    now = datetime.now(timezone.utc)
+    strategy = _signal_strategy(signal)
+    same_cluster_context: list[dict[str, Any]] = []
+    for trade in trades:
+        if not _same_symbol_strategy(signal, trade):
+            continue
+        if str(trade.get("direction") or "").upper() != signal.direction.value:
+            continue
+        created_at = _parse_datetime_utc(trade.get("created_at"))
+        if created_at is None:
+            continue
+        if (now - created_at).total_seconds() / 60 <= window_minutes:
+            same_cluster_context.append(trade)
+
+    if not same_cluster_context:
+        cluster_id = f"{signal.symbol}:{strategy}:{signal.direction.value}:{now.strftime('%Y%m%d%H%M%S')}"
+        return {
+            "trade_cluster_id": cluster_id,
+            "trade_cluster_sequence": 1,
+            "trade_cluster_window_minutes": window_minutes,
+            "scale_in": False,
+        }
+
+    newest = max(
+        same_cluster_context,
+        key=lambda trade: _parse_datetime_utc(trade.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    newest_metadata = _trade_metadata(newest)
+    cluster_id = newest_metadata.get("trade_cluster_id")
+    if not cluster_id:
+        newest_dt = _parse_datetime_utc(newest.get("created_at")) or now
+        cluster_id = f"{signal.symbol}:{strategy}:{signal.direction.value}:{newest_dt.strftime('%Y%m%d%H%M%S')}"
+    same_cluster_id_count = sum(
+        1
+        for trade in same_cluster_context
+        if _trade_metadata(trade).get("trade_cluster_id") == cluster_id
+    )
+    sequence = same_cluster_id_count + 1 if same_cluster_id_count else len(same_cluster_context) + 1
+    return {
+        "trade_cluster_id": str(cluster_id),
+        "trade_cluster_sequence": sequence,
+        "trade_cluster_window_minutes": window_minutes,
+        "scale_in": sequence > 1,
+    }
+
+
+def _trade_closed_today_utc(value: object) -> bool:
+    if value is None:
+        return False
+    created = _parse_datetime_utc(value)
+    if created is None:
+        return False
+    return created.astimezone(timezone.utc).date() == datetime.now(timezone.utc).date()
+
+
+def _symbol_loss_cooldown_reason(symbol: str, trades: list[dict[str, Any]], cooldown_minutes: int) -> str | None:
+    if cooldown_minutes <= 0:
+        return None
+    now = datetime.now(timezone.utc)
+    for trade in trades:
+        if trade.get("symbol") != symbol or trade.get("status") != "CLOSED":
+            continue
+        pnl = _decimal_or_zero(trade.get("realized_pnl"))
+        if pnl >= 0:
+            return None
+        closed_at = _parse_datetime_utc(trade.get("closed_at") or trade.get("created_at"))
+        if closed_at is None:
+            return None
+        elapsed_min = (now - closed_at).total_seconds() / 60
+        if elapsed_min < cooldown_minutes:
+            remaining = max(1, int(cooldown_minutes - elapsed_min))
+            return f"{symbol} cooldown after loss is active for ~{remaining} more minutes."
+        return None
+    return None
+
+
+def _parse_datetime_utc(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _date_from_iso_like(value: object) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw[:10] if len(raw) >= 10 else None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d")

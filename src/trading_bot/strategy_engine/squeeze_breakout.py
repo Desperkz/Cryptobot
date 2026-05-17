@@ -1,0 +1,386 @@
+"""
+Squeeze Breakout Strategy — стратегия пробоя после сжатия волатильности.
+
+Логика:
+1. Обнаруживает "squeeze" — состояние когда Bollinger Bands сжимаются внутрь
+   Keltner Channel. Это признак накопления энергии перед сильным движением.
+2. Ждёт пробоя с подтверждением объёма и направления.
+3. Входит в направлении пробоя с целью поймать начало нового тренда.
+
+Squeeze работает особенно хорошо:
+- На монетах которые долго торговались в боковике
+- Перед крупными движениями после консолидации
+- Дополняет Mean Reversion (MR ловит коррекции, SQZ ловит начало трендов)
+"""
+from __future__ import annotations
+
+import logging
+
+from decimal import Decimal
+
+logger = logging.getLogger("trading_bot.squeeze")
+
+from trading_bot.config import StrategyConfig
+from trading_bot.market_regime_detector import MarketRegimeDetector
+from trading_bot.models import (
+    Candle, Direction, MarketMetrics, MarketRegime,
+    Signal, TradingStyle, to_decimal
+)
+from trading_bot.strategy_engine.indicators import (
+    atr, closes, ema, highs, lows, rsi, volumes, rolling_average
+)
+
+
+def _bollinger_bands(
+    values: list[float],
+    period: int = 20,
+    multiplier: float = 2.0,
+) -> tuple[list[float], list[float], list[float]]:
+    """Возвращает (upper, middle, lower) полосы Боллинджера."""
+    if len(values) < period:
+        m = values[-1] if values else 0.0
+        return [m] * len(values), [m] * len(values), [m] * len(values)
+
+    middle = []
+    upper = []
+    lower = []
+
+    for i in range(len(values)):
+        if i < period - 1:
+            middle.append(values[i])
+            upper.append(values[i])
+            lower.append(values[i])
+            continue
+        window = values[i - period + 1: i + 1]
+        avg = sum(window) / period
+        variance = sum((x - avg) ** 2 for x in window) / period
+        std = variance ** 0.5
+        middle.append(avg)
+        upper.append(avg + multiplier * std)
+        lower.append(avg - multiplier * std)
+
+    return upper, middle, lower
+
+
+def _keltner_channels(
+    candles: list[Candle],
+    period: int = 20,
+    multiplier: float = 1.5,
+) -> tuple[list[float], list[float], list[float]]:
+    """Возвращает (upper, middle, lower) каналы Келтнера."""
+    close_vals = closes(candles)
+    atr_vals = atr(candles, period)
+
+    ema_vals = ema(close_vals, period)
+    upper = [e + multiplier * a for e, a in zip(ema_vals, atr_vals)]
+    lower = [e - multiplier * a for e, a in zip(ema_vals, atr_vals)]
+    return upper, ema_vals, lower
+
+
+def _detect_squeeze(
+    candles: list[Candle],
+    bb_period: int = 20,
+    kc_period: int = 20,
+) -> tuple[bool, int]:
+    """
+    Обнаруживает squeeze — BB внутри KC.
+
+    Возвращает:
+    - is_squeeze: True если сейчас в squeeze
+    - squeeze_bars: сколько баров подряд идёт squeeze
+    """
+    if len(candles) < bb_period + 5:
+        return False, 0
+
+    close_vals = closes(candles)
+    bb_upper, bb_mid, bb_lower = _bollinger_bands(close_vals, bb_period)
+    kc_upper, kc_mid, kc_lower = _keltner_channels(candles, kc_period)
+
+    # Считаем сколько подряд баров BB внутри KC
+    squeeze_bars = 0
+    for i in range(len(candles) - 1, max(len(candles) - 30, 0), -1):
+        if bb_upper[i] < kc_upper[i] and bb_lower[i] > kc_lower[i]:
+            squeeze_bars += 1
+        else:
+            break
+
+    is_squeeze = squeeze_bars > 0
+    return is_squeeze, squeeze_bars
+
+
+def _squeeze_flags(candles: list[Candle], bb_period: int = 20, kc_period: int = 20) -> list[bool]:
+    if len(candles) < bb_period + 5:
+        return [False] * len(candles)
+    close_vals = closes(candles)
+    bb_upper, _, bb_lower = _bollinger_bands(close_vals, bb_period)
+    kc_upper, _, kc_lower = _keltner_channels(candles, kc_period)
+    return [bb_upper[i] < kc_upper[i] and bb_lower[i] > kc_lower[i] for i in range(len(candles))]
+
+
+def _recent_squeeze_release(
+    candles: list[Candle],
+    min_squeeze_bars: int,
+    lookback: int = 3,
+) -> tuple[bool, int]:
+    """Return True when BB has just expanded out of KC after a valid squeeze."""
+    flags = _squeeze_flags(candles)
+    if len(flags) < min_squeeze_bars + 2:
+        return False, 0
+    for release_offset in range(0, min(lookback, len(flags) - 1)):
+        release_idx = len(flags) - 1 - release_offset
+        if flags[release_idx]:
+            continue
+        squeeze_bars = 0
+        i = release_idx - 1
+        while i >= 0 and flags[i]:
+            squeeze_bars += 1
+            i -= 1
+        if squeeze_bars >= min_squeeze_bars:
+            return True, squeeze_bars
+    return False, 0
+
+
+def _squeeze_momentum(candles: list[Candle], period: int = 20) -> list[float]:
+    """
+    Momentum индикатор для squeeze (по John Carter).
+    Показывает направление и силу накопленной энергии.
+    """
+    if len(candles) < period:
+        return [0.0] * len(candles)
+
+    close_vals = closes(candles)
+    high_vals = highs(candles)
+    low_vals = lows(candles)
+    atr_vals = atr(candles, period)
+    ema_vals = ema(close_vals, period)
+
+    result = []
+    for i in range(len(candles)):
+        if i < period:
+            result.append(0.0)
+            continue
+
+        # Midpoint высоких/низких за период
+        highest_high = max(high_vals[i - period + 1: i + 1])
+        lowest_low = min(low_vals[i - period + 1: i + 1])
+        midpoint = (highest_high + lowest_low) / 2
+
+        # Delta от средней цены и EMA
+        delta = close_vals[i] - (midpoint + ema_vals[i]) / 2
+        result.append(delta)
+
+    # Линейная регрессия для сглаживания
+    smoothed = ema(result, 5)
+    return smoothed
+
+
+def _breakout_direction(
+    candles: list[Candle],
+    momentum: list[float],
+    volume_ratio: float,
+    min_volume_ratio: float,
+) -> Direction | None:
+    """
+    Определяет направление пробоя после squeeze.
+
+    Условия входа в LONG:
+    - Momentum был отрицательным и начинает расти (разворот снизу)
+    - Последние 2 бара momentum растёт
+    - Объём выше среднего
+    - Последняя свеча бычья
+
+    Аналогично для SHORT.
+    """
+    if len(momentum) < 5:
+        return None
+
+    m = momentum
+    last = m[-1]
+    prev = m[-2]
+    prev2 = m[-3]
+
+    last_candle = candles[-1]
+    is_bull_candle = last_candle.close > last_candle.open
+    is_bear_candle = last_candle.close < last_candle.open
+
+    # LONG: momentum разворачивается вверх из отрицательной зоны
+    # или уверенно растёт
+    long_momentum = (
+        (last > prev > prev2 and last > 0) or  # уверенный рост
+        (prev < 0 and last > prev and last > -abs(prev) * 0.3)  # разворот
+    )
+
+    # SHORT: momentum разворачивается вниз из положительной зоны
+    short_momentum = (
+        (last < prev < prev2 and last < 0) or  # уверенное падение
+        (prev > 0 and last < prev and last < abs(prev) * 0.3)  # разворот
+    )
+
+    if long_momentum and is_bull_candle and volume_ratio >= min_volume_ratio:
+        return Direction.LONG
+    if short_momentum and is_bear_candle and volume_ratio >= min_volume_ratio:
+        return Direction.SHORT
+
+    return None
+
+
+class SqueezeBreakoutStrategy:
+    """
+    Стратегия пробоя после сжатия волатильности (Squeeze Breakout).
+
+    Работает лучше всего:
+    - В боковых рынках перед началом нового тренда
+    - На монетах с высокой волатильностью (BNBUSDT, SOLUSDT, INJUSDT)
+    - На 1h таймфрейме (основной сигнал)
+
+    Дополняет Mean Reversion:
+    - MR: входит на экстремумах против тренда
+    - SQZ: входит на начале нового движения после боковика
+    """
+
+    def __init__(
+        self,
+        config: StrategyConfig,
+        regime_detector: MarketRegimeDetector,
+    ) -> None:
+        self.config = config
+        self.regime_detector = regime_detector
+
+    def generate(
+        self,
+        symbol: str,
+        candles_15m: list[Candle],
+        candles_1h: list[Candle],
+        candles_4h: list[Candle],
+        metrics: MarketMetrics,
+    ) -> Signal | None:
+        min_required = 50
+        if len(candles_1h) < min_required or len(candles_4h) < min_required:
+            return None
+
+        regime = self.regime_detector.detect(candles_4h)
+
+        # Squeeze лучше работает в Range режиме
+        # В сильном тренде пробои ненадёжны
+        if regime.regime == MarketRegime.TREND_UP or regime.regime == MarketRegime.TREND_DOWN:
+            # В тренде требуем более сильный squeeze
+            min_squeeze_bars = 8
+        else:
+            min_squeeze_bars = 4
+
+        # Обнаруживаем squeeze на 1h и release после сжатия.
+        is_squeeze, squeeze_bars = _detect_squeeze(candles_1h)
+        is_release, release_bars = _recent_squeeze_release(candles_1h, min_squeeze_bars)
+        if is_release:
+            squeeze_bars = max(squeeze_bars, release_bars)
+        squeeze_state = "release" if is_release else "build"
+        logger.info(
+            "SQZ %s: squeeze=%s release=%s bars=%d min=%d",
+            symbol, is_squeeze, is_release, squeeze_bars, min_squeeze_bars,
+        )
+
+        if not is_release and (not is_squeeze or squeeze_bars < min_squeeze_bars):
+            return None
+
+        # Momentum для определения направления
+        momentum = _squeeze_momentum(candles_1h)
+        if not momentum:
+            return None
+
+        # Объём
+        vol_vals = volumes(candles_1h)
+        avg_vol = rolling_average(vol_vals, self.config.volume_lookback)[-1]
+        vol_ratio = vol_vals[-2] / avg_vol if avg_vol > 0 else 1.0
+
+        # Определяем направление пробоя
+        direction = _breakout_direction(candles_1h, momentum, vol_ratio, float(self.config.min_volume_ratio))
+        if direction is None:
+            return None
+
+        # ATR для расчёта стопа
+        entry = candles_1h[-1].close
+        atr_1h = to_decimal(atr(candles_1h, self.config.atr_period)[-1])
+
+        if atr_1h <= 0 or entry <= 0:
+            return None
+
+        # Фильтр волатильности
+        atr_pct = atr_1h / entry * Decimal("100")
+        if atr_pct < Decimal("0.15") or atr_pct > Decimal("6.0"):
+            return None
+
+        # Стоп и тейк-профит
+        # Для breakout используем более широкий стоп (1.5 ATR)
+        # и более агрессивный тейк (2.0 RR) — цена может далеко уйти
+        stop_distance = atr_1h * Decimal("1.5")
+        rr = Decimal("2.0")  # агрессивный RR для breakout
+
+        if direction == Direction.LONG:
+            stop_loss = entry - stop_distance
+            take_profit = entry + stop_distance * rr
+        else:
+            stop_loss = entry + stop_distance
+            take_profit = entry - stop_distance * rr
+
+        if stop_loss <= 0 or take_profit <= 0:
+            return None
+
+        # Confidence score
+        confidence = Decimal("0.50")
+
+        # Больше баров в squeeze = сильнее потенциальный пробой
+        if squeeze_bars >= 8:
+            confidence += Decimal("0.10")
+        if squeeze_bars >= 15:
+            confidence += Decimal("0.08")
+
+        # Объём подтверждает пробой
+        if vol_ratio >= 1.5:
+            confidence += Decimal("0.08")
+        if vol_ratio >= 2.0:
+            confidence += Decimal("0.07")
+
+        # В Range режиме squeeze надёжнее
+        if regime.regime == MarketRegime.RANGE:
+            confidence += Decimal("0.07")
+        if is_release:
+            confidence += Decimal("0.06")
+
+        # Сила momentum
+        mom_strength = abs(momentum[-1])
+        if mom_strength > 0:
+            confidence += min(Decimal(str(mom_strength / 100)), Decimal("0.10"))
+
+        # Подтверждение на 4h
+        _, squeeze_4h = _detect_squeeze(candles_4h, bb_period=20, kc_period=20)
+        if squeeze_4h >= 3:
+            confidence += Decimal("0.05")  # squeeze на старшем TF = сильнее
+
+        return Signal(
+            symbol=symbol,
+            direction=direction,
+            style=TradingStyle.INTRADAY,
+            entry_price=entry,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            confidence=min(confidence, Decimal("0.88")),
+            reason=(
+                f"SQUEEZE_BREAKOUT: bars={squeeze_bars}, "
+                f"vol_ratio={vol_ratio:.2f}, "
+                f"momentum={momentum[-1]:.3f}, "
+                f"state={squeeze_state}, "
+                f"regime={regime.regime.value}"
+            ),
+            metadata={
+                "strategy": "SQUEEZE_BREAKOUT",
+                "regime": regime.regime.value,
+                "squeeze_state": squeeze_state,
+                "squeeze_bars": squeeze_bars,
+                "squeeze_bars_4h": squeeze_4h,
+                "momentum": str(round(momentum[-1], 4)),
+                "volume_ratio": str(round(vol_ratio, 3)),
+                "atr_pct": str(atr_pct),
+                "rr": str(rr),
+                "hour_utc": str((candles_1h[-1].close_time // 3_600_000) % 24),
+            },
+        )
