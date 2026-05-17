@@ -403,6 +403,13 @@ canvas { width: 100%; display: block; }
   white-space: nowrap;
 }
 
+.sc-tag.pnl-pos { color: var(--green); border-color: rgba(0,255,157,0.35); }
+.sc-tag.pnl-neg { color: var(--red); border-color: rgba(255,59,92,0.35); }
+.sc-of-good { color: var(--green); border-color: rgba(0,255,157,0.45); }
+.sc-of-neutral { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
+.sc-of-bad { color: var(--red); border-color: rgba(255,59,92,0.45); }
+.sc-inline-pnl { font-weight: 700; }
+.sc-muted .pnl-pos, .sc-muted .pnl-neg { font-size: inherit; }
 .sc-muted { color: var(--text-muted); font-size: 11px; }
 .sc-gate {
   display: inline-flex;
@@ -877,6 +884,7 @@ function animateNum(el, target, decimals=2, prefix='', suffix='') {
 
 // ── ФОРМАТИРОВАНИЕ ──
 const fmt = (v,d=2) => v==null ? '—' : Number(v).toFixed(d);
+const signedFmt = (v,d=2) => `${Number(v) >= 0 ? '+' : ''}${fmt(v,d)}`;
 const fmtDate = s => s ? s.slice(0,16).replace('T',' ') : '—';
 function parseUtcTimestamp(value) {
   if (!value) return null;
@@ -897,6 +905,23 @@ const fmtLocalTime = s => {
 };
 const dirCls = d => d==='LONG' ? 'dir-long' : 'dir-short';
 const pnlCls = v => v>0 ? 'pnl-pos' : v<0 ? 'pnl-neg' : '';
+function inlinePnl(value, decimals=2) {
+  return `<span class="sc-inline-pnl ${pnlCls(Number(value))}">${signedFmt(value, decimals)}</span>`;
+}
+function orderFlowClass(orderFlow) {
+  const total = Number(orderFlow?.total || 0);
+  if (!total) return '';
+  const score = Number(orderFlow.avg_score || 0);
+  const byAlignment = orderFlow.by_alignment || {};
+  const aligned = Number(byAlignment.aligned || 0);
+  const against = Number(byAlignment.against || 0);
+  const mixed = Number(byAlignment.mixed || 0);
+  if (against > 0 && against >= aligned && (score < 0.45 || against >= mixed)) return 'sc-of-bad';
+  if (aligned > 0 && aligned >= against && score >= 0.55) return 'sc-of-good';
+  if (score < 0.35) return 'sc-of-bad';
+  if (score >= 0.70) return 'sc-of-good';
+  return 'sc-of-neutral';
+}
 const stratName = s => ({
   MEAN_REVERSION: 'MR',
   SQUEEZE_BREAKOUT: 'SQZ',
@@ -1028,11 +1053,11 @@ async function loadStrategyScorecard() {
         .join('\n') || 'shadow checks passed';
       const sgLabel = sgStatus === 'PROMOTE' ? 'PROMOTE TO PAPER' : sgStatus;
       const spTrades = (sp.closed_trades || sp.open_trades) ? `SP ${sp.closed_trades || 0}/${sp.open_trades || 0}` : '';
-      const spPnl = (sp.closed_trades || sp.open_trades) ? `${(sp.total_pnl || 0) >= 0 ? '+' : ''}${fmt(sp.total_pnl || 0)}` : '';
+      const spPnl = (sp.closed_trades || sp.open_trades) ? inlinePnl(sp.total_pnl || 0) : '';
       const diagnostics = s.candidate_evidence?.diagnostics || {};
       const orderFlow = s.candidate_evidence?.order_flow || {};
       const diagLine = diagnostics.total ? `DG ${diagnostics.total}` : '';
-      const modeLine = [mode, shadow, spTrades, spPnl, diagLine].filter(Boolean).join(' · ');
+      const modeLine = [esc(mode), esc(shadow), esc(spTrades), spPnl, esc(diagLine)].filter(Boolean).join(' · ');
       const ofAlign = Object.entries(orderFlow.by_alignment || {})
         .slice(0,2)
         .map(([k,v]) => `${k} ${v}`)
@@ -1047,8 +1072,9 @@ async function loadStrategyScorecard() {
         ofAlign ? `alignment: ${ofAlign}` : '',
         ofRisk ? `risk: ${ofRisk}` : ''
       ].filter(Boolean).join('\n');
+      const ofCls = orderFlowClass(orderFlow);
       const ofHtml = orderFlow.total
-        ? `<span class="sc-tag" title="${esc(ofTitle)}">OF ${fmt(orderFlow.avg_score || 0, 2)}</span>`
+        ? `<span class="sc-tag ${ofCls}" title="${esc(ofTitle)}">OF ${fmt(orderFlow.avg_score || 0, 2)}</span>`
         : '<span class="sc-muted">—</span>';
       const clusters = s.trade_clusters || {};
       const clusterCount = s.closed_trade_clusters ?? clusters.closed_clusters ?? s.closed_trades ?? 0;
@@ -1069,10 +1095,10 @@ async function loadStrategyScorecard() {
       const symbolHtml = Object.entries(s.by_symbol || {})
         .sort((a,b) => Math.abs(b[1].realized_pnl || 0) - Math.abs(a[1].realized_pnl || 0))
         .slice(0,3)
-        .map(([sym,v]) => `<span class="sc-tag">${esc(sym.replace('USDT',''))} ${v.realized_pnl>=0?'+':''}${fmt(v.realized_pnl)}</span>`)
+        .map(([sym,v]) => `<span class="sc-tag ${pnlCls(v.realized_pnl || 0)}">${esc(sym.replace('USDT',''))} ${signedFmt(v.realized_pnl || 0)}</span>`)
         .join('') || '<span class="sc-muted">—</span>';
       return `<tr>
-        <td class="sym">${esc(stratName(s.strategy))}${modeLine ? `<div class="sc-muted">${esc(modeLine)}</div>` : ''}</td>
+        <td class="sym">${esc(stratName(s.strategy))}${modeLine ? `<div class="sc-muted">${modeLine}</div>` : ''}</td>
         <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
         <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
         <td>${ofHtml}</td>
