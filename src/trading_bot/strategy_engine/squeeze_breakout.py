@@ -27,7 +27,7 @@ from trading_bot.models import (
     Signal, TradingStyle, to_decimal
 )
 from trading_bot.strategy_engine.indicators import (
-    atr, closes, ema, highs, lows, rsi, volumes, rolling_average
+    atr, closes, ema, highs, lows, rsi, volumes
 )
 
 
@@ -121,11 +121,11 @@ def _recent_squeeze_release(
     candles: list[Candle],
     min_squeeze_bars: int,
     lookback: int = 3,
-) -> tuple[bool, int]:
+) -> tuple[bool, int, int]:
     """Return True when BB has just expanded out of KC after a valid squeeze."""
     flags = _squeeze_flags(candles)
     if len(flags) < min_squeeze_bars + 2:
-        return False, 0
+        return False, 0, 0
     for release_offset in range(0, min(lookback, len(flags) - 1)):
         release_idx = len(flags) - 1 - release_offset
         if flags[release_idx]:
@@ -136,8 +136,70 @@ def _recent_squeeze_release(
             squeeze_bars += 1
             i -= 1
         if squeeze_bars >= min_squeeze_bars:
-            return True, squeeze_bars
-    return False, 0
+            return True, squeeze_bars, release_offset
+    return False, 0, 0
+
+
+def _confirmation_volume_ratio(
+    candles: list[Candle],
+    volume_lookback: int,
+    confirmation_window: int,
+) -> float:
+    """Use the strongest volume in the release/follow-through window."""
+    vol_vals = volumes(candles)
+    if not vol_vals:
+        return 1.0
+    confirmation_window = max(1, min(confirmation_window, len(vol_vals)))
+    baseline_end = len(vol_vals) - confirmation_window
+    baseline_start = max(0, baseline_end - max(1, volume_lookback))
+    baseline = vol_vals[baseline_start:baseline_end]
+    if not baseline:
+        baseline = vol_vals[: -confirmation_window] or vol_vals[-volume_lookback:]
+    avg_vol = sum(baseline) / len(baseline) if baseline else 0
+    if avg_vol <= 0:
+        return 1.0
+    return max(vol_vals[-confirmation_window:]) / avg_vol
+
+
+def _compression_range(
+    candles: list[Candle],
+    squeeze_bars: int,
+    release_offset: int,
+) -> tuple[Decimal, Decimal] | None:
+    if len(candles) < 3 or squeeze_bars <= 0:
+        return None
+    range_end = len(candles) - 1 - max(0, release_offset)
+    if range_end <= 0:
+        return None
+    lookback = min(max(2, squeeze_bars), 30, range_end)
+    window = candles[range_end - lookback : range_end]
+    if not window:
+        return None
+    return max(candle.high for candle in window), min(candle.low for candle in window)
+
+
+def _breakout_quality(
+    candles: list[Candle],
+    direction: Direction,
+    atr_value: Decimal,
+    squeeze_bars: int,
+    release_offset: int,
+) -> dict[str, Decimal] | None:
+    if atr_value <= 0:
+        return None
+    compression = _compression_range(candles, squeeze_bars, release_offset)
+    if compression is None:
+        return None
+    range_high, range_low = compression
+    close = candles[-1].close
+    breakout_distance = close - range_high if direction == Direction.LONG else range_low - close
+    breakout_atr = breakout_distance / atr_value
+    return {
+        "range_high": range_high,
+        "range_low": range_low,
+        "breakout_distance": breakout_distance,
+        "breakout_atr": breakout_atr,
+    }
 
 
 def _squeeze_momentum(candles: list[Candle], period: int = 20) -> list[float]:
@@ -270,7 +332,11 @@ class SqueezeBreakoutStrategy:
 
         # Обнаруживаем squeeze на 1h и release после сжатия.
         is_squeeze, squeeze_bars = _detect_squeeze(candles_1h)
-        is_release, release_bars = _recent_squeeze_release(candles_1h, min_squeeze_bars)
+        is_release, release_bars, release_offset = _recent_squeeze_release(
+            candles_1h,
+            min_squeeze_bars,
+            lookback=max(1, self.config.squeeze_release_lookback_bars),
+        )
         if is_release:
             squeeze_bars = max(squeeze_bars, release_bars)
         squeeze_state = "release" if is_release else "build"
@@ -287,10 +353,8 @@ class SqueezeBreakoutStrategy:
         if not momentum:
             return None
 
-        # Объём
-        vol_vals = volumes(candles_1h)
-        avg_vol = rolling_average(vol_vals, self.config.volume_lookback)[-1]
-        vol_ratio = vol_vals[-2] / avg_vol if avg_vol > 0 else 1.0
+        confirmation_window = release_offset + 1 if is_release else 2
+        vol_ratio = _confirmation_volume_ratio(candles_1h, self.config.volume_lookback, confirmation_window)
 
         # Определяем направление пробоя
         direction = _breakout_direction(candles_1h, momentum, vol_ratio, float(self.config.min_volume_ratio))
@@ -308,6 +372,25 @@ class SqueezeBreakoutStrategy:
         atr_pct = atr_1h / entry * Decimal("100")
         if atr_pct < Decimal("0.15") or atr_pct > Decimal("6.0"):
             return None
+
+        quality = _breakout_quality(candles_1h, direction, atr_1h, squeeze_bars, release_offset if is_release else 0)
+        if quality is None:
+            return None
+        breakout_atr = quality["breakout_atr"]
+        min_breakout_atr = (
+            self.config.squeeze_release_min_breakout_atr
+            if is_release
+            else self.config.squeeze_early_min_breakout_atr
+        )
+        if breakout_atr < min_breakout_atr:
+            return None
+        if breakout_atr > self.config.squeeze_max_extension_atr:
+            return None
+        if not is_release:
+            if squeeze_bars < min_squeeze_bars + self.config.squeeze_early_min_bars_extra:
+                return None
+            if Decimal(str(vol_ratio)) < self.config.squeeze_early_min_volume_ratio:
+                return None
 
         # Стоп и тейк-профит
         # Для breakout используем более широкий стоп (1.5 ATR)
@@ -340,6 +423,11 @@ class SqueezeBreakoutStrategy:
         if vol_ratio >= 2.0:
             confidence += Decimal("0.07")
 
+        if breakout_atr >= Decimal("0.25"):
+            confidence += Decimal("0.04")
+        if breakout_atr >= Decimal("0.75"):
+            confidence += Decimal("0.04")
+
         # В Range режиме squeeze надёжнее
         if regime.regime == MarketRegime.RANGE:
             confidence += Decimal("0.07")
@@ -369,16 +457,22 @@ class SqueezeBreakoutStrategy:
                 f"vol_ratio={vol_ratio:.2f}, "
                 f"momentum={momentum[-1]:.3f}, "
                 f"state={squeeze_state}, "
+                f"breakout_atr={breakout_atr:.2f}, "
                 f"regime={regime.regime.value}"
             ),
             metadata={
                 "strategy": "SQUEEZE_BREAKOUT",
                 "regime": regime.regime.value,
                 "squeeze_state": squeeze_state,
+                "squeeze_entry_timing": "release_followthrough" if is_release else "early_breakout",
                 "squeeze_bars": squeeze_bars,
+                "squeeze_release_offset": release_offset if is_release else None,
                 "squeeze_bars_4h": squeeze_4h,
                 "momentum": str(round(momentum[-1], 4)),
                 "volume_ratio": str(round(vol_ratio, 3)),
+                "breakout_atr": str(breakout_atr),
+                "compression_high": str(quality["range_high"]),
+                "compression_low": str(quality["range_low"]),
                 "atr_pct": str(atr_pct),
                 "rr": str(rr),
                 "hour_utc": str((candles_1h[-1].close_time // 3_600_000) % 24),

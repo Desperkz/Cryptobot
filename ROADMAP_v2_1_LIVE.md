@@ -135,10 +135,14 @@ Status legend:
   - Done: strategy runtime modes now split `live`, `paper`, `shadow`, and `disabled`; current paper execution is `SQUEEZE_BREAKOUT` plus `MEAN_REVERSION`, while `TREND_PULLBACK` is shadow-only.
   - Done: scorecard now reports raw trades plus cluster-adjusted counts/Win/PF/Avg R so repeated fast entries on one coin do not inflate strategy evidence.
   - Gate: no strategy can be promoted without its own scorecard and a passing gate.
-- `[ ]` P4-02 Improve `SQUEEZE_BREAKOUT` as the champion strategy.
+- `[x]` P4-02 Improve `SQUEEZE_BREAKOUT` as the champion strategy.
   - Keep it as the live allow-list leader.
   - Continue tuning universe breadth, UTC override, squeeze release detection, volume confirmation, and partial exits.
   - Target: higher trade frequency without reducing positive average R.
+  - Done: added an SQZ champion quality gate: release follow-through can be caught for more bars, but entries must break out of the compression range, avoid late overextension, and use the strongest volume confirmation in the release window.
+  - Done: early `build` entries remain possible only as stricter `early_breakout` setups with longer squeeze duration, stronger volume, and structural breakout confirmation.
+  - Done: SQZ signals now carry `squeeze_entry_timing`, `breakout_atr`, `compression_high/low`, and `squeeze_release_offset` metadata so scorecard/log review can separate clean releases from early breakouts.
+  - Verification: `62 passed`.
 - `[x]` P4-03 Rework `MEAN_REVERSION` as a paper candidate, not a live strategy.
   - Done: promoted from `shadow` to `paper` for v2.1 paper trading after bot 2.0 evidence showed strong MR contribution.
   - Done: `MAINNET_LIVE` remains protected because paper-mode strategies do not execute in mainnet and the live allow-list still contains only `SQUEEZE_BREAKOUT`.

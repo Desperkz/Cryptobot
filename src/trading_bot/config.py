@@ -169,6 +169,12 @@ class StrategyConfig:
     funding_carry_filter_enabled: bool = True
     funding_carry_penalty_threshold: Decimal = Decimal("0.0005")
     funding_carry_block_threshold: Decimal = Decimal("0.0012")
+    squeeze_release_lookback_bars: int = 4
+    squeeze_release_min_breakout_atr: Decimal = Decimal("0.03")
+    squeeze_early_min_breakout_atr: Decimal = Decimal("0.10")
+    squeeze_early_min_bars_extra: int = 4
+    squeeze_early_min_volume_ratio: Decimal = Decimal("1.50")
+    squeeze_max_extension_atr: Decimal = Decimal("2.40")
 
     def configured_strategies(self) -> list[str]:
         ordered: list[str] = []
@@ -765,6 +771,18 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             funding_carry_block_threshold=to_decimal(
                 raw["strategy"].get("funding_carry_block_threshold", "0.0012")
             ),
+            squeeze_release_lookback_bars=int(raw["strategy"].get("squeeze_release_lookback_bars", 4)),
+            squeeze_release_min_breakout_atr=to_decimal(
+                raw["strategy"].get("squeeze_release_min_breakout_atr", "0.03")
+            ),
+            squeeze_early_min_breakout_atr=to_decimal(
+                raw["strategy"].get("squeeze_early_min_breakout_atr", "0.10")
+            ),
+            squeeze_early_min_bars_extra=int(raw["strategy"].get("squeeze_early_min_bars_extra", 4)),
+            squeeze_early_min_volume_ratio=to_decimal(
+                raw["strategy"].get("squeeze_early_min_volume_ratio", "1.50")
+            ),
+            squeeze_max_extension_atr=to_decimal(raw["strategy"].get("squeeze_max_extension_atr", "2.40")),
         ),
         market_filters=MarketFilterConfig(
             btc_4h_drop_filter_enabled=bool(raw.get("market_filters", {}).get("btc_4h_drop_filter_enabled", True)),

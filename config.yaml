@@ -140,6 +140,12 @@ strategy:
   funding_carry_filter_enabled: true
   funding_carry_penalty_threshold: 0.0005
   funding_carry_block_threshold: 0.0012
+  squeeze_release_lookback_bars: 4       # ловим follow-through после release, но только с quality gate
+  squeeze_release_min_breakout_atr: 0.03 # close должен выйти из диапазона сжатия
+  squeeze_early_min_breakout_atr: 0.10   # ранний build-вход строже, чем release
+  squeeze_early_min_bars_extra: 4
+  squeeze_early_min_volume_ratio: 1.50
+  squeeze_max_extension_atr: 2.40        # не догоняем поздний, уже растянутый пробой
 
 market_filters:
   use_open_interest_filter: true
