@@ -80,6 +80,35 @@ def diagnostic_row(strategy: str, reason: str, symbol: str = "BTCUSDT") -> dict[
     }
 
 
+def order_flow_row(
+    strategy: str,
+    *,
+    symbol: str = "BTCUSDT",
+    alignment: str = "aligned",
+    score: float = 0.72,
+    risk_flags: list[str] | None = None,
+) -> dict[str, str]:
+    payload = {
+        "alignment": alignment,
+        "score": score,
+        "flow_bias": "LONG",
+        "liquidity_side": "upside",
+        "risk_flags": risk_flags or [],
+        "reasons": ["taker_flow_aligned"],
+    }
+    return {
+        "symbol": symbol,
+        "direction": "LONG",
+        "strategy": strategy,
+        "confidence": "0.7",
+        "decision": "ORDER_FLOW_ANNOTATION",
+        "reason": f"alignment={alignment}; score={score}",
+        "features": json.dumps(payload),
+        "metadata": json.dumps({"strategy": strategy, "order_flow": payload}),
+        "created_at": "2026-01-01 00:07:00",
+    }
+
+
 def shadow_trade(
     *,
     strategy: str,
@@ -292,6 +321,37 @@ def test_scorecard_summarizes_strategy_diagnostics() -> None:
     assert diagnostics["by_reason"]["no_reversal_confirmation"] == 2
     assert diagnostics["by_reason"]["flow_against_reversion"] == 1
     assert diagnostics["top_symbols"]["BTCUSDT"] == 2
+
+
+def test_scorecard_summarizes_order_flow_annotations() -> None:
+    scorecard = build_strategy_scorecard(
+        [],
+        [],
+        [],
+        [],
+        [
+            order_flow_row("SQUEEZE_BREAKOUT", alignment="aligned", score=0.8),
+            order_flow_row(
+                "SQUEEZE_BREAKOUT",
+                symbol="ETHUSDT",
+                alignment="against",
+                score=0.2,
+                risk_flags=["liquidation_cascade", "taker_flow_against"],
+            ),
+        ],
+        initial_equity=1000,
+        strategy_modes={"SQUEEZE_BREAKOUT": "paper"},
+    )
+
+    row = by_strategy(scorecard, "SQUEEZE_BREAKOUT")
+    order_flow = row["candidate_evidence"]["order_flow"]
+
+    assert order_flow["total"] == 2
+    assert order_flow["avg_score"] == 0.5
+    assert order_flow["by_alignment"] == {"aligned": 1, "against": 1}
+    assert order_flow["risk_flags"]["liquidation_cascade"] == 1
+    assert order_flow["risk_flags"]["taker_flow_against"] == 1
+    assert order_flow["top_symbols"] == {"BTCUSDT": 1, "ETHUSDT": 1}
 
 
 def test_scorecard_summarizes_shadow_paper_without_polluting_real_pnl() -> None:

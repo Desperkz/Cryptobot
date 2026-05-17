@@ -742,13 +742,13 @@ canvas { width: 100%; display: block; }
       <table class="tr-table sc-table">
         <thead>
           <tr>
-            <th>Стратегия</th><th>Gate</th><th>Shadow Gate</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
+            <th>Стратегия</th><th>Gate</th><th>Shadow Gate</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
             <th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
             <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
           </tr>
         </thead>
         <tbody id="sc-body">
-          <tr><td colspan="15" class="empty">Нет данных по стратегиям</td></tr>
+          <tr><td colspan="16" class="empty">Нет данных по стратегиям</td></tr>
         </tbody>
       </table>
     </div>
@@ -1004,7 +1004,7 @@ async function loadStrategyScorecard() {
     document.getElementById('sc-total').textContent =
       `${summary.strategies || 0} стратегий · ${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
     if (!rows.length) {
-      setHTML('sc-body', '<tr><td colspan="15" class="empty">Нет данных по стратегиям</td></tr>');
+      setHTML('sc-body', '<tr><td colspan="16" class="empty">Нет данных по стратегиям</td></tr>');
       return;
     }
     setHTML('sc-body', rows.map(s => {
@@ -1030,8 +1030,26 @@ async function loadStrategyScorecard() {
       const spTrades = (sp.closed_trades || sp.open_trades) ? `SP ${sp.closed_trades || 0}/${sp.open_trades || 0}` : '';
       const spPnl = (sp.closed_trades || sp.open_trades) ? `${(sp.total_pnl || 0) >= 0 ? '+' : ''}${fmt(sp.total_pnl || 0)}` : '';
       const diagnostics = s.candidate_evidence?.diagnostics || {};
+      const orderFlow = s.candidate_evidence?.order_flow || {};
       const diagLine = diagnostics.total ? `DG ${diagnostics.total}` : '';
       const modeLine = [mode, shadow, spTrades, spPnl, diagLine].filter(Boolean).join(' · ');
+      const ofAlign = Object.entries(orderFlow.by_alignment || {})
+        .slice(0,2)
+        .map(([k,v]) => `${k} ${v}`)
+        .join(' · ');
+      const ofRisk = Object.entries(orderFlow.risk_flags || {})
+        .slice(0,2)
+        .map(([k,v]) => `${k} ${v}`)
+        .join(' · ');
+      const ofTitle = [
+        `annotations: ${orderFlow.total || 0}`,
+        `avg score: ${fmt(orderFlow.avg_score || 0, 3)}`,
+        ofAlign ? `alignment: ${ofAlign}` : '',
+        ofRisk ? `risk: ${ofRisk}` : ''
+      ].filter(Boolean).join('\n');
+      const ofHtml = orderFlow.total
+        ? `<span class="sc-tag" title="${esc(ofTitle)}">OF ${fmt(orderFlow.avg_score || 0, 2)}</span>`
+        : '<span class="sc-muted">—</span>';
       const clusters = s.trade_clusters || {};
       const clusterCount = s.closed_trade_clusters ?? clusters.closed_clusters ?? s.closed_trades ?? 0;
       const clusterHint = clusters.multi_trade_clusters
@@ -1057,6 +1075,7 @@ async function loadStrategyScorecard() {
         <td class="sym">${esc(stratName(s.strategy))}${modeLine ? `<div class="sc-muted">${esc(modeLine)}</div>` : ''}</td>
         <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
         <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
+        <td>${ofHtml}</td>
         <td>${s.closed_trades || 0}</td>
         <td>${clusterCount}${clusterHint ? `<div class="sc-muted">${esc(clusterHint)}</div>` : ''}</td>
         <td class="${s.open_trades ? 'status-open' : 'status-closed'}">${s.open_trades || 0}</td>

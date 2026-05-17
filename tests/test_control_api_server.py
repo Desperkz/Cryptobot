@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import socketserver
 
@@ -79,3 +80,71 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
     assert stats["total"] == 3
     assert stats["by_type"]["SHADOW_RISK"] == 1
     assert stats["by_type"]["SHADOW_COOLDOWN"] == 1
+
+
+def test_order_flow_endpoint_summarizes_recent_annotations(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "bot.sqlite3"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE ml_feature_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT,
+            symbol TEXT,
+            direction TEXT,
+            strategy TEXT,
+            confidence TEXT,
+            decision TEXT,
+            reason TEXT,
+            features TEXT,
+            metadata TEXT
+        );
+        """
+    )
+    aligned = {
+        "alignment": "aligned",
+        "score": 0.76,
+        "flow_bias": "LONG",
+        "liquidity_side": "upside",
+        "risk_flags": [],
+        "reasons": ["taker_flow_aligned"],
+        "taker_buy_ratio": 0.61,
+    }
+    against = {
+        "alignment": "against",
+        "score": 0.21,
+        "flow_bias": "SHORT",
+        "liquidity_side": "downside",
+        "risk_flags": ["liquidation_cascade"],
+        "reasons": [],
+        "open_interest_change_pct": -0.35,
+    }
+    conn.execute(
+        """
+        INSERT INTO ml_feature_snapshots(symbol, direction, strategy, confidence, decision, reason, features, metadata, created_at)
+        VALUES('BTCUSDT', 'LONG', 'SQUEEZE_BREAKOUT', '0.8', 'ORDER_FLOW_ANNOTATION',
+               'alignment=aligned; score=0.76', ?, '{}', '2026-05-17 10:01:00')
+        """,
+        (json.dumps(aligned),),
+    )
+    conn.execute(
+        """
+        INSERT INTO ml_feature_snapshots(symbol, direction, strategy, confidence, decision, reason, features, metadata, created_at)
+        VALUES('ETHUSDT', 'LONG', 'SQUEEZE_BREAKOUT', '0.7', 'ORDER_FLOW_ANNOTATION',
+               'alignment=against; score=0.21', ?, '{}', '2026-05-17 10:02:00')
+        """,
+        (json.dumps(against),),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(bot_control_v2, "DB_PATH", str(db_path))
+
+    data = bot_control_v2.api_order_flow()
+
+    assert data["summary"]["total"] == 2
+    assert data["summary"]["avg_score"] == 0.485
+    assert data["summary"]["by_alignment"] == {"against": 1, "aligned": 1}
+    assert data["summary"]["risk_flags"] == {"liquidation_cascade": 1}
+    assert data["rows"][0]["symbol"] == "ETHUSDT"
+    assert data["rows"][0]["alignment"] == "against"

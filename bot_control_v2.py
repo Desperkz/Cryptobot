@@ -542,6 +542,12 @@ def build_strategy_scorecard(
             "diagnostics_by_reason": {},
             "diagnostic_symbols": {},
             "last_diagnostic_at": None,
+            "order_flow_total": 0,
+            "order_flow_score_sum": 0.0,
+            "order_flow_by_alignment": {},
+            "order_flow_risk_flags": {},
+            "order_flow_symbols": {},
+            "last_order_flow_at": None,
             "rejections_total": 0,
             "rejections_by_type": {},
         })
@@ -607,13 +613,29 @@ def build_strategy_scorecard(
             item["last_signal_at"] = signal_dt
 
     for diagnostic in diagnostics:
-        if str(_row_get(diagnostic, "decision", "") or "") != "STRATEGY_DIAGNOSTIC":
-            continue
+        decision = str(_row_get(diagnostic, "decision", "") or "")
         metadata = _parse_metadata(_row_get(diagnostic, "metadata", {}))
-        if metadata and not _truthy_metadata(metadata.get("diagnostic")):
-            continue
         strategy = str(_row_get(diagnostic, "strategy", "") or metadata.get("strategy") or "UNKNOWN")
         item = bucket(strategy)
+        if decision == "ORDER_FLOW_ANNOTATION":
+            payload = _order_flow_payload(diagnostic)
+            alignment = str(payload.get("alignment") or "unknown")
+            score = _to_float(payload.get("score"), 0.0) or 0.0
+            symbol = str(_row_get(diagnostic, "symbol", "") or metadata.get("symbol") or "UNKNOWN")
+            item["order_flow_total"] += 1
+            item["order_flow_score_sum"] += score
+            _increment(item["order_flow_by_alignment"], alignment)
+            _increment(item["order_flow_symbols"], symbol)
+            for flag in payload.get("risk_flags") or []:
+                _increment(item["order_flow_risk_flags"], str(flag))
+            order_flow_dt = _parse_datetime(_row_get(diagnostic, "created_at"))
+            if order_flow_dt and (item["last_order_flow_at"] is None or order_flow_dt > item["last_order_flow_at"]):
+                item["last_order_flow_at"] = order_flow_dt
+            continue
+        if decision != "STRATEGY_DIAGNOSTIC":
+            continue
+        if metadata and not _truthy_metadata(metadata.get("diagnostic")):
+            continue
         reason = str(_row_get(diagnostic, "reason", "") or metadata.get("block_reason") or "unknown")
         symbol = str(_row_get(diagnostic, "symbol", "") or metadata.get("symbol") or "UNKNOWN")
         item["diagnostics_total"] += 1
@@ -813,6 +835,22 @@ def build_strategy_scorecard(
                         sorted(item["diagnostic_symbols"].items(), key=lambda kv: kv[1], reverse=True)[:5]
                     ),
                     "last_at": _fmt_dt(item["last_diagnostic_at"]),
+                },
+                "order_flow": {
+                    "total": item["order_flow_total"],
+                    "avg_score": round(item["order_flow_score_sum"] / item["order_flow_total"], 3)
+                    if item["order_flow_total"]
+                    else 0,
+                    "by_alignment": dict(
+                        sorted(item["order_flow_by_alignment"].items(), key=lambda kv: kv[1], reverse=True)
+                    ),
+                    "risk_flags": dict(
+                        sorted(item["order_flow_risk_flags"].items(), key=lambda kv: kv[1], reverse=True)
+                    ),
+                    "top_symbols": dict(
+                        sorted(item["order_flow_symbols"].items(), key=lambda kv: kv[1], reverse=True)[:5]
+                    ),
+                    "last_at": _fmt_dt(item["last_order_flow_at"]),
                 },
             },
             "shadow_paper": shadow_metrics,
@@ -1235,6 +1273,68 @@ def _shadow_rejection_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _order_flow_payload(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    features = _parse_metadata(_row_get(row, "features", {}))
+    if features:
+        return features
+    metadata = _parse_metadata(_row_get(row, "metadata", {}))
+    payload = metadata.get("order_flow")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _order_flow_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    payload = _order_flow_payload(row)
+    return {
+        "created_at": _row_get(row, "created_at", ""),
+        "symbol": _row_get(row, "symbol", ""),
+        "direction": _row_get(row, "direction", ""),
+        "strategy": _row_get(row, "strategy", ""),
+        "confidence": _row_get(row, "confidence", ""),
+        "alignment": payload.get("alignment", "unknown"),
+        "score": _to_float(payload.get("score"), 0.0) or 0.0,
+        "flow_bias": payload.get("flow_bias", "NONE"),
+        "liquidity_side": payload.get("liquidity_side", "none"),
+        "risk_flags": payload.get("risk_flags") if isinstance(payload.get("risk_flags"), list) else [],
+        "reasons": payload.get("reasons") if isinstance(payload.get("reasons"), list) else [],
+        "taker_buy_ratio": _to_float(payload.get("taker_buy_ratio"), None),
+        "order_book_imbalance": _to_float(payload.get("order_book_imbalance"), None),
+        "aggressive_delta": _to_float(payload.get("aggressive_delta"), None),
+        "open_interest_change_pct": _to_float(payload.get("open_interest_change_pct"), None),
+        "funding_rate": _to_float(payload.get("funding_rate"), None),
+        "distance_to_upper_liquidity_bps": _to_float(payload.get("distance_to_upper_liquidity_bps"), None),
+        "distance_to_lower_liquidity_bps": _to_float(payload.get("distance_to_lower_liquidity_bps"), None),
+    }
+
+
+def _summarize_order_flow(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    by_alignment: dict[str, int] = {}
+    by_strategy: dict[str, dict[str, Any]] = {}
+    risk_flags: dict[str, int] = {}
+    total_score = 0.0
+    for row in rows:
+        alignment = str(row.get("alignment") or "unknown")
+        strategy = str(row.get("strategy") or "UNKNOWN")
+        score = _to_float(row.get("score"), 0.0) or 0.0
+        total_score += score
+        _increment(by_alignment, alignment)
+        strat = by_strategy.setdefault(strategy, {"total": 0, "avg_score": 0.0, "score_sum": 0.0, "by_alignment": {}})
+        strat["total"] += 1
+        strat["score_sum"] += score
+        _increment(strat["by_alignment"], alignment)
+        for flag in row.get("risk_flags") or []:
+            _increment(risk_flags, str(flag))
+    for value in by_strategy.values():
+        value["avg_score"] = round(value["score_sum"] / value["total"], 3) if value["total"] else 0
+        value.pop("score_sum", None)
+    return {
+        "total": len(rows),
+        "avg_score": round(total_score / len(rows), 3) if rows else 0,
+        "by_alignment": dict(sorted(by_alignment.items(), key=lambda item: item[1], reverse=True)),
+        "by_strategy": dict(sorted(by_strategy.items())),
+        "risk_flags": dict(sorted(risk_flags.items(), key=lambda item: item[1], reverse=True)),
+    }
+
+
 def api_strategy_scorecard() -> dict:
     try:
         conn = get_db()
@@ -1264,9 +1364,9 @@ def api_strategy_scorecard() -> dict:
             ORDER BY id ASC
         """).fetchall()
         diagnostics = conn.execute("""
-            SELECT symbol, direction, strategy, confidence, decision, reason, created_at, metadata
+            SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata
             FROM ml_feature_snapshots
-            WHERE decision='STRATEGY_DIAGNOSTIC'
+            WHERE decision IN ('STRATEGY_DIAGNOSTIC', 'ORDER_FLOW_ANNOTATION')
             ORDER BY id ASC
         """).fetchall()
         conn.close()
@@ -1290,6 +1390,34 @@ def api_strategy_scorecard() -> dict:
         )
         scorecard["generated_at"] = datetime.now(timezone.utc).isoformat()
         return scorecard
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def api_order_flow(limit: int = 200) -> dict:
+    try:
+        conn = get_db()
+        if not table_exists(conn, "ml_feature_snapshots"):
+            conn.close()
+            return {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "summary": _summarize_order_flow([]),
+                "rows": [],
+            }
+        rows = conn.execute("""
+            SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata
+            FROM ml_feature_snapshots
+            WHERE decision='ORDER_FLOW_ANNOTATION'
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        payload_rows = [_order_flow_row(row) for row in rows]
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "summary": _summarize_order_flow(payload_rows),
+            "rows": payload_rows,
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -1338,6 +1466,7 @@ ROUTES = {
     "/rejection-stats": api_rejection_stats,
     "/strategy-scorecard": api_strategy_scorecard,
     "/strategy-promotions": api_strategy_promotions,
+    "/order-flow": api_order_flow,
 }
 
 POST_ROUTES = {

@@ -166,9 +166,13 @@ Status legend:
   - Goal: avoid entries against extreme funding pressure and optionally prefer direction with favorable carry.
   - Gate: cannot override risk rules or force entries alone.
   - Done: funding carry can penalize or block candidate signals when funding is strongly adverse to direction.
-- `[ ]` P4-07 Research order-flow/liquidation strategy candidate.
+- `[x]` P4-07 Research order-flow/liquidation strategy candidate.
   - Use liquidation zones, open interest change, taker flow, and sweep/absorption features.
   - Start as signal annotation and rejection/acceptance evidence, not live execution.
+  - Done: added research-only `ORDER_FLOW_ANNOTATION` snapshots for paper and shadow signals.
+  - Done: annotations score flow alignment, liquidation-zone proximity, taker flow, order-book imbalance, aggressive delta, open-interest expansion/drop, funding crowding, sweep, absorption, and structure-break context.
+  - Done: `/order-flow` exposes recent annotations and aggregate alignment/risk summaries.
+  - Done: `/strategy-scorecard` and dashboard rows include compact order-flow evidence without changing execution allow-lists.
 - `[ ]` P4-08 Strategy selector / portfolio allocator.
   - Once several candidates have evidence, allocate by recent strategy expectancy, drawdown, and market regime.
   - Until then, no automatic switching in live.

@@ -25,6 +25,7 @@ from trading_bot.order_manager import OrderManager
 from trading_bot.position_manager import PositionManager
 from trading_bot.risk_manager import KellyRiskSizer, CorrelationFilter, RiskError, RiskManager
 from trading_bot.strategy_engine.edge import EdgeAnalyzer
+from trading_bot.strategy_engine.order_flow import OrderFlowAnnotation, OrderFlowAnnotator
 from trading_bot.strategy_engine.candidate_strategies import (
     LiquiditySweepReversalStrategy,
     MomentumContinuationStrategy,
@@ -69,6 +70,7 @@ class TradingBot:
         self.regime = MarketRegimeDetector(config.strategy)
         self.styles = StyleSelector(config.universe.max_spread_bps, config.universe.min_24h_quote_volume_usdt)
         self.edge_analyzer = EdgeAnalyzer(config.edge_filters)
+        self.order_flow = OrderFlowAnnotator(config.edge_filters)
         self._squeeze = SqueezeBreakoutStrategy(config.strategy, self.regime)
         self._trend_pullback = TrendPullbackStrategy(config.strategy, self.regime, self.edge_analyzer)
         self._liquidity_sweep_reversal = LiquiditySweepReversalStrategy(config.strategy, self.edge_analyzer)
@@ -326,6 +328,9 @@ class TradingBot:
             shadow_signals = self.strategy.generate_shadow(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
             await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
             for shadow_signal in shadow_signals:
+                shadow_signal = self._annotate_signal_mode(shadow_signal, "shadow", shadow_only=True)
+                shadow_signal, annotation = self._annotate_order_flow(shadow_signal, candles_15m, asset.metrics)
+                await self._record_order_flow_annotation(shadow_signal, annotation)
                 await self._record_shadow_signal(shadow_signal, asset.filters)
             signal = self.strategy.generate(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
             await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
@@ -335,6 +340,8 @@ class TradingBot:
                 signal,
                 self.config.strategy.mode_for_strategy(signal.metadata.get("strategy", "")),
             )
+            signal, annotation = self._annotate_order_flow(signal, candles_15m, asset.metrics)
+            await self._record_order_flow_annotation(signal, annotation)
             oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
             filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
             if filter_decision.allowed:
@@ -516,6 +523,19 @@ class TradingBot:
             metadata["shadow_only"] = True
         return replace(signal, metadata=metadata)
 
+    def _annotate_order_flow(
+        self,
+        signal: Signal,
+        candles_15m: list,
+        metrics: Any,
+    ) -> tuple[Signal, OrderFlowAnnotation]:
+        annotation = self.order_flow.annotate(candles_15m, signal.direction, metrics)
+        metadata = {
+            **dict(signal.metadata or {}),
+            "order_flow": annotation.to_metadata(),
+        }
+        return replace(signal, metadata=metadata), annotation
+
     async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
         shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
         logger.info(
@@ -669,6 +689,26 @@ class TradingBot:
             )
         except Exception as exc:
             logger.debug("ML feature snapshot failed for %s: %s", signal.symbol, exc)
+
+    async def _record_order_flow_annotation(self, signal: Signal, annotation: OrderFlowAnnotation) -> None:
+        payload = annotation.to_metadata()
+        try:
+            await self.db.insert_ml_feature_snapshot(
+                symbol=signal.symbol,
+                direction=signal.direction.value,
+                strategy=_signal_strategy(signal),
+                confidence=str(signal.confidence),
+                decision="ORDER_FLOW_ANNOTATION",
+                reason=f"alignment={annotation.alignment}; score={payload['score']}",
+                features=payload,
+                metadata={
+                    **dict(signal.metadata or {}),
+                    "order_flow": payload,
+                    "order_flow_research_only": True,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Order-flow annotation snapshot failed for %s: %s", signal.symbol, exc)
 
     async def _record_strategy_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         now = time.monotonic()
