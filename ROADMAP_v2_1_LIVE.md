@@ -143,6 +143,11 @@ Status legend:
   - Done: early `build` entries remain possible only as stricter `early_breakout` setups with longer squeeze duration, stronger volume, and structural breakout confirmation.
   - Done: SQZ signals now carry `squeeze_entry_timing`, `breakout_atr`, `compression_high/low`, and `squeeze_release_offset` metadata so scorecard/log review can separate clean releases from early breakouts.
   - Verification: `62 passed`.
+- `[x]` P4-02A Add retest confirmation to late `SQUEEZE_BREAKOUT` follow-through entries.
+  - Done: late release follow-through entries now require a retest/rejection or absorption touch of the compression breakout level.
+  - Done: immediate release entries are not forced to wait for a retest, so the champion strategy is not silenced.
+  - Done: SQZ metadata now includes `squeeze_retest_required`, `squeeze_retest_confirmed`, retest level, bars ago, rejection type, and body size in ATR.
+  - Verification: SQZ candidate tests cover late follow-through with and without retest.
 - `[x]` P4-03 Rework `MEAN_REVERSION` as a paper candidate, not a live strategy.
   - Done: promoted from `shadow` to `paper` for v2.1 paper trading after bot 2.0 evidence showed strong MR contribution.
   - Done: `MAINNET_LIVE` remains protected because paper-mode strategies do not execute in mainnet and the live allow-list still contains only `SQUEEZE_BREAKOUT`.

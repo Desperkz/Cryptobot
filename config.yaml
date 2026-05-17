@@ -146,6 +146,11 @@ strategy:
   squeeze_early_min_bars_extra: 4
   squeeze_early_min_volume_ratio: 1.50
   squeeze_max_extension_atr: 2.40        # не догоняем поздний, уже растянутый пробой
+  squeeze_retest_enabled: true           # late follow-through требует ретест/отбой от диапазона
+  squeeze_retest_required_after_release_offset: 2
+  squeeze_retest_lookback_bars: 3
+  squeeze_retest_tolerance_atr: 0.35
+  squeeze_retest_min_rejection_body_atr: 0.05
 
 market_filters:
   use_open_interest_filter: true

@@ -202,6 +202,63 @@ def _breakout_quality(
     }
 
 
+def _breakout_retest_quality(
+    candles: list[Candle],
+    direction: Direction,
+    breakout_level: Decimal,
+    atr_value: Decimal,
+    release_offset: int,
+    lookback_bars: int,
+    tolerance_atr: Decimal,
+    min_rejection_body_atr: Decimal,
+) -> dict[str, object]:
+    if atr_value <= 0 or lookback_bars <= 0 or direction not in {Direction.LONG, Direction.SHORT}:
+        return {"confirmed": False}
+
+    release_idx = len(candles) - 1 - max(0, release_offset)
+    # Retest can only happen after the initial release candle.
+    search_start = min(max(0, release_idx + 1), len(candles))
+    if search_start >= len(candles):
+        return {"confirmed": False}
+
+    window = candles[max(search_start, len(candles) - lookback_bars) :]
+    if not window:
+        return {"confirmed": False}
+
+    tolerance = atr_value * tolerance_atr
+    min_body = atr_value * min_rejection_body_atr
+    for bars_ago, candle in enumerate(reversed(window)):
+        body = abs(candle.close - candle.open)
+        lower_wick = min(candle.open, candle.close) - candle.low
+        upper_wick = candle.high - max(candle.open, candle.close)
+        if direction == Direction.LONG:
+            touched = candle.low <= breakout_level + tolerance
+            held_level = candle.close >= breakout_level
+            rejection = candle.close > candle.open and body >= min_body
+            absorption = lower_wick >= max(body, min_body) * Decimal("1.5")
+        else:
+            touched = candle.high >= breakout_level - tolerance
+            held_level = candle.close <= breakout_level
+            rejection = candle.close < candle.open and body >= min_body
+            absorption = upper_wick >= max(body, min_body) * Decimal("1.5")
+
+        if touched and held_level and (rejection or absorption):
+            return {
+                "confirmed": True,
+                "bars_ago": bars_ago,
+                "level": breakout_level,
+                "tolerance_atr": tolerance_atr,
+                "rejection_body_atr": body / atr_value,
+                "type": "rejection" if rejection else "absorption",
+            }
+
+    return {
+        "confirmed": False,
+        "level": breakout_level,
+        "tolerance_atr": tolerance_atr,
+    }
+
+
 def _squeeze_momentum(candles: list[Candle], period: int = 20) -> list[float]:
     """
     Momentum индикатор для squeeze (по John Carter).
@@ -392,6 +449,26 @@ class SqueezeBreakoutStrategy:
             if Decimal(str(vol_ratio)) < self.config.squeeze_early_min_volume_ratio:
                 return None
 
+        retest_level = quality["range_high"] if direction == Direction.LONG else quality["range_low"]
+        retest = _breakout_retest_quality(
+            candles_1h,
+            direction,
+            retest_level,
+            atr_1h,
+            release_offset if is_release else 0,
+            self.config.squeeze_retest_lookback_bars,
+            self.config.squeeze_retest_tolerance_atr,
+            self.config.squeeze_retest_min_rejection_body_atr,
+        )
+        retest_confirmed = bool(retest.get("confirmed"))
+        retest_required = bool(
+            self.config.squeeze_retest_enabled
+            and is_release
+            and release_offset >= self.config.squeeze_retest_required_after_release_offset
+        )
+        if retest_required and not retest_confirmed:
+            return None
+
         # Стоп и тейк-профит
         # Для breakout используем более широкий стоп (1.5 ATR)
         # и более агрессивный тейк (2.0 RR) — цена может далеко уйти
@@ -433,6 +510,8 @@ class SqueezeBreakoutStrategy:
             confidence += Decimal("0.07")
         if is_release:
             confidence += Decimal("0.06")
+        if retest_confirmed:
+            confidence += Decimal("0.05")
 
         # Сила momentum
         mom_strength = abs(momentum[-1])
@@ -458,6 +537,7 @@ class SqueezeBreakoutStrategy:
                 f"momentum={momentum[-1]:.3f}, "
                 f"state={squeeze_state}, "
                 f"breakout_atr={breakout_atr:.2f}, "
+                f"retest={'yes' if retest_confirmed else 'no'}, "
                 f"regime={regime.regime.value}"
             ),
             metadata={
@@ -473,6 +553,14 @@ class SqueezeBreakoutStrategy:
                 "breakout_atr": str(breakout_atr),
                 "compression_high": str(quality["range_high"]),
                 "compression_low": str(quality["range_low"]),
+                "squeeze_retest_required": retest_required,
+                "squeeze_retest_confirmed": retest_confirmed,
+                "squeeze_retest_bars_ago": retest.get("bars_ago"),
+                "squeeze_retest_level": str(retest.get("level")) if retest.get("level") is not None else None,
+                "squeeze_retest_type": retest.get("type"),
+                "squeeze_retest_rejection_body_atr": str(retest.get("rejection_body_atr"))
+                if retest.get("rejection_body_atr") is not None
+                else None,
                 "atr_pct": str(atr_pct),
                 "rr": str(rr),
                 "hour_utc": str((candles_1h[-1].close_time // 3_600_000) % 24),

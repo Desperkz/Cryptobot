@@ -175,6 +175,11 @@ class StrategyConfig:
     squeeze_early_min_bars_extra: int = 4
     squeeze_early_min_volume_ratio: Decimal = Decimal("1.50")
     squeeze_max_extension_atr: Decimal = Decimal("2.40")
+    squeeze_retest_enabled: bool = True
+    squeeze_retest_required_after_release_offset: int = 2
+    squeeze_retest_lookback_bars: int = 3
+    squeeze_retest_tolerance_atr: Decimal = Decimal("0.35")
+    squeeze_retest_min_rejection_body_atr: Decimal = Decimal("0.05")
 
     def configured_strategies(self) -> list[str]:
         ordered: list[str] = []
@@ -783,6 +788,15 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 raw["strategy"].get("squeeze_early_min_volume_ratio", "1.50")
             ),
             squeeze_max_extension_atr=to_decimal(raw["strategy"].get("squeeze_max_extension_atr", "2.40")),
+            squeeze_retest_enabled=bool(raw["strategy"].get("squeeze_retest_enabled", True)),
+            squeeze_retest_required_after_release_offset=int(
+                raw["strategy"].get("squeeze_retest_required_after_release_offset", 2)
+            ),
+            squeeze_retest_lookback_bars=int(raw["strategy"].get("squeeze_retest_lookback_bars", 3)),
+            squeeze_retest_tolerance_atr=to_decimal(raw["strategy"].get("squeeze_retest_tolerance_atr", "0.35")),
+            squeeze_retest_min_rejection_body_atr=to_decimal(
+                raw["strategy"].get("squeeze_retest_min_rejection_body_atr", "0.05")
+            ),
         ),
         market_filters=MarketFilterConfig(
             btc_4h_drop_filter_enabled=bool(raw.get("market_filters", {}).get("btc_4h_drop_filter_enabled", True)),

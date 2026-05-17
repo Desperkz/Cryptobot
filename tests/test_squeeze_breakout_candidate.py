@@ -128,6 +128,7 @@ def test_squeeze_champion_accepts_release_with_structural_breakout(monkeypatch) 
     assert signal.direction == Direction.LONG
     assert signal.metadata["strategy"] == "SQUEEZE_BREAKOUT"
     assert signal.metadata["squeeze_entry_timing"] == "release_followthrough"
+    assert signal.metadata["squeeze_retest_required"] is False
     assert Decimal(signal.metadata["breakout_atr"]) >= Decimal("0.03")
     assert Decimal(signal.metadata["rr"]) == Decimal("2.0")
 
@@ -161,7 +162,33 @@ def test_squeeze_champion_uses_release_window_volume_for_followthrough(monkeypat
 
     assert signal is not None
     assert signal.metadata["squeeze_release_offset"] == 2
+    assert signal.metadata["squeeze_retest_required"] is True
+    assert signal.metadata["squeeze_retest_confirmed"] is True
     assert Decimal(signal.metadata["volume_ratio"]) >= Decimal("2.0")
+
+
+def test_squeeze_champion_blocks_late_followthrough_without_retest(monkeypatch) -> None:
+    candles_1h = candles(
+        80,
+        close="103",
+        open_="102.4",
+        high="104",
+        low="102",
+        current_volume="100",
+        release_offset=2,
+        release_volume="230",
+    )
+    patch_squeeze(monkeypatch, candles_1h, release=True, release_offset=2)
+
+    signal = SqueezeBreakoutStrategy(strategy_config(), FakeRegimeDetector()).generate(
+        "BTCUSDT",
+        candles(80),
+        candles_1h,
+        candles(80),
+        metrics(),
+    )
+
+    assert signal is None
 
 
 def test_squeeze_champion_early_build_requires_stronger_volume(monkeypatch) -> None:
