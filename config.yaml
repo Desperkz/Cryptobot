@@ -125,6 +125,8 @@ strategy:
   liquidity_sweep_stop_atr_multiplier: 1.35
   liquidity_sweep_take_profit_rr: 1.35
   liquidity_sweep_min_edge_score: 0.58
+  liquidity_sweep_min_reclaim_atr: 0.70
+  liquidity_sweep_follow_through_min_body_atr: 0.18
   vwap_reversion_lookback: 96
   vwap_reversion_deviation_atr: 4.50
   vwap_reversion_max_deviation_atr: 6.00
@@ -132,15 +134,21 @@ strategy:
   vwap_reversion_watch_deviation_atr: 1.80
   vwap_reversion_watch_max_deviation_atr: 8.00
   vwap_reversion_watch_min_volume_ratio: 1.05
+  vwap_reversion_min_progress_atr: 0.50
+  vwap_reversion_watch_min_progress_atr: 0.75
+  vwap_reversion_reversal_min_body_atr: 0.12
   vwap_reversion_stop_atr_multiplier: 1.00
-  vwap_reversion_take_profit_rr: 1.15
+  vwap_reversion_take_profit_rr: 1.35
   momentum_continuation_min_volume_ratio: 1.90
   momentum_continuation_stop_atr_multiplier: 1.60
   momentum_continuation_take_profit_rr: 1.30
   momentum_continuation_min_edge_score: 0.70
   range_grid_lookback: 48
   range_grid_stop_atr_multiplier: 1.00
-  range_grid_take_profit_rr: 0.80
+  range_grid_take_profit_rr: 1.10
+  range_grid_entry_zone_pct: 0.15
+  range_grid_rsi_long_max: 40
+  range_grid_rsi_short_min: 60
   funding_carry_filter_enabled: true
   funding_carry_penalty_threshold: 0.0005
   funding_carry_block_threshold: 0.0012

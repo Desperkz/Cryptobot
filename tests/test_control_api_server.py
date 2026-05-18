@@ -66,6 +66,13 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
                'MUSDT VWAP_REVERSION_WATCH re-entry cooldown is active.', '{}', '{}', '2026-05-17 05:40:00')
         """
     )
+    conn.execute(
+        """
+        INSERT INTO ml_feature_snapshots(symbol, direction, strategy, confidence, decision, reason, features, metadata, created_at)
+        VALUES('ADAUSDT', 'SHORT', 'LIQUIDITY_SWEEP_REVERSAL', '0.64', 'SHADOW_PAPER_REJECTED_CONTEXT',
+               'LSR shadow blocked: adverse liquidity remains nearby after the sweep.', '{}', '{}', '2026-05-17 05:41:00')
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -75,11 +82,12 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
     types = [row["filter_type"] for row in rows]
     stats = bot_control_v2.api_rejection_stats()
 
-    assert types[:2] == ["SHADOW_COOLDOWN", "SHADOW_RISK"]
+    assert types[:3] == ["SHADOW_CONTEXT", "SHADOW_COOLDOWN", "SHADOW_RISK"]
     assert "RISK" in types
-    assert stats["total"] == 3
+    assert stats["total"] == 4
     assert stats["by_type"]["SHADOW_RISK"] == 1
     assert stats["by_type"]["SHADOW_COOLDOWN"] == 1
+    assert stats["by_type"]["SHADOW_CONTEXT"] == 1
 
 
 def test_order_flow_endpoint_summarizes_recent_annotations(tmp_path, monkeypatch) -> None:

@@ -5,7 +5,11 @@ from decimal import Decimal
 import trading_bot.strategy_engine.candidate_strategies as candidates
 from trading_bot.config import StrategyConfig
 from trading_bot.models import Candle, Direction, EdgeSnapshot, MarketMetrics, MarketRegime, RegimeSnapshot
-from trading_bot.strategy_engine.candidate_strategies import LiquiditySweepReversalStrategy, MomentumContinuationStrategy
+from trading_bot.strategy_engine.candidate_strategies import (
+    LiquiditySweepReversalStrategy,
+    MomentumContinuationStrategy,
+    RangeGridStrategy,
+)
 
 
 def strategy_config(**overrides) -> StrategyConfig:
@@ -27,10 +31,16 @@ def strategy_config(**overrides) -> StrategyConfig:
         "liquidity_sweep_stop_atr_multiplier": Decimal("1.35"),
         "liquidity_sweep_take_profit_rr": Decimal("1.35"),
         "liquidity_sweep_min_edge_score": Decimal("0.58"),
+        "liquidity_sweep_min_reclaim_atr": Decimal("0.70"),
+        "liquidity_sweep_follow_through_min_body_atr": Decimal("0.18"),
         "momentum_continuation_min_volume_ratio": Decimal("1.80"),
         "momentum_continuation_stop_atr_multiplier": Decimal("1.60"),
         "momentum_continuation_take_profit_rr": Decimal("1.30"),
         "momentum_continuation_min_edge_score": Decimal("0.60"),
+        "range_grid_take_profit_rr": Decimal("1.10"),
+        "range_grid_entry_zone_pct": Decimal("0.15"),
+        "range_grid_rsi_long_max": Decimal("40"),
+        "range_grid_rsi_short_min": Decimal("60"),
     }
     values.update(overrides)
     return StrategyConfig(**values)
@@ -94,14 +104,25 @@ class FakeRegimeDetector:
         )
 
 
+class FakeRangeRegimeDetector:
+    def detect(self, _candles) -> RegimeSnapshot:
+        return RegimeSnapshot(
+            regime=MarketRegime.RANGE,
+            atr_pct=Decimal("1.5"),
+            trend_strength=Decimal("0.1"),
+            momentum_pct=Decimal("0.0"),
+            reason="test range",
+        )
+
+
 def test_liquidity_sweep_requires_strict_edge_and_flow(monkeypatch) -> None:
     candles = flat_candles(60)
     candles[-1] = Candle(
         open_time=candles[-1].open_time,
         open=Decimal("99.2"),
-        high=Decimal("100.4"),
+        high=Decimal("100.6"),
         low=Decimal("98.2"),
-        close=Decimal("99.6"),
+        close=Decimal("100.1"),
         volume=Decimal("160"),
         close_time=candles[-1].close_time,
     )
@@ -113,7 +134,8 @@ def test_liquidity_sweep_requires_strict_edge_and_flow(monkeypatch) -> None:
 
     assert signal is not None
     assert signal.metadata["strategy"] == "LIQUIDITY_SWEEP_REVERSAL"
-    assert Decimal(signal.metadata["reclaim_atr"]) >= Decimal("0.25")
+    assert Decimal(signal.metadata["reclaim_atr"]) >= Decimal("0.70")
+    assert signal.metadata["follow_through_confirmed"] == "True"
 
     assert strategy.generate(
         "BTCUSDT",
@@ -128,6 +150,18 @@ def test_liquidity_sweep_requires_strict_edge_and_flow(monkeypatch) -> None:
         FakeEdgeAnalyzer(reasons=("liquidity_sweep", "aggressive_flow")),
     )
     assert weak_edge.generate("BTCUSDT", candles, candles, candles, metrics()) is None
+
+    weak_follow_through = list(candles)
+    weak_follow_through[-1] = Candle(
+        open_time=candles[-1].open_time,
+        open=Decimal("99.2"),
+        high=Decimal("100.0"),
+        low=Decimal("98.2"),
+        close=Decimal("99.4"),
+        volume=Decimal("160"),
+        close_time=candles[-1].close_time,
+    )
+    assert strategy.generate("BTCUSDT", weak_follow_through, candles, candles, metrics()) is None
 
 
 def test_momentum_continuation_blocks_overextended_breakout_and_weak_flow(monkeypatch) -> None:
@@ -173,3 +207,43 @@ def test_momentum_continuation_blocks_overextended_breakout_and_weak_flow(monkey
         candles,
         metrics(order_book_imbalance=Decimal("0.00")),
     ) is None
+
+
+def test_range_grid_requires_deeper_range_edge_and_better_rr(monkeypatch) -> None:
+    def range_candles(last_close: str) -> list[Candle]:
+        result = [
+            Candle(
+                open_time=i * 60_000,
+                open=Decimal("100"),
+                high=Decimal("110"),
+                low=Decimal("90"),
+                close=Decimal("100"),
+                volume=Decimal("100"),
+                close_time=(i + 1) * 60_000,
+            )
+            for i in range(80)
+        ]
+        result[-1] = Candle(
+            open_time=result[-1].open_time,
+            open=Decimal("95"),
+            high=Decimal("96"),
+            low=Decimal("90"),
+            close=Decimal(last_close),
+            volume=Decimal("120"),
+            close_time=result[-1].close_time,
+        )
+        return result
+
+    monkeypatch.setattr(candidates, "atr", lambda items, period: [4.0] * len(items))
+    monkeypatch.setattr(candidates, "rsi", lambda values, period: [Decimal("38")] * len(values))
+
+    strategy = RangeGridStrategy(strategy_config(), FakeRangeRegimeDetector())
+
+    assert strategy.generate("ADAUSDT", range_candles("93.6"), range_candles("93.6"), range_candles("93.6"), metrics()) is None
+
+    signal = strategy.generate("ADAUSDT", range_candles("92.0"), range_candles("92.0"), range_candles("92.0"), metrics())
+
+    assert signal is not None
+    assert signal.metadata["strategy"] == "RANGE_GRID"
+    assert signal.metadata["entry_zone"] == "0.15"
+    assert signal.metadata["rr"] == "1.10"

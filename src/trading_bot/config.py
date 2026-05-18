@@ -154,6 +154,8 @@ class StrategyConfig:
     liquidity_sweep_stop_atr_multiplier: Decimal = Decimal("1.10")
     liquidity_sweep_take_profit_rr: Decimal = Decimal("1.20")
     liquidity_sweep_min_edge_score: Decimal = Decimal("0.30")
+    liquidity_sweep_min_reclaim_atr: Decimal = Decimal("0.70")
+    liquidity_sweep_follow_through_min_body_atr: Decimal = Decimal("0.18")
     vwap_reversion_lookback: int = 96
     vwap_reversion_deviation_atr: Decimal = Decimal("1.60")
     vwap_reversion_max_deviation_atr: Decimal = Decimal("6.00")
@@ -161,6 +163,9 @@ class StrategyConfig:
     vwap_reversion_watch_deviation_atr: Decimal = Decimal("1.80")
     vwap_reversion_watch_max_deviation_atr: Decimal = Decimal("8.00")
     vwap_reversion_watch_min_volume_ratio: Decimal = Decimal("1.05")
+    vwap_reversion_min_progress_atr: Decimal = Decimal("0.50")
+    vwap_reversion_watch_min_progress_atr: Decimal = Decimal("0.75")
+    vwap_reversion_reversal_min_body_atr: Decimal = Decimal("0.12")
     vwap_reversion_stop_atr_multiplier: Decimal = Decimal("1.00")
     vwap_reversion_take_profit_rr: Decimal = Decimal("1.15")
     momentum_continuation_min_volume_ratio: Decimal = Decimal("1.40")
@@ -170,6 +175,9 @@ class StrategyConfig:
     range_grid_lookback: int = 48
     range_grid_stop_atr_multiplier: Decimal = Decimal("1.00")
     range_grid_take_profit_rr: Decimal = Decimal("0.80")
+    range_grid_entry_zone_pct: Decimal = Decimal("0.15")
+    range_grid_rsi_long_max: Decimal = Decimal("40")
+    range_grid_rsi_short_min: Decimal = Decimal("60")
     funding_carry_filter_enabled: bool = True
     funding_carry_penalty_threshold: Decimal = Decimal("0.0005")
     funding_carry_block_threshold: Decimal = Decimal("0.0012")
@@ -749,6 +757,12 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 raw["strategy"].get("liquidity_sweep_take_profit_rr", "1.20")
             ),
             liquidity_sweep_min_edge_score=to_decimal(raw["strategy"].get("liquidity_sweep_min_edge_score", "0.30")),
+            liquidity_sweep_min_reclaim_atr=to_decimal(
+                raw["strategy"].get("liquidity_sweep_min_reclaim_atr", "0.70")
+            ),
+            liquidity_sweep_follow_through_min_body_atr=to_decimal(
+                raw["strategy"].get("liquidity_sweep_follow_through_min_body_atr", "0.18")
+            ),
             vwap_reversion_lookback=int(raw["strategy"].get("vwap_reversion_lookback", 96)),
             vwap_reversion_deviation_atr=to_decimal(raw["strategy"].get("vwap_reversion_deviation_atr", "1.60")),
             vwap_reversion_max_deviation_atr=to_decimal(
@@ -765,6 +779,15 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ),
             vwap_reversion_watch_min_volume_ratio=to_decimal(
                 raw["strategy"].get("vwap_reversion_watch_min_volume_ratio", "1.05")
+            ),
+            vwap_reversion_min_progress_atr=to_decimal(
+                raw["strategy"].get("vwap_reversion_min_progress_atr", "0.50")
+            ),
+            vwap_reversion_watch_min_progress_atr=to_decimal(
+                raw["strategy"].get("vwap_reversion_watch_min_progress_atr", "0.75")
+            ),
+            vwap_reversion_reversal_min_body_atr=to_decimal(
+                raw["strategy"].get("vwap_reversion_reversal_min_body_atr", "0.12")
             ),
             vwap_reversion_stop_atr_multiplier=to_decimal(
                 raw["strategy"].get("vwap_reversion_stop_atr_multiplier", "1.00")
@@ -785,6 +808,9 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             range_grid_lookback=int(raw["strategy"].get("range_grid_lookback", 48)),
             range_grid_stop_atr_multiplier=to_decimal(raw["strategy"].get("range_grid_stop_atr_multiplier", "1.00")),
             range_grid_take_profit_rr=to_decimal(raw["strategy"].get("range_grid_take_profit_rr", "0.80")),
+            range_grid_entry_zone_pct=to_decimal(raw["strategy"].get("range_grid_entry_zone_pct", "0.15")),
+            range_grid_rsi_long_max=to_decimal(raw["strategy"].get("range_grid_rsi_long_max", "40")),
+            range_grid_rsi_short_min=to_decimal(raw["strategy"].get("range_grid_rsi_short_min", "60")),
             funding_carry_filter_enabled=bool(raw["strategy"].get("funding_carry_filter_enabled", True)),
             funding_carry_penalty_threshold=to_decimal(
                 raw["strategy"].get("funding_carry_penalty_threshold", "0.0005")

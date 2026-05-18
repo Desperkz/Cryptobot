@@ -91,7 +91,17 @@ class LiquiditySweepReversalStrategy:
         if direction == Direction.NONE:
             return None
         reclaim_distance = (current.close - prior_low) if direction == Direction.LONG else (prior_high - current.close)
-        if reclaim_distance < atr_15m * Decimal("0.25"):
+        min_reclaim_atr = self.config.liquidity_sweep_min_reclaim_atr
+        reclaim_atr = reclaim_distance / atr_15m
+        if reclaim_atr < min_reclaim_atr:
+            return None
+        follow_through_body_atr = _sweep_follow_through_body_atr(
+            candles_15m,
+            direction,
+            atr_15m,
+            self.config.liquidity_sweep_follow_through_min_body_atr,
+        )
+        if follow_through_body_atr is None:
             return None
 
         volume_ratio = _volume_ratio(candles_15m, self.config.volume_lookback)
@@ -133,7 +143,10 @@ class LiquiditySweepReversalStrategy:
                 "atr_pct": str(_atr_pct(atr_15m, entry)),
                 "prior_high": str(prior_high),
                 "prior_low": str(prior_low),
-                "reclaim_atr": str(reclaim_distance / atr_15m),
+                "reclaim_atr": str(reclaim_atr),
+                "min_reclaim_atr": str(min_reclaim_atr),
+                "follow_through_body_atr": str(follow_through_body_atr),
+                "follow_through_confirmed": "True",
                 "rr": str(rr),
             },
         )
@@ -300,10 +313,21 @@ class VwapReversionStrategy:
         if volume_ratio < min_volume_ratio:
             diagnostic["block_reason"] = "weak_volume"
             return None, diagnostic
-        if not _vwap_reversal_confirmed(candles_15m, direction, atr_15m):
+        if not _vwap_reversal_confirmed(
+            candles_15m,
+            direction,
+            atr_15m,
+            self.config.vwap_reversion_reversal_min_body_atr,
+        ):
             diagnostic["block_reason"] = "no_reversal_confirmation"
             return None, diagnostic
-        if reversion_progress_atr < Decimal("0.20"):
+        min_progress_atr = (
+            self.config.vwap_reversion_watch_min_progress_atr
+            if variant == "watch"
+            else self.config.vwap_reversion_min_progress_atr
+        )
+        diagnostic["min_progress_atr"] = str(min_progress_atr)
+        if reversion_progress_atr < min_progress_atr:
             diagnostic["block_reason"] = "no_vwap_reversion_progress"
             return None, diagnostic
         if not _vwap_flow_confirmed(metrics, direction):
@@ -334,6 +358,8 @@ class VwapReversionStrategy:
                 "min_volume_ratio": str(min_volume_ratio),
                 "previous_deviation_atr": str(previous_deviation_atr),
                 "reversion_progress_atr": str(reversion_progress_atr),
+                "min_progress_atr": str(min_progress_atr),
+                "reversal_min_body_atr": str(self.config.vwap_reversion_reversal_min_body_atr),
                 "reversal_confirmed": "True",
                 "flow_confirmed": "True",
                 "vwap_variant": variant,
@@ -344,7 +370,37 @@ class VwapReversionStrategy:
         return signal, diagnostic
 
 
-def _vwap_reversal_confirmed(candles: list[Candle], direction: Direction, atr_value: Decimal) -> bool:
+def _sweep_follow_through_body_atr(
+    candles: list[Candle],
+    direction: Direction,
+    atr_value: Decimal,
+    min_body_atr: Decimal,
+) -> Decimal | None:
+    if len(candles) < 2 or atr_value <= 0:
+        return None
+    last = candles[-1]
+    previous = candles[-2]
+    body_atr = abs(last.close - last.open) / atr_value
+    if body_atr < min_body_atr:
+        return None
+    candle_range = max(last.high - last.low, atr_value * Decimal("0.0001"))
+    if direction == Direction.LONG:
+        close_location = (last.close - last.low) / candle_range
+        if last.close > last.open and last.close > previous.close and close_location >= Decimal("0.60"):
+            return body_atr
+    elif direction == Direction.SHORT:
+        close_location = (last.high - last.close) / candle_range
+        if last.close < last.open and last.close < previous.close and close_location >= Decimal("0.60"):
+            return body_atr
+    return None
+
+
+def _vwap_reversal_confirmed(
+    candles: list[Candle],
+    direction: Direction,
+    atr_value: Decimal,
+    min_body_atr: Decimal,
+) -> bool:
     if len(candles) < 2:
         return False
     last = candles[-1]
@@ -352,14 +408,15 @@ def _vwap_reversal_confirmed(candles: list[Candle], direction: Direction, atr_va
     body = abs(last.close - last.open)
     lower_wick = min(last.open, last.close) - last.low
     upper_wick = last.high - max(last.open, last.close)
-    min_wick = max(body * Decimal("1.5"), atr_value * Decimal("0.15"))
+    body_atr = body / atr_value if atr_value > 0 else Decimal("0")
+    min_wick = max(body * Decimal("2.0"), atr_value * Decimal("0.20"))
 
     if direction == Direction.LONG:
-        bounce_close = last.close > last.open and last.close > previous.close
+        bounce_close = body_atr >= min_body_atr and last.close > last.open and last.close > previous.close
         capitulation_wick = lower_wick >= min_wick and last.close >= last.open
         return bounce_close or capitulation_wick
     if direction == Direction.SHORT:
-        rejection_close = last.close < last.open and last.close < previous.close
+        rejection_close = body_atr >= min_body_atr and last.close < last.open and last.close < previous.close
         exhaustion_wick = upper_wick >= min_wick and last.close <= last.open
         return rejection_close or exhaustion_wick
     return False
@@ -550,10 +607,11 @@ class RangeGridStrategy:
 
         position_in_range = (entry - range_low) / range_size
         rsi_value = to_decimal(rsi(closes(candles_15m), self.config.rsi_period)[-1])
+        entry_zone = self.config.range_grid_entry_zone_pct
         direction = Direction.NONE
-        if position_in_range <= Decimal("0.20") and rsi_value <= Decimal("45"):
+        if position_in_range <= entry_zone and rsi_value <= self.config.range_grid_rsi_long_max:
             direction = Direction.LONG
-        elif position_in_range >= Decimal("0.80") and rsi_value >= Decimal("55"):
+        elif position_in_range >= Decimal("1") - entry_zone and rsi_value >= self.config.range_grid_rsi_short_min:
             direction = Direction.SHORT
         if direction == Direction.NONE:
             return None
@@ -581,6 +639,7 @@ class RangeGridStrategy:
                 "range_high": str(range_high),
                 "range_low": str(range_low),
                 "range_position": str(position_in_range),
+                "entry_zone": str(entry_zone),
                 "range_atr": str(range_size / atr_15m),
                 "rsi": str(rsi_value),
                 "atr_pct": str(_atr_pct(atr_15m, entry)),

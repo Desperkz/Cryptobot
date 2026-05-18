@@ -1209,7 +1209,11 @@ def api_rejections(limit: int = 100) -> list[dict]:
             shadow_rows = conn.execute("""
                 SELECT symbol, direction, strategy, confidence, decision, reason, created_at
                 FROM ml_feature_snapshots
-                WHERE decision IN ('SHADOW_PAPER_REJECTED_RISK', 'SHADOW_PAPER_REJECTED_COOLDOWN')
+                WHERE decision IN (
+                    'SHADOW_PAPER_REJECTED_RISK',
+                    'SHADOW_PAPER_REJECTED_COOLDOWN',
+                    'SHADOW_PAPER_REJECTED_CONTEXT'
+                )
                 ORDER BY id DESC
                 LIMIT ?
             """, (limit,)).fetchall()
@@ -1237,7 +1241,11 @@ def api_rejection_stats() -> dict:
             rows = conn.execute("""
                 SELECT decision, COUNT(*) as cnt
                 FROM ml_feature_snapshots
-                WHERE decision IN ('SHADOW_PAPER_REJECTED_RISK', 'SHADOW_PAPER_REJECTED_COOLDOWN')
+                WHERE decision IN (
+                    'SHADOW_PAPER_REJECTED_RISK',
+                    'SHADOW_PAPER_REJECTED_COOLDOWN',
+                    'SHADOW_PAPER_REJECTED_CONTEXT'
+                )
                 GROUP BY decision
             """).fetchall()
             for decision, count in rows:
@@ -1255,6 +1263,8 @@ def _shadow_rejection_filter_type(decision: str) -> str:
         return "SHADOW_COOLDOWN"
     if decision == "SHADOW_PAPER_REJECTED_RISK":
         return "SHADOW_RISK"
+    if decision == "SHADOW_PAPER_REJECTED_CONTEXT":
+        return "SHADOW_CONTEXT"
     return "SHADOW"
 
 

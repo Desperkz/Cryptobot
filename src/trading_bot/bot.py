@@ -576,6 +576,20 @@ class TradingBot:
             "SHADOW_SIGNAL",
             "candidate strategy shadow-only; no order attempted",
         )
+        context_rejection = _shadow_candidate_context_rejection_reason(shadow_signal)
+        if context_rejection:
+            logger.info(
+                "Shadow paper context rejected for %s %s: %s",
+                _signal_strategy(shadow_signal),
+                shadow_signal.symbol,
+                context_rejection,
+            )
+            await self._record_ml_feature_snapshot(
+                shadow_signal,
+                "SHADOW_PAPER_REJECTED_CONTEXT",
+                context_rejection,
+            )
+            return
         await self._open_shadow_paper_trade(shadow_signal, filters)
 
     async def _open_shadow_paper_trade(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
@@ -1086,6 +1100,43 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
     "liquidation_cascade",
     "adverse_liquidity_nearby",
 }
+
+
+def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
+    metadata = signal.metadata or {}
+    payload = metadata.get("order_flow") if isinstance(metadata, dict) else None
+    return payload if isinstance(payload, dict) else {}
+
+
+def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
+    strategy = _signal_strategy(signal)
+    if strategy not in {"LIQUIDITY_SWEEP_REVERSAL", "VWAP_REVERSION_WATCH", "RANGE_GRID"}:
+        return None
+
+    order_flow = _order_flow_metadata(signal)
+    if not order_flow:
+        return None
+
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = Decimal(str(order_flow.get("score") or "0"))
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    if strategy == "LIQUIDITY_SWEEP_REVERSAL":
+        if "adverse_liquidity_nearby" in risk_flags:
+            return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
+        if alignment == "against" or score < Decimal("0.55"):
+            return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
+    elif strategy == "VWAP_REVERSION_WATCH":
+        if risk_flags.intersection({"adverse_liquidity_nearby", "liquidation_cascade"}):
+            flags = ",".join(sorted(risk_flags))
+            return f"VWR-W shadow blocked: dangerous liquidity context ({flags})."
+        if alignment == "against" and score < Decimal("0.45"):
+            return f"VWR-W shadow blocked: order-flow is against reversion with score {score:.2f}."
+    elif strategy == "RANGE_GRID":
+        if alignment == "against":
+            return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
+        if "adverse_liquidity_nearby" in risk_flags and score < Decimal("0.35"):
+            return f"GRID shadow blocked: adverse liquidity near range edge with score {score:.2f}."
+    return None
 
 
 def _mean_reversion_context_rejection_reason(
