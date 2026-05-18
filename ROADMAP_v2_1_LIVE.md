@@ -1,6 +1,6 @@
 # Bot v2.1 Live Readiness Roadmap
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
 Status legend:
 - `[x]` done and locally verified
@@ -220,17 +220,61 @@ Status legend:
 - `[x]` P5-03 Backfill/flag older paper trades as pre-P5 so old ideal fills are not mixed with realistic-fill evidence without warning.
   - Done: API marks trades without `paper_execution_summary` as `pre_p5_ideal_fill=true`.
   - Done: dashboard `Costs` column labels those rows as pre-P5/missing realistic cost detail instead of implying zero costs.
+- `[x]` P5-04 Fix opening-candle high/low ambiguity in paper exits.
+  - Done: `MarketSnapshot` now carries 1m kline open/close timestamps.
+  - Done: if a trade opened after the current kline started, paper exits use a conservative price-only snapshot until the next candle.
+  - Done: regression tests cover fresh opening-candle positions and normal range-based exits after a new candle starts.
+  - Verification: `91 passed`.
+- `[ ]` P5-05 Upgrade backtest and paper fill realism.
+  - Required: use spread-based and randomized slippage, taker fees, signed funding estimate, partial TP, breakeven, trailing, and pessimistic intrabar sequencing consistently in backtests.
+  - Required: run `walkforward.py` across top symbols and multiple market regimes before promoting any strategy.
+- `[ ]` P5-06 Reset evidence gates to post-P5 realistic trades only.
+  - Required: scorecard/live-readiness should clearly separate pre-P5 ideal trades from post-P5 realistic paper/testnet trades.
+  - Required: no live promotion can use pre-P5 trades as proof of edge.
+
+## P6: Production Hardening Addendum
+
+- `[ ]` P6-01 Add max funding impact to risk planning.
+  - Keep existing funding/carry filters, but also cap estimated funding impact per trade as `max_funding_impact_bps`.
+  - Use signed funding estimates where possible instead of always treating funding as a fixed cost.
+- `[ ]` P6-02 Strengthen post-fill live protection checks.
+  - After entry fill, verify protective SL and reduce-only TP ladder are active on Binance.
+  - If verification fails, cancel leftovers and close the position defensively.
+  - Preserve `executedQty`, `cumulativeQuoteQty`, average fill price, and partial-fill state in reconciliation metadata.
+- `[ ]` P6-03 Add restart recovery evidence for active live/testnet trades.
+  - Rebuild managed trade state from DB plus Binance open orders/positions after process restart.
+  - Add testnet proof for entry, SL, TP, cancel, partial fill, and restart recovery before any mainnet unlock.
+- `[ ]` P6-04 Improve portfolio-level risk controls.
+  - Add real-time correlation checks across open positions, not only static correlation groups.
+  - Raise same symbol+strategy cooldown after stop-loss to 180 minutes for testnet/mainnet profiles.
+  - Keep scale-in disabled by default unless a separate evidence gate proves it.
+- `[ ]` P6-05 Add operational watchdogs and incident alerts.
+  - Add systemd watchdog/health timeout for paper monitor and control API.
+  - Add alerting for stale user stream, repeated rate limits, rejected protective orders, drawdown, and funding pressure.
+- `[ ]` P6-06 Strategy promotion and demotion discipline.
+  - `SQUEEZE_BREAKOUT` remains champion, but still needs post-P5 realistic evidence.
+  - `MEAN_REVERSION` stays paper-only until at least 200 closed v2.1 trades plus positive walk-forward.
+  - `TREND_PULLBACK` can be considered for paper only after the shadow promotion gate and human review.
+  - `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION(_WATCH)`, `MOMENTUM_CONTINUATION`, `RANGE_GRID`, and `TREND_FOLLOWING` stay shadow/research until their own net-cost evidence is positive.
+- `[ ]` P6-07 Improve exit architecture.
+  - Treat exchange-side OCO as an OCO-like managed bracket for Binance Futures where native OCO is unavailable or insufficient.
+  - Rework partial TP ladder so trailing has remaining size to manage after TP1/TP2, rather than activating when the position is already fully closed.
+- `[ ]` P6-08 Weekly research report.
+  - Generate weekly ranking, promotion, demotion, and anomaly report from scorecard, shadow-paper, order-flow, and ML snapshots.
+  - ML remains advisory/shadow; enforcement requires a positive walk-forward delta and a substantially larger evidence base.
 
 ## Evidence Required Before MAINNET_LIVE
 
-- `[ ]` At least 500 closed v2.1 paper/testnet trades.
+- `[ ]` At least 500 closed v2.1 post-P5 realistic paper/testnet trades.
 - `[ ]` At least 100 closed paper/testnet trades for every strategy enabled in live.
-- `[ ]` Profit factor >= 1.25.
+- `[ ]` Profit factor >= 1.30.
 - `[ ]` Winrate >= 40%.
-- `[ ]` Positive average R.
+- `[ ]` Average R >= +0.25.
 - `[ ]` Max drawdown better than -10%.
 - `[ ]` v2.1 beats or clearly matches v2.0 on risk-adjusted A/B metrics, not only headline PnL.
 - `[ ]` No enabled live strategy has negative average R or materially worsens portfolio drawdown.
 - `[ ]` Zero duplicate orders/positions.
 - `[ ]` Zero unprotected live/testnet positions after restart.
+- `[ ]` Zero critical technical incidents for 14+ continuous days.
+- `[ ]` P3/P6 testnet lifecycle evidence pack: entry, SL, TP, cancel, partial fill, restart recovery.
 - `[ ]` Human-reviewed `data/production_unlock.json`.

@@ -41,6 +41,8 @@ class MarketSnapshot:
     price: Decimal
     high: Decimal
     low: Decimal
+    candle_open_time: datetime | None = None
+    candle_close_time: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,8 @@ async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketS
         price = Decimal(str(data["price"]))
         high = price
         low = price
+        candle_open_time: datetime | None = None
+        candle_close_time: datetime | None = None
         try:
             candle_resp = await client.get(
                 f"{BASE_URL}/fapi/v1/klines",
@@ -97,11 +101,20 @@ async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketS
             )
             candles = candle_resp.json()
             if candles:
-                high = max(high, Decimal(str(candles[-1][2])))
-                low = min(low, Decimal(str(candles[-1][3])))
+                candle = candles[-1]
+                high = max(high, Decimal(str(candle[2])))
+                low = min(low, Decimal(str(candle[3])))
+                candle_open_time = datetime.fromtimestamp(int(candle[0]) / 1000, tz=timezone.utc)
+                candle_close_time = datetime.fromtimestamp(int(candle[6]) / 1000, tz=timezone.utc)
         except Exception as candle_error:
             logger.debug("Не удалось получить 1m свечу %s: %s", symbol, candle_error)
-        return MarketSnapshot(price=price, high=high, low=low)
+        return MarketSnapshot(
+            price=price,
+            high=high,
+            low=low,
+            candle_open_time=candle_open_time,
+            candle_close_time=candle_close_time,
+        )
     except Exception as e:
         logger.warning("Не удалось получить цену %s: %s", symbol, e)
         return None
@@ -410,6 +423,24 @@ def _next_exit_event(
     return None
 
 
+def _snapshot_for_trade_lifetime(snapshot: MarketSnapshot, opened_at: object) -> MarketSnapshot:
+    opened = _parse_timestamp(opened_at)
+    if opened is None or snapshot.candle_open_time is None:
+        return snapshot
+    if opened <= snapshot.candle_open_time:
+        return snapshot
+
+    # The latest 1m candle range may contain movement that happened before this
+    # trade existed. Until the next candle, fall back to current price only.
+    return MarketSnapshot(
+        price=snapshot.price,
+        high=snapshot.price,
+        low=snapshot.price,
+        candle_open_time=snapshot.candle_open_time,
+        candle_close_time=snapshot.candle_close_time,
+    )
+
+
 def _execution_pnl(
     direction: str,
     entry: Decimal,
@@ -607,6 +638,7 @@ async def check_positions() -> None:
             snapshot = await get_market_snapshot(client, symbol)
             if snapshot is None:
                 continue
+            snapshot = _snapshot_for_trade_lifetime(snapshot, opened_at)
 
             sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
             if trailing_changed:
@@ -694,6 +726,7 @@ async def check_shadow_positions() -> None:
             snapshot = await get_market_snapshot(client, symbol)
             if snapshot is None:
                 continue
+            snapshot = _snapshot_for_trade_lifetime(snapshot, opened_at)
 
             event = _next_exit_event(direction, snapshot, sl, tp, [], set())
             if not event:

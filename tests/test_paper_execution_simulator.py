@@ -64,6 +64,58 @@ def test_next_exit_event_hits_first_unfilled_partial_before_final_take_profit(mo
     assert target["name"] == "TP1"
 
 
+def test_opening_candle_snapshot_uses_price_only_when_trade_opened_after_candle_start() -> None:
+    snapshot = monitor.MarketSnapshot(
+        price=Decimal("108"),
+        high=Decimal("111"),
+        low=Decimal("94"),
+        candle_open_time=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+        candle_close_time=datetime(2026, 5, 18, 0, 0, 59, tzinfo=timezone.utc),
+    )
+
+    adjusted = monitor._snapshot_for_trade_lifetime(
+        snapshot,
+        datetime(2026, 5, 18, 0, 0, 30, tzinfo=timezone.utc),
+    )
+
+    assert adjusted.high == Decimal("108")
+    assert adjusted.low == Decimal("108")
+    assert monitor._next_exit_event(
+        "LONG",
+        adjusted,
+        stop_loss=Decimal("95"),
+        take_profit=Decimal("110"),
+        partial_targets=[],
+        filled_targets=set(),
+    ) is None
+
+
+def test_existing_position_keeps_full_candle_range_after_new_candle_starts() -> None:
+    snapshot = monitor.MarketSnapshot(
+        price=Decimal("108"),
+        high=Decimal("111"),
+        low=Decimal("94"),
+        candle_open_time=datetime(2026, 5, 18, 0, 1, tzinfo=timezone.utc),
+        candle_close_time=datetime(2026, 5, 18, 0, 1, 59, tzinfo=timezone.utc),
+    )
+
+    adjusted = monitor._snapshot_for_trade_lifetime(
+        snapshot,
+        datetime(2026, 5, 18, 0, 0, 30, tzinfo=timezone.utc),
+    )
+
+    assert adjusted.high == Decimal("111")
+    assert adjusted.low == Decimal("94")
+    assert monitor._next_exit_event(
+        "LONG",
+        adjusted,
+        stop_loss=Decimal("95"),
+        take_profit=Decimal("110"),
+        partial_targets=[],
+        filled_targets=set(),
+    ) == ("stop_loss", Decimal("95"), None)
+
+
 def test_breakeven_and_trailing_move_stop_in_profitable_direction(monkeypatch) -> None:
     monkeypatch.setattr(monitor, "BREAKEVEN_OFFSET_BPS", Decimal("2"))
     monkeypatch.setattr(monitor, "TRAILING_CALLBACK_RATE_PCT", Decimal("1"))
