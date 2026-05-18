@@ -101,6 +101,7 @@ class TradingBot:
             training_data_path=config.ml.training_data_path,
             retrain_min_trades=config.ml.retrain_min_trades,
             decision_min_trades=config.ml.decision_min_trades,
+            enforce_decisions=config.ml.enforce_decisions,
         )
         self.universe = MarketUniverseBuilder(config.universe, self.binance, self.coingecko, self.market_data)
         self.telegram = TelegramNotifier(
@@ -393,6 +394,12 @@ class TradingBot:
                 await self._record_ml_feature_snapshot(signal, "REJECTED_ENTRY_FILTER", filter_decision.reason)
                 continue
             prediction = self.ml_filter.predict(signal)
+            if self.config.ml.enabled:
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "ML_SHADOW_SCORE",
+                    f"{prediction.reason} (conf={prediction.confidence})",
+                )
             if not prediction.allow_trade:
                 logger.info("ML rejected %s: %s confidence=%s", signal.symbol, prediction.reason, prediction.confidence)
                 try:

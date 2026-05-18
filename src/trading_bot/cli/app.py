@@ -242,6 +242,7 @@ def ml_retrain() -> None:
                 training_data_path=config.ml.training_data_path,
                 retrain_min_trades=config.ml.retrain_min_trades,
                 decision_min_trades=config.ml.decision_min_trades,
+                enforce_decisions=config.ml.enforce_decisions,
             )
             result = model.retrain_from_trades(trades)
             if not result.get("trained"):
@@ -276,6 +277,7 @@ def ml_validate(
                 training_data_path=config.ml.training_data_path,
                 retrain_min_trades=config.ml.retrain_min_trades,
                 decision_min_trades=config.ml.decision_min_trades,
+                enforce_decisions=config.ml.enforce_decisions,
             )
             report = model.walk_forward_validate_from_trades(
                 trades,

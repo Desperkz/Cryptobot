@@ -258,6 +258,7 @@ ml:
   training_data_path: "data/ml/features.jsonl"
   retrain_min_trades: 500
   decision_min_trades: 500
+  enforce_decisions: false
   validation_report_path: "data/ml/walk_forward_report.json"
   require_validation_improvement_for_live: true
   min_validation_trade_coverage: 0.50

@@ -185,9 +185,11 @@ Status legend:
   - Done: added advisory-only `/strategy-allocator`; it ranks paper/shadow strategies by expectancy, PF, drawdown, and maturity.
   - Done: dashboard scorecard now shows `Alloc` with suggested risk weight and action (`CORE`, `CHAMP`, `PROMOTE`, `WATCH`, `RESEARCH`, `REDUCE`).
   - Done: allocator is explicitly `ADVISORY_ONLY`; it does not switch strategy modes or enable live execution.
-- `[ ]` P4-09 ML meta-filter remains shadow-only.
+- `[x]` P4-09 ML meta-filter remains shadow-only.
   - ML should filter/score strategy signals, not invent trades.
   - Mainnet ML requires at least 500 validated rows and a walk-forward report not worse than baseline.
+  - Done: ML now records `ML_SHADOW_SCORE` when enabled but does not block trades unless `ml.enforce_decisions=true`.
+  - Done: `ml.enforce_decisions` defaults to `false`; a validated model can advise before it is allowed to reject entries.
 - `[x]` P4-10 Shadow promotion assistant.
   - Done: scorecard now includes `Shadow Gate` with `TESTING`, `WATCH`, and `PROMOTE`.
   - Done: dashboard shows a `PROMOTE TO PAPER` badge when a shadow strategy passes the shadow-paper gate.

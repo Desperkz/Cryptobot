@@ -326,6 +326,7 @@ class MLConfig:
     training_data_path: str = "data/ml/features.jsonl"
     retrain_min_trades: int = 500
     decision_min_trades: int = 500
+    enforce_decisions: bool = False
     validation_report_path: str = "data/ml/walk_forward_report.json"
     require_validation_improvement_for_live: bool = True
     min_validation_trade_coverage: Decimal = Decimal("0.50")
@@ -940,6 +941,7 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             training_data_path=str(raw["ml"].get("training_data_path", "data/ml/features.jsonl")),
             retrain_min_trades=int(raw["ml"].get("retrain_min_trades", 500)),
             decision_min_trades=int(raw["ml"].get("decision_min_trades", 500)),
+            enforce_decisions=bool(raw["ml"].get("enforce_decisions", False)),
             validation_report_path=str(raw["ml"].get("validation_report_path", "data/ml/walk_forward_report.json")),
             require_validation_improvement_for_live=bool(
                 raw["ml"].get("require_validation_improvement_for_live", True)

@@ -1319,6 +1319,13 @@ def api_config() -> dict:
             "strategy_modes": cfg.strategy.mode_summary(),
             "execution_strategies": cfg.strategy.execution_strategies(cfg.mode),
             "shadow_strategies": cfg.strategy.shadow_strategies(),
+            "ml": {
+                "enabled": cfg.ml.enabled,
+                "enforce_decisions": cfg.ml.enforce_decisions,
+                "decision_min_trades": cfg.ml.decision_min_trades,
+                "model_path": cfg.ml.model_path,
+                "validation_report_path": cfg.ml.validation_report_path,
+            },
         }
     except Exception as e:
         return {"initial_equity_usdt": 1000.0, "error": str(e)}

@@ -55,6 +55,48 @@ def test_enabled_ml_stays_shadow_until_minimum_model_rows(tmp_path) -> None:
     assert "shadow mode" in prediction.reason
 
 
+def test_validated_ml_model_scores_shadow_only_unless_enforced(tmp_path) -> None:
+    model_path = tmp_path / "model.json"
+    model_path.write_text(
+        json.dumps({"rows": 600, "weights": {"bias": -10.0, "confidence": -10.0}}),
+        encoding="utf-8",
+    )
+    model = MLSignalFilter(
+        model_path=str(model_path),
+        min_confidence=Decimal("0.60"),
+        enabled=True,
+        decision_min_trades=500,
+        enforce_decisions=False,
+    )
+
+    prediction = model.predict(_signal())
+
+    assert prediction.allow_trade is True
+    assert prediction.confidence < Decimal("0.60")
+    assert "shadow-only score" in prediction.reason
+    assert "would reject" in prediction.reason
+
+
+def test_validated_ml_model_can_only_block_when_enforcement_enabled(tmp_path) -> None:
+    model_path = tmp_path / "model.json"
+    model_path.write_text(
+        json.dumps({"rows": 600, "weights": {"bias": -10.0, "confidence": -10.0}}),
+        encoding="utf-8",
+    )
+    model = MLSignalFilter(
+        model_path=str(model_path),
+        min_confidence=Decimal("0.60"),
+        enabled=True,
+        decision_min_trades=500,
+        enforce_decisions=True,
+    )
+
+    prediction = model.predict(_signal())
+
+    assert prediction.allow_trade is False
+    assert prediction.confidence < Decimal("0.60")
+
+
 def test_walk_forward_validation_reports_baseline_and_filtered_metrics(tmp_path) -> None:
     model = MLSignalFilter(
         model_path=str(tmp_path / "model.json"),

@@ -33,6 +33,7 @@ class MLSignalFilter:
         training_data_path: str = "data/ml/features.jsonl",
         retrain_min_trades: int = 200,
         decision_min_trades: int = 500,
+        enforce_decisions: bool = False,
     ) -> None:
         self.model_path = Path(model_path)
         self.training_data_path = Path(training_data_path)
@@ -40,6 +41,7 @@ class MLSignalFilter:
         self.enabled = enabled
         self.retrain_min_trades = retrain_min_trades
         self.decision_min_trades = decision_min_trades
+        self.enforce_decisions = enforce_decisions
         self.weights, self.model_rows = self._load_model()
         self.model_loaded = bool(self.weights)
 
@@ -56,6 +58,13 @@ class MLSignalFilter:
             )
         features = _features(signal)
         confidence = Decimal(str(_score_features(self.weights, features)))
+        if not self.enforce_decisions:
+            verdict = "would allow" if confidence >= self.min_confidence else "would reject"
+            return MLPrediction(
+                True,
+                confidence,
+                f"ML shadow-only score: {verdict}; enforcement disabled",
+            )
         return MLPrediction(confidence >= self.min_confidence, confidence, "offline model score")
 
     def record_training_example(self, signal: Signal, realized_r: Decimal) -> None:
