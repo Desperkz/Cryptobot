@@ -15,9 +15,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from trading_bot.backtester.realistic_execution import (
+    ExecutionAssumptions,
+    estimate_quantity_for_risk,
+    simulate_realistic_trade,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +226,13 @@ def mr_signal(
 
 RISK_PCT    = Decimal("0.02")
 MIN_RR      = Decimal("1.0")
-FEE_SLIP    = Decimal("10") / Decimal("10000")   # ~10bps всё вместе
+EXECUTION_ASSUMPTIONS = ExecutionAssumptions(
+    taker_fee_bps=Decimal("4"),
+    base_slippage_bps=Decimal("5"),
+    random_slippage_bps=Decimal("1"),
+    funding_bps_per_8h=Decimal("1"),
+    pessimistic_intrabar=True,
+)
 
 
 def calc_risk(sig: Signal, equity: Decimal):
@@ -225,13 +240,14 @@ def calc_risk(sig: Signal, equity: Decimal):
     reward_dist = abs(sig.tp - sig.entry)
     if stop_dist <= 0 or reward_dist / stop_dist < MIN_RR:
         return None
-    cost = stop_dist + sig.entry * FEE_SLIP
     budget = equity * RISK_PCT
-    qty = budget / cost
+    qty = estimate_quantity_for_risk(sig.entry, sig.stop, budget, EXECUTION_ASSUMPTIONS)
+    if qty <= 0:
+        return None
     notional = qty * sig.entry
     if notional < Decimal("5"):
         return None
-    return budget, qty * reward_dist  # risk_amount, reward_amount
+    return budget, qty  # risk_amount, quantity
 
 
 # ---------------------------------------------------------------------------
@@ -324,27 +340,23 @@ def backtest_symbol(
         if pos is None:
             i += 1
             continue
-        risk_amount, reward_amount = pos
+        risk_amount, quantity = pos
 
         # Симуляция — ищем выход на 15m свечах (до 120 свечей = 30 часов)
-        pnl = Decimal("0")
-        exit_i = i + 1
-        for j, future in enumerate(c15m[i + 1: min(i + 121, len(c15m))]):
-            exit_i = i + 1 + j
-            if signal.direction == "LONG":
-                if future.low <= signal.stop:
-                    pnl = -risk_amount
-                    break
-                if future.high >= signal.tp:
-                    pnl = reward_amount
-                    break
-            else:
-                if future.high >= signal.stop:
-                    pnl = -risk_amount
-                    break
-                if future.low <= signal.tp:
-                    pnl = reward_amount
-                    break
+        execution = simulate_realistic_trade(
+            c15m,
+            i,
+            signal.direction,
+            signal.entry,
+            signal.stop,
+            signal.tp,
+            quantity,
+            risk_amount,
+            max_bars=120,
+            assumptions=EXECUTION_ASSUMPTIONS,
+        )
+        pnl = execution.net_pnl
+        exit_i = execution.exit_index
 
         equity += pnl
         equity_curve.append(float(equity))

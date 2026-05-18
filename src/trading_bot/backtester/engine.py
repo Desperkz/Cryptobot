@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from trading_bot.models import Candle, Direction, Signal, SymbolFilters, TradingStyle, to_decimal
+from trading_bot.backtester.realistic_execution import ExecutionAssumptions, simulate_realistic_trade
 from trading_bot.risk_manager import RiskManager
 
 
@@ -24,6 +25,7 @@ class BacktestEngine:
     def __init__(self, risk_manager: RiskManager, filters: SymbolFilters) -> None:
         self.risk_manager = risk_manager
         self.filters = filters
+        self.execution_assumptions = ExecutionAssumptions()
 
     def run_naive_signal_backtest(
         self,
@@ -80,24 +82,30 @@ class BacktestEngine:
                 index += 1
                 continue
 
-            pnl = Decimal("0")
-            exit_index = index + 1
-            for future in candles[index + 1 : min(index + 40, len(candles))]:
-                exit_index += 1
-                if direction == Direction.LONG:
-                    if future.low <= plan.stop_loss:
-                        pnl = -plan.risk_amount
-                        break
-                    if future.high >= plan.take_profit:
-                        pnl = plan.reward_amount
-                        break
-                else:
-                    if future.high >= plan.stop_loss:
-                        pnl = -plan.risk_amount
-                        break
-                    if future.low <= plan.take_profit:
-                        pnl = plan.reward_amount
-                        break
+            execution = simulate_realistic_trade(
+                candles,
+                index,
+                direction,
+                plan.entry_price,
+                plan.stop_loss,
+                plan.take_profit,
+                plan.quantity,
+                plan.risk_amount,
+                max_bars=40,
+                assumptions=self.execution_assumptions,
+                partial_targets=[
+                    {
+                        "name": target.name,
+                        "price": target.price,
+                        "quantity": target.quantity,
+                        "move_stop_to_breakeven": target.move_stop_to_breakeven,
+                        "activate_trailing": target.activate_trailing,
+                    }
+                    for target in plan.partial_take_profits
+                ] or None,
+            )
+            pnl = execution.net_pnl
+            exit_index = execution.exit_index
             balance += pnl
             if pnl > 0:
                 wins += 1
@@ -134,4 +142,3 @@ def load_candles_csv(path: str | Path) -> list[Candle]:
                 )
             )
     return candles
-

@@ -225,9 +225,13 @@ Status legend:
   - Done: if a trade opened after the current kline started, paper exits use a conservative price-only snapshot until the next candle.
   - Done: regression tests cover fresh opening-candle positions and normal range-based exits after a new candle starts.
   - Verification: `91 passed`.
-- `[ ]` P5-05 Upgrade backtest and paper fill realism.
-  - Required: use spread-based and randomized slippage, taker fees, signed funding estimate, partial TP, breakeven, trailing, and pessimistic intrabar sequencing consistently in backtests.
-  - Required: run `walkforward.py` across top symbols and multiple market regimes before promoting any strategy.
+- `[x]` P5-05 Upgrade backtest and paper fill realism.
+  - Done: added a shared `trading_bot.backtester.realistic_execution` simulator for backtests.
+  - Done: simulator applies taker fees, base + spread/random slippage, signed funding estimate when available, partial TP, breakeven, trailing, timeout close, and pessimistic intrabar sequencing.
+  - Done: `BacktestEngine`, `backtest_real.py`, `backtest_multi.py`, and `walkforward.py` now use the shared realistic execution model instead of raw `+reward/-risk` exits.
+  - Done: regression tests cover costs, pessimistic intrabar, signed funding credit/debit, and cost-aware quantity sizing.
+  - Verification: `95 passed`.
+  - Next evidence task: run `walkforward.py` across top symbols and multiple market regimes before promoting any strategy.
 - `[ ]` P5-06 Reset evidence gates to post-P5 realistic trades only.
   - Required: scorecard/live-readiness should clearly separate pre-P5 ideal trades from post-P5 realistic paper/testnet trades.
   - Required: no live promotion can use pre-P5 trades as proof of edge.

@@ -36,6 +36,11 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from trading_bot.config import load_config
+from trading_bot.backtester.realistic_execution import (
+    ExecutionAssumptions,
+    estimate_quantity_for_risk,
+    simulate_realistic_trade,
+)
 from trading_bot.market_regime_detector import MarketRegimeDetector
 from trading_bot.models import Candle, Direction, MarketMetrics, to_decimal
 from trading_bot.strategy_engine.edge import EdgeAnalyzer
@@ -82,39 +87,43 @@ def load_csv(path: Path) -> list[Candle]:
 # ---------------------------------------------------------------------------
 # Симуляция сделки по свечам
 # ---------------------------------------------------------------------------
+EXECUTION_ASSUMPTIONS = ExecutionAssumptions(
+    taker_fee_bps=Decimal("4"),
+    base_slippage_bps=Decimal("5"),
+    random_slippage_bps=Decimal("1"),
+    funding_bps_per_8h=Decimal("1"),
+    pessimistic_intrabar=True,
+)
+
+
 def simulate_trade(
     candles_1h: list[Candle],
     entry_idx: int,
     direction: Direction,
+    entry_price: Decimal,
     stop_loss: Decimal,
     take_profit: Decimal,
     risk_amount: Decimal,
-    reward_amount: Decimal,
+    quantity: Decimal,
     max_bars: int = 72,
 ) -> Decimal:
     """
-    Симулирует сделку — проверяет прохождение цены по закрытым барам.
-    Возвращает реализованный PnL.
+    Симулирует сделку по единой realistic-модели: partial TP, fees,
+    slippage, funding, breakeven/trailing и pessimistic intrabar.
     """
-    for i in range(entry_idx + 1, min(entry_idx + max_bars, len(candles_1h))):
-        c = candles_1h[i]
-        if direction == Direction.LONG:
-            if c.low <= stop_loss:
-                return -risk_amount
-            if c.high >= take_profit:
-                return reward_amount
-        else:
-            if c.high >= stop_loss:
-                return -risk_amount
-            if c.low <= take_profit:
-                return reward_amount
-    # Не достигли ни стопа ни тейка — закрываем по последней цене
-    last_close = candles_1h[min(entry_idx + max_bars, len(candles_1h) - 1)].close
-    entry = candles_1h[entry_idx].close
-    if direction == Direction.LONG:
-        return (last_close - entry) / (entry - stop_loss) * risk_amount
-    else:
-        return (entry - last_close) / (stop_loss - entry) * risk_amount
+    execution = simulate_realistic_trade(
+        candles_1h,
+        entry_idx,
+        direction,
+        entry_price,
+        stop_loss,
+        take_profit,
+        quantity,
+        risk_amount,
+        max_bars=max_bars,
+        assumptions=EXECUTION_ASSUMPTIONS,
+    )
+    return execution.net_pnl
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +191,6 @@ def test_window(
 ) -> list[WindowResult]:
     results = []
     risk_pct = Decimal("0.02")
-    rr_mr = Decimal("1.1")
-    rr_sqz = Decimal("2.0")
 
     for strategy_name, strategy in [("MEAN_REVERSION", mr_strategy), ("SQUEEZE_BREAKOUT", sqz_strategy)]:
         trades = wins = 0
@@ -227,11 +234,6 @@ def test_window(
                 continue
             risk_amount = balance * risk_pct
 
-            if strategy_name == "MEAN_REVERSION":
-                reward_amount = risk_amount * rr_mr
-            else:
-                reward_amount = risk_amount * rr_sqz
-
             # Симулируем сделку
             # Для MR пересчитываем стоп по 1h ATR (15m стоп слишком узкий)
             # SQZ уже использует 1h ATR
@@ -261,14 +263,23 @@ def test_window(
             sim_candles = candles_1h
             sim_idx = i
             sim_max_bars = 72
+            quantity = estimate_quantity_for_risk(
+                signal.entry_price,
+                signal.stop_loss,
+                risk_amount,
+                EXECUTION_ASSUMPTIONS,
+            )
+            if quantity <= 0:
+                continue
             trade_pnl = simulate_trade(
                 candles_1h=sim_candles,
                 entry_idx=sim_idx,
                 direction=signal.direction,
+                entry_price=signal.entry_price,
                 stop_loss=signal.stop_loss,
                 take_profit=signal.take_profit,
                 risk_amount=risk_amount,
-                reward_amount=reward_amount,
+                quantity=quantity,
                 max_bars=sim_max_bars,
             )
 
