@@ -408,6 +408,10 @@ canvas { width: 100%; display: block; }
 .sc-of-good { color: var(--green); border-color: rgba(0,255,157,0.45); }
 .sc-of-neutral { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
 .sc-of-bad { color: var(--red); border-color: rgba(255,59,92,0.45); }
+.sc-alloc-core { color: var(--green); border-color: rgba(0,255,157,0.45); }
+.sc-alloc-watch { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
+.sc-alloc-research { color: var(--text-muted); border-color: rgba(120,150,180,0.35); }
+.sc-alloc-risk { color: var(--red); border-color: rgba(255,59,92,0.45); }
 .sc-inline-pnl { font-weight: 700; }
 .sc-muted .pnl-pos, .sc-muted .pnl-neg { font-size: inherit; }
 .sc-muted { color: var(--text-muted); font-size: 11px; }
@@ -750,12 +754,12 @@ canvas { width: 100%; display: block; }
         <thead>
           <tr>
             <th>Стратегия</th><th>Gate</th><th>Shadow Gate</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
-            <th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
+            <th>Alloc</th><th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
             <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
           </tr>
         </thead>
         <tbody id="sc-body">
-          <tr><td colspan="16" class="empty">Нет данных по стратегиям</td></tr>
+          <tr><td colspan="17" class="empty">Нет данных по стратегиям</td></tr>
         </tbody>
       </table>
     </div>
@@ -1023,13 +1027,18 @@ async function loadStats() {
 
 async function loadStrategyScorecard() {
   try {
-    const data = await get('/strategy-scorecard');
+    const [data, allocData] = await Promise.all([
+      get('/strategy-scorecard'),
+      get('/strategy-allocator').catch(() => ({allocations: []}))
+    ]);
     const rows = data.strategies || [];
     const summary = data.summary || {};
+    const allocations = {};
+    (allocData.allocations || []).forEach(a => { allocations[a.strategy] = a; });
     document.getElementById('sc-total').textContent =
       `${summary.strategies || 0} стратегий · ${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
     if (!rows.length) {
-      setHTML('sc-body', '<tr><td colspan="16" class="empty">Нет данных по стратегиям</td></tr>');
+      setHTML('sc-body', '<tr><td colspan="17" class="empty">Нет данных по стратегиям</td></tr>');
       return;
     }
     setHTML('sc-body', rows.map(s => {
@@ -1076,6 +1085,29 @@ async function loadStrategyScorecard() {
       const ofHtml = orderFlow.total
         ? `<span class="sc-tag ${ofCls}" title="${esc(ofTitle)}">OF ${fmt(orderFlow.avg_score || 0, 2)}</span>`
         : '<span class="sc-muted">—</span>';
+      const alloc = allocations[s.strategy] || {};
+      const allocAction = alloc.action || 'COLLECT';
+      const allocTitle = [
+        `mode: ${allocData.mode || 'ADVISORY_ONLY'}`,
+        `action: ${allocAction}`,
+        `score: ${fmt(alloc.score || 0, 2)}`,
+        `cap: ${fmt(alloc.max_risk_weight_pct || 0, 1)}%`,
+        ...(alloc.reasons || [])
+      ].join('\n');
+      const allocCls =
+        ['CORE_CANDIDATE','CHAMPION_WATCH','PROMOTION_REVIEW'].includes(allocAction) ? 'sc-alloc-core' :
+        ['KEEP_LIMITED_PAPER','WATCH_SHADOW','COLLECT_PAPER_EVIDENCE','COLLECT_SHADOW_EVIDENCE'].includes(allocAction) ? 'sc-alloc-watch' :
+        ['REDUCE_OR_DISABLE_REVIEW'].includes(allocAction) ? 'sc-alloc-risk' : 'sc-alloc-research';
+      const allocLabel = allocAction.replace('CORE_CANDIDATE','CORE')
+        .replace('CHAMPION_WATCH','CHAMP')
+        .replace('KEEP_LIMITED_PAPER','LIMIT')
+        .replace('PROMOTION_REVIEW','PROMOTE')
+        .replace('WATCH_SHADOW','WATCH')
+        .replace('COLLECT_SHADOW_EVIDENCE','TEST')
+        .replace('COLLECT_PAPER_EVIDENCE','TEST')
+        .replace('REDUCE_OR_DISABLE_REVIEW','REDUCE')
+        .replace('RESEARCH_ONLY','RESEARCH');
+      const allocHtml = `<span class="sc-tag ${allocCls}" title="${esc(allocTitle)}">${esc(allocLabel)} ${fmt(alloc.suggested_risk_weight_pct || 0,1)}%</span>`;
       const clusters = s.trade_clusters || {};
       const clusterCount = s.closed_trade_clusters ?? clusters.closed_clusters ?? s.closed_trades ?? 0;
       const clusterHint = clusters.multi_trade_clusters
@@ -1106,6 +1138,7 @@ async function loadStrategyScorecard() {
         <td>${clusterCount}${clusterHint ? `<div class="sc-muted">${esc(clusterHint)}</div>` : ''}</td>
         <td class="${s.open_trades ? 'status-open' : 'status-closed'}">${s.open_trades || 0}</td>
         <td class="${pnlCls(pnl)}">${pnl>=0?'+':''}${fmt(pnl)}</td>
+        <td>${allocHtml}</td>
         <td>${fmt(displayWinrate,1)}%</td>
         <td>${fmt(displayPf,2)}</td>
         <td class="${pnlCls(displayAvgR)}">${displayAvgR>=0?'+':''}${fmt(displayAvgR,3)}</td>

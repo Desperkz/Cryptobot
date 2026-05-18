@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from bot_control_v2 import build_strategy_scorecard, evaluate_shadow_gate
+from bot_control_v2 import build_strategy_allocator, build_strategy_scorecard, evaluate_shadow_gate
 
 
 def trade(
@@ -513,3 +513,67 @@ def test_strategy_gate_allows_promotion_when_thresholds_pass() -> None:
     assert row["gate"]["status"] == "PROMOTABLE"
     assert row["gate"]["promotion_allowed"] is True
     assert row["gate"]["failed_checks"] == []
+
+
+def test_strategy_allocator_is_advisory_and_ranks_positive_evidence() -> None:
+    scorecard = {
+        "generated_at": "2026-05-18T00:00:00+00:00",
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "strategy_mode": "paper",
+                "closed_trade_clusters": 8,
+                "closed_trades": 8,
+                "cluster_winrate": 75,
+                "cluster_profit_factor": 2.4,
+                "cluster_avg_r": 0.32,
+                "max_drawdown": -2.0,
+                "total_pnl": 80,
+                "open_trades": 0,
+                "open_risk": 0,
+                "gate": {"status": "WATCH"},
+            },
+            {
+                "strategy": "VWAP_REVERSION_WATCH",
+                "strategy_mode": "shadow",
+                "shadow_gate": {"status": "PROMOTE", "promotion_candidate": True},
+                "shadow_paper": {
+                    "closed_trades": 35,
+                    "open_trades": 0,
+                    "winrate": 57,
+                    "profit_factor": 1.6,
+                    "avg_r": 0.18,
+                    "max_drawdown": -4,
+                    "total_pnl": 42,
+                    "open_risk": 0,
+                },
+            },
+            {
+                "strategy": "RANGE_GRID",
+                "strategy_mode": "shadow",
+                "shadow_gate": {"status": "WATCH", "promotion_candidate": False},
+                "shadow_paper": {
+                    "closed_trades": 20,
+                    "open_trades": 0,
+                    "winrate": 55,
+                    "profit_factor": 0.8,
+                    "avg_r": -0.05,
+                    "max_drawdown": -8,
+                    "total_pnl": -12,
+                    "open_risk": 0,
+                },
+            },
+        ],
+    }
+
+    allocator = build_strategy_allocator(scorecard)
+    by_name = {row["strategy"]: row for row in allocator["allocations"]}
+
+    assert allocator["mode"] == "ADVISORY_ONLY"
+    assert allocator["auto_switching_enabled"] is False
+    assert by_name["SQUEEZE_BREAKOUT"]["action"] == "CHAMPION_WATCH"
+    assert by_name["SQUEEZE_BREAKOUT"]["suggested_risk_weight_pct"] > 0
+    assert by_name["VWAP_REVERSION_WATCH"]["action"] == "PROMOTION_REVIEW"
+    assert by_name["VWAP_REVERSION_WATCH"]["max_risk_weight_pct"] == 10
+    assert by_name["RANGE_GRID"]["action"] == "RESEARCH_ONLY"
+    assert by_name["RANGE_GRID"]["suggested_risk_weight_pct"] == 0

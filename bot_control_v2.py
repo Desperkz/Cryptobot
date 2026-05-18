@@ -51,6 +51,13 @@ SHADOW_GATE_DEFAULTS = {
     "min_avg_r": float(os.getenv("SHADOW_GATE_MIN_AVG_R", "0")),
     "max_drawdown": float(os.getenv("SHADOW_GATE_MAX_DRAWDOWN", "-10")),
 }
+ALLOCATOR_WEIGHT_CAPS = {
+    "CORE_CANDIDATE": float(os.getenv("ALLOCATOR_CORE_CAP_PCT", "60")),
+    "CHAMPION_WATCH": float(os.getenv("ALLOCATOR_CHAMPION_WATCH_CAP_PCT", "45")),
+    "KEEP_LIMITED_PAPER": float(os.getenv("ALLOCATOR_LIMITED_PAPER_CAP_PCT", "30")),
+    "PROMOTION_REVIEW": float(os.getenv("ALLOCATOR_PROMOTION_REVIEW_CAP_PCT", "10")),
+    "WATCH_SHADOW": float(os.getenv("ALLOCATOR_SHADOW_WATCH_CAP_PCT", "5")),
+}
 
 
 class ControlHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -926,6 +933,146 @@ def build_strategy_scorecard(
     }
 
 
+def _allocator_score(metrics: dict[str, Any]) -> float:
+    closed = _to_float(metrics.get("closed_trades"), 0.0) or 0.0
+    winrate = _to_float(metrics.get("winrate"), 0.0) or 0.0
+    profit_factor = _to_float(metrics.get("profit_factor"), 0.0) or 0.0
+    avg_r = _to_float(metrics.get("avg_r"), 0.0) or 0.0
+    max_drawdown = _to_float(metrics.get("max_drawdown"), 0.0) or 0.0
+
+    maturity = min(closed / 100.0, 1.0) * 20.0
+    expectancy = max(min(avg_r / 0.50, 1.0), -1.0) * 30.0
+    pf_score = max(min((profit_factor - 1.0) / 1.0, 1.0), 0.0) * 25.0
+    win_score = max(min((winrate - 40.0) / 25.0, 1.0), 0.0) * 15.0
+    drawdown_score = 10.0 if max_drawdown >= -5.0 else 5.0 if max_drawdown >= -10.0 else -15.0
+    return round(max(maturity + expectancy + pf_score + win_score + drawdown_score, 0.0), 2)
+
+
+def _allocator_metrics_for_row(row: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    mode = str(row.get("strategy_mode") or "").lower()
+    if mode in {"shadow", "disabled"}:
+        shadow = row.get("shadow_paper") or {}
+        return "shadow_paper", {
+            "closed_trades": shadow.get("closed_trades", 0),
+            "open_trades": shadow.get("open_trades", 0),
+            "winrate": shadow.get("winrate", 0),
+            "profit_factor": shadow.get("profit_factor", 0),
+            "avg_r": shadow.get("avg_r", 0),
+            "max_drawdown": shadow.get("max_drawdown", 0),
+            "total_pnl": shadow.get("total_pnl", 0),
+            "open_risk": shadow.get("open_risk", 0),
+        }
+    return "paper", {
+        "closed_trades": row.get("closed_trade_clusters") or row.get("closed_trades", 0),
+        "open_trades": row.get("open_trades", 0),
+        "winrate": row.get("cluster_winrate") if row.get("cluster_winrate") is not None else row.get("winrate", 0),
+        "profit_factor": row.get("cluster_profit_factor") or row.get("profit_factor", 0),
+        "avg_r": row.get("cluster_avg_r") if row.get("cluster_avg_r") is not None else row.get("avg_r", 0),
+        "max_drawdown": row.get("max_drawdown", 0),
+        "total_pnl": row.get("total_pnl", 0),
+        "open_risk": row.get("open_risk", 0),
+    }
+
+
+def build_strategy_allocator(scorecard: dict[str, Any]) -> dict[str, Any]:
+    allocations: list[dict[str, Any]] = []
+    for row in scorecard.get("strategies", []):
+        strategy = str(row.get("strategy") or "UNKNOWN")
+        mode = str(row.get("strategy_mode") or "unknown").lower()
+        source, metrics = _allocator_metrics_for_row(row)
+        closed = int(_to_float(metrics.get("closed_trades"), 0.0) or 0)
+        avg_r = _to_float(metrics.get("avg_r"), 0.0) or 0.0
+        profit_factor = _to_float(metrics.get("profit_factor"), 0.0) or 0.0
+        total_pnl = _to_float(metrics.get("total_pnl"), 0.0) or 0.0
+        gate = row.get("gate") or {}
+        shadow_gate = row.get("shadow_gate") or {}
+        score = _allocator_score(metrics)
+        reasons: list[str] = []
+
+        if mode in {"paper", "live"}:
+            if closed <= 0:
+                action = "COLLECT_PAPER_EVIDENCE"
+                cap = 0.0
+                reasons.append("no closed paper clusters yet")
+            elif avg_r <= 0 or profit_factor < 1:
+                action = "REDUCE_OR_DISABLE_REVIEW"
+                cap = 0.0
+                reasons.append("paper expectancy is not positive")
+            elif gate.get("status") == "PROMOTABLE":
+                action = "CORE_CANDIDATE"
+                cap = ALLOCATOR_WEIGHT_CAPS["CORE_CANDIDATE"]
+                reasons.append("paper gate is promotable")
+            elif strategy == "SQUEEZE_BREAKOUT":
+                action = "CHAMPION_WATCH"
+                cap = ALLOCATOR_WEIGHT_CAPS["CHAMPION_WATCH"]
+                reasons.append("champion strategy remains positive but still collecting evidence")
+            else:
+                action = "KEEP_LIMITED_PAPER"
+                cap = ALLOCATOR_WEIGHT_CAPS["KEEP_LIMITED_PAPER"]
+                reasons.append("paper strategy is positive but not fully gated")
+        elif mode == "shadow":
+            if shadow_gate.get("promotion_candidate"):
+                action = "PROMOTION_REVIEW"
+                cap = ALLOCATOR_WEIGHT_CAPS["PROMOTION_REVIEW"]
+                reasons.append("shadow gate suggests human promotion review")
+            elif closed <= 0:
+                action = "COLLECT_SHADOW_EVIDENCE"
+                cap = 0.0
+                reasons.append("no closed shadow-paper trades yet")
+            elif avg_r <= 0 or profit_factor < 1 or total_pnl <= 0:
+                action = "RESEARCH_ONLY"
+                cap = 0.0
+                reasons.append("shadow expectancy is not positive")
+            else:
+                action = "WATCH_SHADOW"
+                cap = ALLOCATOR_WEIGHT_CAPS["WATCH_SHADOW"]
+                reasons.append("positive shadow evidence, not enough for promotion")
+        else:
+            action = "DISABLED"
+            cap = 0.0
+            reasons.append("strategy is not active")
+
+        suggested = round(min(cap, cap * score / 100.0), 2) if cap > 0 and score > 0 else 0.0
+        allocations.append({
+            "strategy": strategy,
+            "mode": mode,
+            "evidence_source": source,
+            "action": action,
+            "score": score,
+            "suggested_risk_weight_pct": suggested,
+            "max_risk_weight_pct": cap,
+            "closed_trades_or_clusters": closed,
+            "avg_r": round(avg_r, 3),
+            "profit_factor": round(profit_factor, 3),
+            "winrate": round(_to_float(metrics.get("winrate"), 0.0) or 0.0, 2),
+            "max_drawdown": round(_to_float(metrics.get("max_drawdown"), 0.0) or 0.0, 2),
+            "total_pnl": round(total_pnl, 4),
+            "open_trades": int(_to_float(metrics.get("open_trades"), 0.0) or 0),
+            "open_risk": round(_to_float(metrics.get("open_risk"), 0.0) or 0.0, 4),
+            "reasons": reasons,
+        })
+
+    allocations.sort(
+        key=lambda item: (
+            item["suggested_risk_weight_pct"],
+            item["score"],
+            item["total_pnl"],
+        ),
+        reverse=True,
+    )
+    return {
+        "generated_at": scorecard.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+        "mode": "ADVISORY_ONLY",
+        "auto_switching_enabled": False,
+        "summary": {
+            "strategies": len(allocations),
+            "positive_weight_count": sum(1 for item in allocations if item["suggested_risk_weight_pct"] > 0),
+            "suggested_total_risk_weight_pct": round(sum(item["suggested_risk_weight_pct"] for item in allocations), 2),
+        },
+        "allocations": allocations,
+    }
+
+
 def service_status(name: str) -> str:
     result = subprocess.run(["systemctl", "is-active", name], capture_output=True, text=True)
     return result.stdout.strip() or "unknown"
@@ -1462,6 +1609,13 @@ def api_strategy_promotions() -> dict:
     }
 
 
+def api_strategy_allocator() -> dict:
+    scorecard = api_strategy_scorecard()
+    if "error" in scorecard:
+        return scorecard
+    return build_strategy_allocator(scorecard)
+
+
 ROUTES = {
     "/status": api_status,
     "/positions": api_positions,
@@ -1476,6 +1630,7 @@ ROUTES = {
     "/rejection-stats": api_rejection_stats,
     "/strategy-scorecard": api_strategy_scorecard,
     "/strategy-promotions": api_strategy_promotions,
+    "/strategy-allocator": api_strategy_allocator,
     "/order-flow": api_order_flow,
 }
 

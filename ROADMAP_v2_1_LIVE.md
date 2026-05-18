@@ -179,9 +179,12 @@ Status legend:
   - Done: annotations score flow alignment, liquidation-zone proximity, taker flow, order-book imbalance, aggressive delta, open-interest expansion/drop, funding crowding, sweep, absorption, and structure-break context.
   - Done: `/order-flow` exposes recent annotations and aggregate alignment/risk summaries.
   - Done: `/strategy-scorecard` and dashboard rows include compact order-flow evidence without changing execution allow-lists.
-- `[ ]` P4-08 Strategy selector / portfolio allocator.
+- `[x]` P4-08 Strategy selector / portfolio allocator.
   - Once several candidates have evidence, allocate by recent strategy expectancy, drawdown, and market regime.
   - Until then, no automatic switching in live.
+  - Done: added advisory-only `/strategy-allocator`; it ranks paper/shadow strategies by expectancy, PF, drawdown, and maturity.
+  - Done: dashboard scorecard now shows `Alloc` with suggested risk weight and action (`CORE`, `CHAMP`, `PROMOTE`, `WATCH`, `RESEARCH`, `REDUCE`).
+  - Done: allocator is explicitly `ADVISORY_ONLY`; it does not switch strategy modes or enable live execution.
 - `[ ]` P4-09 ML meta-filter remains shadow-only.
   - ML should filter/score strategy signals, not invent trades.
   - Mainnet ML requires at least 500 validated rows and a walk-forward report not worse than baseline.
