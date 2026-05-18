@@ -90,6 +90,64 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
     assert stats["by_type"]["SHADOW_CONTEXT"] == 1
 
 
+def test_trades_endpoint_exposes_execution_cost_breakdown(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "bot.sqlite3"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT,
+            symbol TEXT,
+            direction TEXT,
+            entry_price TEXT,
+            stop_loss TEXT,
+            take_profit TEXT,
+            quantity TEXT,
+            status TEXT,
+            realized_pnl TEXT,
+            r_multiple TEXT,
+            metadata TEXT
+        );
+        """
+    )
+    metadata = {
+        "paper_execution_summary": {
+            "gross_pnl": "12.5",
+            "fees": "0.8",
+            "slippage_cost": "0.4",
+            "funding_cost": "0.1",
+            "net_pnl": "11.2",
+        }
+    }
+    conn.execute(
+        """
+        INSERT INTO trades(symbol, direction, entry_price, stop_loss, take_profit, quantity, status,
+                           realized_pnl, r_multiple, metadata, created_at)
+        VALUES('BTCUSDT', 'LONG', '100', '95', '110', '1', 'CLOSED', '11.2', '1.12', ?, '2026-05-18 10:00:00')
+        """,
+        (json.dumps(metadata),),
+    )
+    conn.execute(
+        """
+        INSERT INTO trades(symbol, direction, entry_price, stop_loss, take_profit, quantity, status,
+                           realized_pnl, r_multiple, metadata, created_at)
+        VALUES('ETHUSDT', 'SHORT', '100', '105', '90', '1', 'CLOSED', '8', '0.8', '{}', '2026-05-18 10:05:00')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(bot_control_v2, "DB_PATH", str(db_path))
+
+    rows = bot_control_v2.api_trades()
+
+    assert rows[1]["execution_costs"]["realistic_execution"] is True
+    assert rows[1]["execution_costs"]["total_cost"] == 1.3
+    assert rows[0]["execution_costs"]["realistic_execution"] is False
+    assert rows[0]["execution_costs"]["pre_p5_ideal_fill"] is True
+
+
 def test_order_flow_endpoint_summarizes_recent_annotations(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "bot.sqlite3"
     conn = sqlite3.connect(db_path)

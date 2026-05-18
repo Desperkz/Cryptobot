@@ -514,6 +514,20 @@ class TradingBot:
                             }
                             for target in plan.partial_take_profits
                         ],
+                        "protection": (
+                            {
+                                "initial_stop": str(plan.protection.initial_stop),
+                                "breakeven_price": str(plan.protection.breakeven_price),
+                                "breakeven_after_target": plan.protection.breakeven_after_target,
+                                "trailing_enabled": plan.protection.trailing_enabled,
+                                "trailing_activation_reward_risk": str(
+                                    plan.protection.trailing_activation_reward_risk
+                                ),
+                                "trailing_callback_rate_pct": str(plan.protection.trailing_callback_rate_pct),
+                            }
+                            if plan.protection
+                            else None
+                        ),
                         "filled_partial_targets": [],
                     },
                 )

@@ -207,6 +207,20 @@ Status legend:
   - Done: `/rejection-stats` counts `SHADOW_RISK` and `SHADOW_COOLDOWN` so the journal no longer looks silent while shadow strategies are being filtered.
   - Done: dashboard badges/styles now render shadow rejection types separately.
 
+## P5: Realistic Paper Execution
+
+- `[x]` P5-01 Simulate net paper execution before using scorecard evidence.
+  - Done: paper exits now store gross PnL, taker fees, slippage cost, funding cost, held hours, and net PnL in trade metadata.
+  - Done: paper monitor uses 1m high/low snapshots and pessimistically chooses SL first when SL and TP/partial TP are both inside the same candle.
+  - Done: paper partial TP can move SL to the same breakeven price used by the risk plan; paper trailing updates the stop when trailing is active.
+  - Done: regular paper and shadow-paper closures use net PnL, so scorecard/equity evidence is no longer based on ideal fills.
+- `[x]` P5-02 Add dashboard cost breakdown for recent closed trades.
+  - Done: `/trades` and `/shadow-trades` return `execution_costs` with gross PnL, fees, slippage, funding, total cost, and net PnL.
+  - Done: dashboard trade history shows a compact `Costs` column with tooltip breakdown; pre-P5 trades are explicitly shown as missing cost detail.
+- `[x]` P5-03 Backfill/flag older paper trades as pre-P5 so old ideal fills are not mixed with realistic-fill evidence without warning.
+  - Done: API marks trades without `paper_execution_summary` as `pre_p5_ideal_fill=true`.
+  - Done: dashboard `Costs` column labels those rows as pre-P5/missing realistic cost detail instead of implying zero costs.
+
 ## Evidence Required Before MAINNET_LIVE
 
 - `[ ]` At least 500 closed v2.1 paper/testnet trades.

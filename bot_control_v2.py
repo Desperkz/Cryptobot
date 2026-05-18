@@ -158,6 +158,42 @@ def _parse_metadata(raw: Any) -> dict[str, Any]:
         return {}
 
 
+def _execution_cost_summary(metadata: Any) -> dict[str, Any]:
+    data = _parse_metadata(metadata)
+    summary = data.get("paper_execution_summary")
+    is_pre_p5 = not bool(summary)
+    if not isinstance(summary, dict):
+        return {
+            "realistic_execution": False,
+            "pre_p5_ideal_fill": is_pre_p5,
+            "gross_pnl": 0.0,
+            "fees": 0.0,
+            "slippage_cost": 0.0,
+            "funding_cost": 0.0,
+            "total_cost": 0.0,
+            "net_pnl": 0.0,
+        }
+    fees = _to_float(summary.get("fees"), 0.0) or 0.0
+    slippage = _to_float(summary.get("slippage_cost"), 0.0) or 0.0
+    funding = _to_float(summary.get("funding_cost"), 0.0) or 0.0
+    return {
+        "realistic_execution": True,
+        "pre_p5_ideal_fill": False,
+        "gross_pnl": round(_to_float(summary.get("gross_pnl"), 0.0) or 0.0, 4),
+        "fees": round(fees, 4),
+        "slippage_cost": round(slippage, 4),
+        "funding_cost": round(funding, 4),
+        "total_cost": round(fees + slippage + funding, 4),
+        "net_pnl": round(_to_float(summary.get("net_pnl"), 0.0) or 0.0, 4),
+    }
+
+
+def _with_execution_costs(row: Any) -> dict[str, Any]:
+    item = dict(row)
+    item["execution_costs"] = _execution_cost_summary(item.get("metadata"))
+    return item
+
+
 def _truthy_metadata(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -1238,7 +1274,7 @@ def api_trades(limit: int = 50) -> list[dict]:
             FROM trades ORDER BY id DESC LIMIT ?
         """, (limit,)).fetchall()
         conn.close()
-        return [dict(r) for r in rows]
+        return [_with_execution_costs(r) for r in rows]
     except Exception as e:
         return [{"error": str(e)}]
 
@@ -1255,7 +1291,7 @@ def api_shadow_trades(limit: int = 100) -> list[dict]:
             ORDER BY id DESC LIMIT ?
         """, (limit,)).fetchall()
         conn.close()
-        return [dict(r) for r in rows]
+        return [_with_execution_costs(r) for r in rows]
     except Exception as e:
         return [{"error": str(e)}]
 

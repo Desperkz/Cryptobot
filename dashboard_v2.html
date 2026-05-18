@@ -733,11 +733,11 @@ canvas { width: 100%; display: block; }
           <tr>
             <th>#</th><th>Символ</th><th>Напр.</th><th>Стратегия</th>
             <th>Вход</th><th>Стоп</th><th>Тейк</th><th>Статус</th>
-            <th>PnL</th><th>R</th><th>Дата</th>
+            <th>PnL</th><th>Costs</th><th>R</th><th>Дата</th>
           </tr>
         </thead>
         <tbody id="tr-body">
-          <tr><td colspan="11" class="empty">Нет сделок</td></tr>
+          <tr><td colspan="12" class="empty">Нет сделок</td></tr>
         </tbody>
       </table>
     </div>
@@ -1371,7 +1371,7 @@ async function loadTrades() {
   try {
     const data = await get('/trades');
     if (!data.length) {
-      setHTML('tr-body', '<tr><td colspan="11" class="empty">Нет сделок</td></tr>'); return;
+      setHTML('tr-body', '<tr><td colspan="12" class="empty">Нет сделок</td></tr>'); return;
     }
     setHTML('tr-body', data.slice(0,30).map(t => {
       let strat='—';
@@ -1379,6 +1379,16 @@ async function loadTrades() {
       const pnl = parseFloat(t.realized_pnl||0);
       const r = parseFloat(t.r_multiple||0);
       const closed = t.status==='CLOSED';
+      const costs = t.execution_costs || {};
+      const hasRealisticCosts = !!costs.realistic_execution;
+      const totalCost = parseFloat(costs.total_cost || 0);
+      const gross = parseFloat(costs.gross_pnl || 0);
+      const costsTitle = hasRealisticCosts
+        ? `Gross ${signedFmt(gross)} · fee ${fmt(costs.fees || 0,4)} · slip ${fmt(costs.slippage_cost || 0,4)} · funding ${fmt(costs.funding_cost || 0,4)}`
+        : 'pre-P5 / нет разбивки издержек';
+      const costsHtml = closed && hasRealisticCosts
+        ? `<span class="sc-tag pnl-neg" title="${esc(costsTitle)}">-${fmt(totalCost,2)}</span>`
+        : `<span class="sc-tag" title="${esc(costsTitle)}">—</span>`;
       return `<tr>
         <td style="color:var(--text-muted)">${t.id}</td>
         <td class="sym">${esc(t.symbol)}</td>
@@ -1389,6 +1399,7 @@ async function loadTrades() {
         <td style="color:var(--green-dim)">$${fmt(t.take_profit,4)}</td>
         <td class="${closed?'status-closed':'status-open'}">${closed?'ЗАКРЫТА':'ОТКРЫТА'}</td>
         <td class="${pnlCls(pnl)}">${closed?(pnl>=0?'+':'')+fmt(pnl):'—'}</td>
+        <td>${costsHtml}</td>
         <td class="${pnlCls(r)}">${closed?(r>=0?'+':'')+fmt(r,2)+'R':'—'}</td>
         <td style="color:var(--text-muted);font-size:11px">${fmtLocalTime(t.created_at)}</td>
       </tr>`;
