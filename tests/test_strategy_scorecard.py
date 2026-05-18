@@ -20,8 +20,17 @@ def trade(
     entry_price: str = "100",
     risk_amount: str = "10",
     nested_metadata: bool = True,
+    realistic_execution: bool = True,
 ) -> dict[str, str | int | None]:
     metadata = {"signal_metadata": {"strategy": strategy}} if nested_metadata else {"strategy": strategy}
+    if realistic_execution:
+        metadata["paper_execution_summary"] = {
+            "gross_pnl": pnl,
+            "fees": "0",
+            "slippage_cost": "0",
+            "funding_cost": "0",
+            "net_pnl": pnl,
+        }
     return {
         "id": trade_id,
         "created_at": created_at,
@@ -229,6 +238,56 @@ def test_scorecard_keeps_rejection_only_candidate_strategies() -> None:
     assert row["rejections_by_type"] == {"RISK": 1}
     assert row["gate"]["status"] == "WATCH"
     assert "no_closed_trades" in row["gate"]["failed_checks"]
+
+
+def test_strategy_gate_ignores_pre_p5_ideal_fills_for_promotion() -> None:
+    scorecard = build_strategy_scorecard(
+        [
+            trade(
+                trade_id=1,
+                strategy="SQUEEZE_BREAKOUT",
+                pnl="20",
+                r_value="1.0",
+                created_at="2026-01-01 00:00:00",
+                closed_at="2026-01-01 01:00:00",
+                realistic_execution=False,
+            ),
+            trade(
+                trade_id=2,
+                strategy="SQUEEZE_BREAKOUT",
+                pnl="10",
+                r_value="0.5",
+                created_at="2026-01-03 00:00:00",
+                closed_at="2026-01-03 01:00:00",
+                realistic_execution=False,
+            ),
+        ],
+        [],
+        initial_equity=1000,
+        gate_thresholds={
+            "min_closed_trades": 1,
+            "min_sample_age_days": 0,
+            "min_closed_trades_per_day": 0,
+            "min_winrate": 1,
+            "min_profit_factor": 0,
+            "min_avg_r": -1,
+            "max_drawdown": -100,
+        },
+    )
+
+    row = by_strategy(scorecard, "SQUEEZE_BREAKOUT")
+
+    assert row["closed_trades"] == 2
+    assert row["pre_p5_closed_trades"] == 2
+    assert row["post_p5_evidence"]["closed_trades"] == 0
+    assert row["post_p5_evidence"]["closed_trade_clusters"] == 0
+    assert row["gate"]["evidence_scope"] == "post_p5_realistic_execution"
+    assert row["gate"]["status"] == "WATCH"
+    assert row["gate"]["promotion_allowed"] is False
+    assert "min_closed_trades" in row["gate"]["failed_checks"]
+    assert "no_closed_trades" in row["gate"]["failed_checks"]
+    assert scorecard["summary"]["post_p5_closed_trades"] == 0
+    assert scorecard["summary"]["pre_p5_closed_trades"] == 2
 
 
 def test_scorecard_includes_configured_shadow_strategies_before_first_signal() -> None:

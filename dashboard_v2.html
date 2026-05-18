@@ -408,6 +408,8 @@ canvas { width: 100%; display: block; }
 .sc-of-good { color: var(--green); border-color: rgba(0,255,157,0.45); }
 .sc-of-neutral { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
 .sc-of-bad { color: var(--red); border-color: rgba(255,59,92,0.45); }
+.sc-p5-ready { color: var(--green); border-color: rgba(0,255,157,0.45); }
+.sc-p5-pending { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
 .sc-alloc-core { color: var(--green); border-color: rgba(0,255,157,0.45); }
 .sc-alloc-watch { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
 .sc-alloc-research { color: var(--text-muted); border-color: rgba(120,150,180,0.35); }
@@ -753,13 +755,13 @@ canvas { width: 100%; display: block; }
       <table class="tr-table sc-table">
         <thead>
           <tr>
-            <th>Стратегия</th><th>Gate</th><th>Shadow Gate</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
+            <th>Стратегия</th><th>Gate</th><th>P5</th><th>Shadow Gate</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
             <th>Alloc</th><th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
             <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
           </tr>
         </thead>
         <tbody id="sc-body">
-          <tr><td colspan="17" class="empty">Нет данных по стратегиям</td></tr>
+          <tr><td colspan="18" class="empty">Нет данных по стратегиям</td></tr>
         </tbody>
       </table>
     </div>
@@ -1036,9 +1038,9 @@ async function loadStrategyScorecard() {
     const allocations = {};
     (allocData.allocations || []).forEach(a => { allocations[a.strategy] = a; });
     document.getElementById('sc-total').textContent =
-      `${summary.strategies || 0} стратегий · ${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
+      `${summary.strategies || 0} стратегий · P5 ${summary.post_p5_closed_trade_clusters || 0}/${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
     if (!rows.length) {
-      setHTML('sc-body', '<tr><td colspan="17" class="empty">Нет данных по стратегиям</td></tr>');
+      setHTML('sc-body', '<tr><td colspan="18" class="empty">Нет данных по стратегиям</td></tr>');
       return;
     }
     setHTML('sc-body', rows.map(s => {
@@ -1051,6 +1053,18 @@ async function loadStrategyScorecard() {
         .filter(c => !c.passed)
         .map(c => `${c.id}: ${c.value} / ${c.threshold}`)
         .join('\n') || 'all checks passed';
+      const p5 = s.post_p5_evidence || {};
+      const p5Closed = Number(p5.closed_trade_clusters ?? p5.closed_trades ?? s.post_p5_closed_trade_clusters ?? 0);
+      const totalClusters = Number(s.closed_trade_clusters ?? s.closed_trades ?? 0);
+      const preP5Closed = Number(p5.pre_p5_closed_trades ?? s.pre_p5_closed_trades ?? 0);
+      const p5Title = [
+        `scope: ${p5.scope || gate.evidence_scope || 'post_p5_realistic_execution'}`,
+        `post-P5 clusters: ${p5Closed}`,
+        `post-P5 trades: ${p5.closed_trades ?? s.post_p5_closed_trades ?? 0}`,
+        `pre-P5 trades: ${preP5Closed}`,
+        `post-P5 pnl: ${signedFmt(p5.realized_pnl ?? s.post_p5_realized_pnl ?? 0)}`,
+      ].join('\n');
+      const p5Html = `<span class="sc-tag ${p5Closed > 0 ? 'sc-p5-ready' : 'sc-p5-pending'}" title="${esc(p5Title)}">P5 ${p5Closed}/${totalClusters}</span>`;
       const mode = s.strategy_mode && s.strategy_mode !== 'unknown' ? String(s.strategy_mode).toUpperCase() : '';
       const shadow = s.shadow_signals ? `SH ${s.shadow_signals}` : '';
       const sp = s.shadow_paper || {};
@@ -1132,6 +1146,7 @@ async function loadStrategyScorecard() {
       return `<tr>
         <td class="sym">${esc(stratName(s.strategy))}${modeLine ? `<div class="sc-muted">${modeLine}</div>` : ''}</td>
         <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
+        <td>${p5Html}</td>
         <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
         <td>${ofHtml}</td>
         <td>${s.closed_trades || 0}</td>

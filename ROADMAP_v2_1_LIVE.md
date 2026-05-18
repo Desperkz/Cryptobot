@@ -232,9 +232,11 @@ Status legend:
   - Done: regression tests cover costs, pessimistic intrabar, signed funding credit/debit, and cost-aware quantity sizing.
   - Verification: `95 passed`.
   - Next evidence task: run `walkforward.py` across top symbols and multiple market regimes before promoting any strategy.
-- `[ ]` P5-06 Reset evidence gates to post-P5 realistic trades only.
-  - Required: scorecard/live-readiness should clearly separate pre-P5 ideal trades from post-P5 realistic paper/testnet trades.
-  - Required: no live promotion can use pre-P5 trades as proof of edge.
+- `[x]` P5-06 Reset evidence gates to post-P5 realistic trades only.
+  - Done: `/strategy-scorecard` now exposes `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades`, and post-P5 realistic PnL separately from historical totals.
+  - Done: strategy Gate and paper allocator use only post-P5 realistic execution evidence, so pre-P5 ideal fills stay visible but cannot unlock promotion/live-readiness.
+  - Done: dashboard scorecard shows a compact `P5` evidence badge with post-P5 clusters versus total historical clusters.
+  - Verification: `96 passed`.
 
 ## P6: Production Hardening Addendum
 

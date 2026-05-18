@@ -188,6 +188,10 @@ def _execution_cost_summary(metadata: Any) -> dict[str, Any]:
     }
 
 
+def _is_realistic_execution_trade(row: Any) -> bool:
+    return bool(_execution_cost_summary(_row_get(row, "metadata", {})).get("realistic_execution"))
+
+
 def _with_execution_costs(row: Any) -> dict[str, Any]:
     item = dict(row)
     item["execution_costs"] = _execution_cost_summary(item.get("metadata"))
@@ -572,6 +576,7 @@ def build_strategy_scorecard(
     def bucket(strategy: str) -> dict[str, Any]:
         return buckets.setdefault(strategy, {
             "closed": [],
+            "post_p5_closed": [],
             "open": [],
             "shadow_closed": [],
             "shadow_open": [],
@@ -603,6 +608,8 @@ def build_strategy_scorecard(
         status = str(_row_get(trade, "status", "") or "").upper()
         if status == "CLOSED":
             bucket(strategy)["closed"].append(trade)
+            if _is_realistic_execution_trade(trade):
+                bucket(strategy)["post_p5_closed"].append(trade)
         elif status in OPEN_TRADE_STATUSES:
             bucket(strategy)["open"].append(trade)
 
@@ -693,9 +700,13 @@ def build_strategy_scorecard(
         "strategies": 0,
         "closed_trades": 0,
         "closed_trade_clusters": 0,
+        "post_p5_closed_trades": 0,
+        "post_p5_closed_trade_clusters": 0,
+        "pre_p5_closed_trades": 0,
         "open_trades": 0,
         "realized_pnl": 0.0,
         "unrealized_pnl": 0.0,
+        "post_p5_realized_pnl": 0.0,
         "shadow_closed_trades": 0,
         "shadow_open_trades": 0,
         "shadow_realized_pnl": 0.0,
@@ -705,20 +716,33 @@ def build_strategy_scorecard(
 
     for strategy, item in buckets.items():
         closed = item["closed"]
+        post_p5_closed = item["post_p5_closed"]
         open_trades = item["open"]
         shadow_closed = item["shadow_closed"]
         shadow_open = item["shadow_open"]
         pnl_values = [_to_float(_row_get(t, "realized_pnl"), 0.0) or 0.0 for t in closed]
         r_values = [_to_float(_row_get(t, "r_multiple"), 0.0) or 0.0 for t in closed]
+        post_p5_pnl_values = [_to_float(_row_get(t, "realized_pnl"), 0.0) or 0.0 for t in post_p5_closed]
+        post_p5_r_values = [_to_float(_row_get(t, "r_multiple"), 0.0) or 0.0 for t in post_p5_closed]
         shadow_pnl_values = [_to_float(_row_get(t, "realized_pnl"), 0.0) or 0.0 for t in shadow_closed]
         shadow_r_values = [_to_float(_row_get(t, "r_multiple"), 0.0) or 0.0 for t in shadow_closed]
         gross_profit = sum(v for v in pnl_values if v > 0)
         gross_loss = abs(sum(v for v in pnl_values if v < 0))
         closed_count = len(closed)
+        post_p5_closed_count = len(post_p5_closed)
+        pre_p5_closed_count = max(closed_count - post_p5_closed_count, 0)
         wins = sum(1 for v in pnl_values if v > 0)
         losses = sum(1 for v in pnl_values if v < 0)
         realized_pnl = sum(pnl_values)
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else gross_profit
+        post_p5_wins = sum(1 for v in post_p5_pnl_values if v > 0)
+        post_p5_losses = sum(1 for v in post_p5_pnl_values if v < 0)
+        post_p5_realized_pnl = sum(post_p5_pnl_values)
+        post_p5_gross_profit = sum(v for v in post_p5_pnl_values if v > 0)
+        post_p5_gross_loss = abs(sum(v for v in post_p5_pnl_values if v < 0))
+        post_p5_profit_factor = (
+            post_p5_gross_profit / post_p5_gross_loss if post_p5_gross_loss > 0 else post_p5_gross_profit
+        )
         shadow_closed_count = len(shadow_closed)
         shadow_wins = sum(1 for v in shadow_pnl_values if v > 0)
         shadow_losses = sum(1 for v in shadow_pnl_values if v < 0)
@@ -729,8 +753,10 @@ def build_strategy_scorecard(
             shadow_gross_profit / shadow_gross_loss if shadow_gross_loss > 0 else shadow_gross_profit
         )
         max_dd_pct, max_dd_usdt = _max_drawdown(closed, initial_equity)
+        post_p5_max_dd_pct, post_p5_max_dd_usdt = _max_drawdown(post_p5_closed, initial_equity)
         shadow_max_dd_pct, shadow_max_dd_usdt = _max_drawdown(shadow_closed, initial_equity)
         clusters = _cluster_metrics(closed, SCORECARD_CLUSTER_WINDOW_MINUTES)
+        post_p5_clusters = _cluster_metrics(post_p5_closed, SCORECARD_CLUSTER_WINDOW_MINUTES)
 
         dates = [
             dt for dt in (
@@ -747,6 +773,24 @@ def build_strategy_scorecard(
         sample_age_days = 0.0
         if first_dt and last_dt:
             sample_age_days = max(0.0, (last_dt - first_dt).total_seconds() / 86400)
+        post_p5_dates = [
+            dt for dt in (
+                _parse_datetime(_row_get(t, "closed_at") or _row_get(t, "created_at"))
+                for t in post_p5_closed
+            )
+            if dt is not None
+        ]
+        post_p5_first_dt = min(post_p5_dates) if post_p5_dates else None
+        post_p5_last_dt = max(post_p5_dates) if post_p5_dates else None
+        post_p5_span_days = 0.0
+        if post_p5_first_dt and post_p5_last_dt:
+            post_p5_span_days = max(1.0, (post_p5_last_dt - post_p5_first_dt).total_seconds() / 86400)
+        post_p5_sample_age_days = 0.0
+        if post_p5_first_dt and post_p5_last_dt:
+            post_p5_sample_age_days = max(
+                0.0,
+                (post_p5_last_dt - post_p5_first_dt).total_seconds() / 86400,
+            )
         shadow_dates = [
             dt for dt in (
                 _parse_datetime(_row_get(t, "closed_at") or _row_get(t, "created_at"))
@@ -898,6 +942,55 @@ def build_strategy_scorecard(
             },
             "shadow_paper": shadow_metrics,
             "shadow_gate": shadow_gate,
+            "post_p5_evidence": {
+                "scope": "post_p5_realistic_execution",
+                "closed_trades": post_p5_closed_count,
+                "closed_trade_clusters": post_p5_clusters["closed_clusters"],
+                "pre_p5_closed_trades": pre_p5_closed_count,
+                "wins": post_p5_wins,
+                "losses": post_p5_losses,
+                "winrate": round(post_p5_wins / post_p5_closed_count * 100, 1) if post_p5_closed_count else 0,
+                "cluster_wins": post_p5_clusters["wins"],
+                "cluster_losses": post_p5_clusters["losses"],
+                "cluster_winrate": post_p5_clusters["winrate"],
+                "gross_profit": round(post_p5_gross_profit, 4),
+                "gross_loss": round(post_p5_gross_loss, 4),
+                "profit_factor": round(post_p5_profit_factor, 2),
+                "cluster_profit_factor": post_p5_clusters["profit_factor"],
+                "realized_pnl": round(post_p5_realized_pnl, 4),
+                "avg_r": round(sum(post_p5_r_values) / post_p5_closed_count, 3) if post_p5_closed_count else 0,
+                "cluster_avg_r": post_p5_clusters["avg_r"],
+                "max_drawdown": post_p5_max_dd_pct,
+                "max_drawdown_usdt": post_p5_max_dd_usdt,
+                "sample_age_days": round(post_p5_sample_age_days, 2),
+                "calendar_span_days": round(post_p5_span_days, 2),
+                "closed_trades_per_day": round(post_p5_closed_count / post_p5_span_days, 2)
+                if post_p5_span_days
+                else 0,
+                "closed_trade_clusters_per_day": round(
+                    post_p5_clusters["closed_clusters"] / post_p5_span_days,
+                    2,
+                )
+                if post_p5_span_days
+                else 0,
+                "first_trade_at": _fmt_dt(post_p5_first_dt),
+                "last_trade_at": _fmt_dt(post_p5_last_dt),
+                "trade_clusters": {
+                    "window_minutes": SCORECARD_CLUSTER_WINDOW_MINUTES,
+                    "closed_clusters": post_p5_clusters["closed_clusters"],
+                    "largest_size": post_p5_clusters["largest_size"],
+                    "multi_trade_clusters": post_p5_clusters["multi_trade_clusters"],
+                    "wins": post_p5_clusters["wins"],
+                    "losses": post_p5_clusters["losses"],
+                    "winrate": post_p5_clusters["winrate"],
+                    "profit_factor": post_p5_clusters["profit_factor"],
+                    "avg_r": post_p5_clusters["avg_r"],
+                },
+            },
+            "post_p5_closed_trades": post_p5_closed_count,
+            "post_p5_closed_trade_clusters": post_p5_clusters["closed_clusters"],
+            "post_p5_realized_pnl": round(post_p5_realized_pnl, 4),
+            "pre_p5_closed_trades": pre_p5_closed_count,
             "wins": wins,
             "losses": losses,
             "winrate": round(wins / closed_count * 100, 1) if closed_count else 0,
@@ -940,13 +1033,44 @@ def build_strategy_scorecard(
             "by_direction": _finalize_breakdown(by_direction),
             "open_positions": open_positions,
         }
-        row["gate"] = evaluate_strategy_gate(row, gate_thresholds)
+        post_p5_evidence = row["post_p5_evidence"]
+        gate_metrics = {
+            **row,
+            "closed_trades": post_p5_evidence["closed_trades"],
+            "closed_trade_clusters": post_p5_evidence["closed_trade_clusters"],
+            "wins": post_p5_evidence["wins"],
+            "losses": post_p5_evidence["losses"],
+            "winrate": post_p5_evidence["winrate"],
+            "cluster_wins": post_p5_evidence["cluster_wins"],
+            "cluster_losses": post_p5_evidence["cluster_losses"],
+            "cluster_winrate": post_p5_evidence["cluster_winrate"],
+            "profit_factor": post_p5_evidence["profit_factor"],
+            "cluster_profit_factor": post_p5_evidence["cluster_profit_factor"],
+            "realized_pnl": post_p5_evidence["realized_pnl"],
+            "avg_r": post_p5_evidence["avg_r"],
+            "cluster_avg_r": post_p5_evidence["cluster_avg_r"],
+            "max_drawdown": post_p5_evidence["max_drawdown"],
+            "max_drawdown_usdt": post_p5_evidence["max_drawdown_usdt"],
+            "sample_age_days": post_p5_evidence["sample_age_days"],
+            "calendar_span_days": post_p5_evidence["calendar_span_days"],
+            "closed_trades_per_day": post_p5_evidence["closed_trades_per_day"],
+            "closed_trade_clusters_per_day": post_p5_evidence["closed_trade_clusters_per_day"],
+        }
+        row["gate"] = evaluate_strategy_gate(gate_metrics, gate_thresholds)
+        row["gate"]["evidence_scope"] = "post_p5_realistic_execution"
+        row["gate"]["post_p5_closed_trades"] = post_p5_closed_count
+        row["gate"]["post_p5_closed_trade_clusters"] = post_p5_clusters["closed_clusters"]
+        row["gate"]["pre_p5_closed_trades"] = pre_p5_closed_count
         strategies.append(row)
         summary["closed_trades"] += closed_count
         summary["closed_trade_clusters"] += clusters["closed_clusters"]
+        summary["post_p5_closed_trades"] += post_p5_closed_count
+        summary["post_p5_closed_trade_clusters"] += post_p5_clusters["closed_clusters"]
+        summary["pre_p5_closed_trades"] += pre_p5_closed_count
         summary["open_trades"] += len(open_trades)
         summary["realized_pnl"] += realized_pnl
         summary["unrealized_pnl"] += unrealized_pnl
+        summary["post_p5_realized_pnl"] += post_p5_realized_pnl
         summary["shadow_closed_trades"] += shadow_closed_count
         summary["shadow_open_trades"] += len(shadow_open)
         summary["shadow_realized_pnl"] += shadow_realized_pnl
@@ -958,6 +1082,7 @@ def build_strategy_scorecard(
     summary["realized_pnl"] = round(summary["realized_pnl"], 4)
     summary["unrealized_pnl"] = round(summary["unrealized_pnl"], 4)
     summary["total_pnl"] = round(summary["realized_pnl"] + summary["unrealized_pnl"], 4)
+    summary["post_p5_realized_pnl"] = round(summary["post_p5_realized_pnl"], 4)
     summary["shadow_realized_pnl"] = round(summary["shadow_realized_pnl"], 4)
     summary["shadow_unrealized_pnl"] = round(summary["shadow_unrealized_pnl"], 4)
     summary["shadow_total_pnl"] = round(summary["shadow_realized_pnl"] + summary["shadow_unrealized_pnl"], 4)
@@ -998,6 +1123,22 @@ def _allocator_metrics_for_row(row: dict[str, Any]) -> tuple[str, dict[str, Any]
             "total_pnl": shadow.get("total_pnl", 0),
             "open_risk": shadow.get("open_risk", 0),
         }
+    post_p5 = row.get("post_p5_evidence") or {}
+    if post_p5:
+        return "post_p5_realistic_execution", {
+            "closed_trades": post_p5.get("closed_trade_clusters") or post_p5.get("closed_trades", 0),
+            "open_trades": row.get("open_trades", 0),
+            "winrate": post_p5.get("cluster_winrate")
+            if post_p5.get("cluster_winrate") is not None
+            else post_p5.get("winrate", 0),
+            "profit_factor": post_p5.get("cluster_profit_factor") or post_p5.get("profit_factor", 0),
+            "avg_r": post_p5.get("cluster_avg_r")
+            if post_p5.get("cluster_avg_r") is not None
+            else post_p5.get("avg_r", 0),
+            "max_drawdown": post_p5.get("max_drawdown", 0),
+            "total_pnl": post_p5.get("realized_pnl", 0),
+            "open_risk": row.get("open_risk", 0),
+        }
     return "paper", {
         "closed_trades": row.get("closed_trade_clusters") or row.get("closed_trades", 0),
         "open_trades": row.get("open_trades", 0),
@@ -1029,7 +1170,7 @@ def build_strategy_allocator(scorecard: dict[str, Any]) -> dict[str, Any]:
             if closed <= 0:
                 action = "COLLECT_PAPER_EVIDENCE"
                 cap = 0.0
-                reasons.append("no closed paper clusters yet")
+                reasons.append("no closed post-P5 realistic paper clusters yet")
             elif avg_r <= 0 or profit_factor < 1:
                 action = "REDUCE_OR_DISABLE_REVIEW"
                 cap = 0.0
