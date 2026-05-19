@@ -1,292 +1,292 @@
-# Bot v2.1 Live Readiness Roadmap
+# Дорожная карта готовности Bot v2.1 к live
 
-Last updated: 2026-05-19
+Обновлено: 2026-05-19
 
-Status legend:
-- `[x]` done and locally verified
-- `[~]` in progress
-- `[ ]` pending
-- `[!]` blocked or requires manual/VPS action
+Легенда статусов:
+- `[x]` выполнено и проверено локально
+- `[~]` в работе
+- `[ ]` ожидает выполнения
+- `[!]` заблокировано или требует ручного действия/VPS
 
-## Policy
+## Политика
 
-- Bot 2.0 stays online while v2.1 is in `PAPER_TRADING`.
-- Before real money, v2.1 must be the only bot allowed to trade on the live account.
-- No `MAINNET_LIVE` deployment is allowed without a fresh paper/testnet evidence pack and a human unlock file.
-- `SQUEEZE_BREAKOUT` is the current champion strategy for v2.1.
-- `MEAN_REVERSION` is a paper candidate because bot 2.0 evidence is strong; it still needs separate v2.1 paper/testnet evidence before any live promotion.
-- All new strategies are candidates only until they pass separate paper/testnet evidence gates.
-- New strategies must run with separate metrics and must not be mixed into live trading simply because they exist in code.
+- Bot 2.0 остается включенным, пока v2.1 работает в `PAPER_TRADING`.
+- До перехода на реальные деньги v2.1 должен быть единственным ботом, которому разрешена торговля на live-аккаунте.
+- Деплой в `MAINNET_LIVE` запрещен без свежего evidence pack из paper/testnet и ручного unlock-файла.
+- `SQUEEZE_BREAKOUT` - текущая champion-стратегия v2.1.
+- `MEAN_REVERSION` - paper-кандидат, потому что у bot 2.0 по ней сильная история; перед live-промоушеном ей все равно нужна отдельная v2.1 paper/testnet-статистика.
+- Все новые стратегии остаются кандидатами, пока не пройдут отдельные paper/testnet evidence-gates.
+- Новые стратегии должны вести отдельные метрики и не должны попадать в live только потому, что они есть в коде.
 
-## P0 Release Gates
+## P0 Релизные блокировки
 
-- `[x]` P0-01 Prevent accidental mainnet start while old bot services are active.
-  - Done: `MAINNET_LIVE` validation now checks systemd and blocks if `trading-bot` or `trading-bot-v2` are active.
-  - Bot 2.0 can still stay online while v2.1 is in `PAPER_TRADING`.
-- `[x]` P0-02 Complete live order lifecycle: idempotent entry, SL, TP ladder, reduce-only exits, partial fills, and defensive cleanup.
-  - Done: live orders now share one `trade_id`; entry, SL, TP, breakeven, trailing, and cleanup orders use unique client order IDs.
-  - Done: order submission now queries Binance by `clientOrderId` after ambiguous Binance errors instead of blindly retrying.
-  - Done: live entry fill quantity no longer treats `origQty` as executed quantity unless the recovered order is explicitly `FILLED`.
-  - Pending verification is tracked under P3 testnet/chaos tests.
-- `[x]` P0-03 Reconcile remote Binance positions/orders with local database on start and during runtime.
-  - Done: live startup now requires a Binance position/order sync before trading can continue.
-  - Done: every live cycle refreshes local positions and `trades` rows from Binance position risk/open orders.
-  - Done: DB rows for live positions absent on Binance are marked `CLOSED`.
-- `[x]` P0-04 Make user data stream a hard live dependency and add REST fallback when stale.
-  - Done: live start already waits for websocket connection before trading.
-  - Done: runtime entry gate now requires connected user stream, while stale event flow triggers REST reconciliation backup.
-  - Done: quiet-but-connected user stream no longer blocks entries solely because no account/order events arrived.
-- `[x]` P0-05 Handle unknown Binance order status without duplicate orders.
-  - Done: order submission recovery queries Binance by `clientOrderId` after ambiguous API errors.
-  - Done: duplicate prevention relies on stable per-order client IDs inside one `trade_id`.
-- `[x]` P0-06 Upgrade emergency stop for live: block entries, cancel open orders, optional reduce-only close.
-  - Done: emergency flag still blocks new cycles/entries.
-  - Done: in live, first emergency detection cancels all open Binance orders.
-  - Done: live position closing is controlled by `safety.emergency_close_positions_in_live` and defaults to `false`.
-- `[x]` P0-07 Add rate-limit/backoff coverage for 429, 418, -1008, timeouts, and 503 edge cases.
-  - Done: 429/418 respect `Retry-After` where provided.
-  - Done: Binance `-1008` overload is treated as retryable with backoff.
-  - Done: 503 unknown order status is surfaced to order recovery, not blindly retried.
-- `[x]` P0-08 Lock down dashboard/control API before live.
-  - Done: public dashboard remains allowed for paper via `BOT_ALLOW_UNSAFE_PUBLIC=1`.
-  - Done: if config mode becomes `MAINNET_LIVE`, public control API refuses to start without `BOT_CONTROL_TOKEN`.
-  - Done: control API now uses a threaded HTTP server with per-connection timeout so slow or malformed public connections cannot freeze the dashboard/API.
+- `[x]` P0-01 Запретить случайный запуск mainnet, пока активны старые сервисы бота.
+  - Готово: валидация `MAINNET_LIVE` теперь проверяет systemd и блокирует запуск, если активны `trading-bot` или `trading-bot-v2`.
+  - Bot 2.0 может оставаться включенным, пока v2.1 работает в `PAPER_TRADING`.
+- `[x]` P0-02 Завершить live order lifecycle: идемпотентный вход, SL, лестница TP, reduce-only выходы, partial fills и defensive cleanup.
+  - Готово: live-ордера теперь используют общий `trade_id`; entry, SL, TP, breakeven, trailing и cleanup получают уникальные client order IDs.
+  - Готово: после неоднозначных ошибок Binance отправка ордера проверяет состояние через `clientOrderId`, а не делает слепой retry.
+  - Готово: live entry больше не считает `origQty` исполненным количеством, если recovered order явно не имеет статус `FILLED`.
+  - Проверка вынесена в P3 testnet/chaos tests.
+- `[x]` P0-03 Синхронизировать удаленные позиции/ордера Binance с локальной БД при старте и во время работы.
+  - Готово: live-старт теперь требует Binance position/order sync до продолжения торговли.
+  - Готово: каждый live-цикл обновляет локальные позиции и строки `trades` из Binance position risk/open orders.
+  - Готово: DB-строки live-позиций, отсутствующих на Binance, помечаются как `CLOSED`.
+- `[x]` P0-04 Сделать user data stream обязательной live-зависимостью и добавить REST fallback при stale-состоянии.
+  - Готово: live-старт уже ждет websocket-соединение перед торговлей.
+  - Готово: runtime entry gate теперь требует подключенный user stream, а stale event flow запускает REST reconciliation backup.
+  - Готово: тихий, но подключенный user stream больше не блокирует входы только из-за отсутствия account/order events.
+- `[x]` P0-05 Обрабатывать неизвестный статус ордера Binance без дублей.
+  - Готово: recovery после ошибок Binance проверяет ордер через `clientOrderId`.
+  - Готово: защита от дублей опирается на стабильные per-order client IDs внутри одного `trade_id`.
+- `[x]` P0-06 Усилить emergency stop для live: блок входов, отмена открытых ордеров, опциональное reduce-only закрытие.
+  - Готово: emergency-флаг по-прежнему блокирует новые циклы/входы.
+  - Готово: в live первое обнаружение emergency отменяет все открытые Binance orders.
+  - Готово: закрытие live-позиции управляется `safety.emergency_close_positions_in_live` и по умолчанию выключено.
+- `[x]` P0-07 Добавить rate-limit/backoff для 429, 418, -1008, timeouts и 503 edge cases.
+  - Готово: 429/418 учитывают `Retry-After`, если он есть.
+  - Готово: Binance `-1008` overload считается retryable с backoff.
+  - Готово: 503 unknown order status передается в order recovery, а не ретраится вслепую.
+- `[x]` P0-08 Закрыть dashboard/control API перед live.
+  - Готово: публичный dashboard остается разрешенным для paper через `BOT_ALLOW_UNSAFE_PUBLIC=1`.
+  - Готово: если режим конфига становится `MAINNET_LIVE`, публичный control API отказывается стартовать без `BOT_CONTROL_TOKEN`.
+  - Готово: control API теперь использует threaded HTTP server с timeout на соединение, чтобы медленные или кривые публичные подключения не замораживали dashboard/API.
 
-## P1 Strategy And Risk
+## P1 Стратегия и риск
 
-- `[x]` P1-01 Run live only with `SQUEEZE_BREAKOUT` until fresh evidence supports more strategies.
-  - Done: `MAINNET_LIVE` validation rejects strategy lists outside `safety.mainnet_allowed_strategies`.
-  - Done: live allow-list currently contains only `SQUEEZE_BREAKOUT`.
-- `[x]` P1-02 Add live-safe risk profile: 0.25% initial risk, 1-2x leverage, max 1 concurrent position.
-  - Done: `MAINNET_LIVE` validation caps risk per trade, leverage, and concurrent positions.
-  - Done: config live safety profile is set to 0.25% max risk, 2x max leverage, and 1 max live position.
-- `[x]` P1-03 Add per-symbol cooldown after stop-loss.
-  - Done: recently losing symbols are rejected before signal persistence/trade execution.
-  - Done: default symbol loss cooldown is 120 minutes.
-- `[x]` P1-04 Track fees, slippage, and partial TP behavior against paper assumptions.
-  - Done: paper exits now apply taker fee and slippage assumptions to full and partial closes.
-  - Done: partial close metadata stores paper cost assumptions for later review.
-- `[x]` P1-05 Add symbol quality score and block noisy/low-liquidity symbols faster.
-  - Done: universe builder now scores each symbol by spread, top-book liquidity, and 24h quote volume.
-  - Done: symbols below `universe.min_symbol_quality_score` are skipped before strategy scans.
-- `[x]` P1-06 Auto-reduce position size when the margin cap would otherwise reject a valid signal.
-  - Done: risk sizing now caps quantity to remaining `risk.max_margin_usage_pct` capacity instead of rejecting the whole trade.
-  - Done: capped plans carry a `Position size was capped by max margin usage.` warning and still honor min quantity/min notional checks.
-- `[x]` P1-07 Block duplicate re-entries and cluster repeated trade series.
-  - Done: regular entries are blocked when the same symbol+strategy already has an active trade.
-  - Done: same symbol+strategy re-entry has a configurable cooldown, default `45` minutes.
-  - Done: scale-in is an explicit config mode and remains disabled by default; add-ons cannot happen accidentally.
-  - Done: accepted trades now carry cluster metadata, and scorecard gates count repeated series as one closed trade cluster.
+- `[x]` P1-01 В live запускать только `SQUEEZE_BREAKOUT`, пока свежая статистика не подтвердит другие стратегии.
+  - Готово: `MAINNET_LIVE`-валидация отклоняет стратегии вне `safety.mainnet_allowed_strategies`.
+  - Готово: live allow-list сейчас содержит только `SQUEEZE_BREAKOUT`.
+- `[x]` P1-02 Добавить live-safe risk profile: 0.25% начального риска, 1-2x плечо, максимум 1 одновременная позиция.
+  - Готово: `MAINNET_LIVE`-валидация ограничивает риск на сделку, плечо и число одновременных позиций.
+  - Готово: live safety profile в конфиге установлен на 0.25% max risk, 2x max leverage и 1 max live position.
+- `[x]` P1-03 Добавить cooldown по символу после stop-loss.
+  - Готово: недавно убыточные символы отклоняются до сохранения сигнала/исполнения сделки.
+  - Готово: дефолтный symbol loss cooldown - 120 минут.
+- `[x]` P1-04 Учитывать комиссии, slippage и partial TP относительно paper-допущений.
+  - Готово: paper exits теперь применяют taker fee и slippage assumptions к полным и частичным закрытиям.
+  - Готово: metadata partial close хранит paper cost assumptions для последующей проверки.
+- `[x]` P1-05 Добавить symbol quality score и быстрее блокировать шумные/низколиквидные символы.
+  - Готово: universe builder оценивает каждый символ по spread, top-book liquidity и 24h quote volume.
+  - Готово: символы ниже `universe.min_symbol_quality_score` пропускаются до сканирования стратегий.
+- `[x]` P1-06 Автоматически уменьшать размер позиции, если margin cap иначе отклонил бы валидный сигнал.
+  - Готово: risk sizing теперь ограничивает quantity оставшейся емкостью `risk.max_margin_usage_pct`, а не отклоняет всю сделку.
+  - Готово: capped plans получают предупреждение `Position size was capped by max margin usage.` и все равно соблюдают min quantity/min notional.
+- `[x]` P1-07 Блокировать дубли re-entry и кластеризовать повторные серии сделок.
+  - Готово: обычные входы блокируются, если по тому же symbol+strategy уже есть активная сделка.
+  - Готово: повторный вход по тому же symbol+strategy имеет настраиваемый cooldown, дефолт `45` минут.
+  - Готово: scale-in - отдельный режим конфига и по умолчанию выключен; доборы не могут случиться случайно.
+  - Готово: принятые сделки несут cluster metadata, а scorecard gates считают повторные серии как один закрытый trade cluster.
 
-## P2 Machine Learning
+## P2 Машинное обучение
 
-- `[x]` P2-01 Keep ML in shadow mode until at least 500 closed v2.1 trades.
-  - Done: ML still defaults to disabled in config.
-  - Done: even if enabled accidentally, ML decisions fail open until the loaded model has at least `ml.decision_min_trades` rows.
-  - Done: default decision threshold is 500 rows/trades.
-- `[x]` P2-02 Store feature snapshots for every accepted/rejected signal.
-  - Done: new `ml_feature_snapshots` table records signal features, metadata, decision, and reason.
-  - Done: entry-filter, ML, cooldown, risk, order, and accepted-trade outcomes now write snapshots.
-- `[x]` P2-03 Add walk-forward ML validation report.
-  - Done: `trading_bot.cli.app ml-validate` builds an expanding-window walk-forward report from closed trades.
-  - Done: report is written to `data/ml/walk_forward_report.json` and printed as JSON.
-- `[x]` P2-04 Compare baseline strategy vs ML-filtered strategy before enabling ML decisions.
-  - Done: walk-forward report now includes baseline vs ML-filtered total R, average R, trade coverage, and improvement flag.
-  - Done: `MAINNET_LIVE` refuses to start with `ml.enabled=true` unless the validation report shows ML is not worse than baseline and keeps enough trade coverage.
+- `[x]` P2-01 Держать ML в shadow-mode, пока нет минимум 500 закрытых сделок v2.1.
+  - Готово: ML по умолчанию выключен в конфиге.
+  - Готово: даже при случайном включении ML decisions работают fail-open, пока у модели меньше `ml.decision_min_trades` строк.
+  - Готово: дефолтный decision threshold - 500 строк/сделок.
+- `[x]` P2-02 Сохранять feature snapshots для каждого принятого/отклоненного сигнала.
+  - Готово: новая таблица `ml_feature_snapshots` хранит features, metadata, decision и reason.
+  - Готово: entry-filter, ML, cooldown, risk, order и accepted-trade outcomes теперь пишут snapshots.
+- `[x]` P2-03 Добавить walk-forward ML validation report.
+  - Готово: `trading_bot.cli.app ml-validate` строит expanding-window walk-forward report по закрытым сделкам.
+  - Готово: отчет пишется в `data/ml/walk_forward_report.json` и печатается как JSON.
+- `[x]` P2-04 Сравнить baseline strategy с ML-filtered strategy перед включением ML decisions.
+  - Готово: walk-forward report теперь включает baseline vs ML-filtered total R, average R, trade coverage и improvement flag.
+  - Готово: `MAINNET_LIVE` отказывается стартовать с `ml.enabled=true`, если validation report показывает, что ML хуже baseline или сохраняет слишком мало trade coverage.
 
-## P3 Verification
+## P3 Проверка
 
-- `[~]` P3-01 Unit tests for live safety gates, order IDs, duplicate prevention, and ML shadow/validation gates.
-  - Local syntax check passed with `compileall`.
-  - VPS public health check passed after deploy: `/status` active and `/db` HTTP 200.
-  - VPS migration check passed via downloaded DB: `ml_feature_snapshots` table exists.
-  - VPS runtime check passed for one cycle: fresh universe scan logged after deploy.
-  - Data restore corrected: v2.1 historical closed HBAR trade was restored from `/root/bot_v2_1_prev_20260512_113908`.
-  - Pending: deploy paper-monitor fix that preserves original quantity on fully closed partial trades, then repair restored `quantity=0` row.
-  - VPS verification script is prepared in `verify_bot_v2_1.cmd`; awaiting remote pytest result.
-- `[ ]` P3-02 Integration tests on Binance demo/testnet for entry, SL, TP, cancel, and restart recovery.
-- `[ ]` P3-03 Chaos tests: VPS reboot, Binance timeout, network loss, stale user stream.
-- `[ ]` P3-04 14-day paper/testnet soak with zero technical incidents.
-- `[~]` P3-05 A/B benchmark against bot v2.0 before live promotion.
-  - Prepared: `D:\Codex\compare_bot_v2_vs_v2_1.cmd`.
-  - Prepared: `D:\Codex\vps_downloads\compare_bot_v2_vs_v2_1.sh`.
-  - Scope: read-only DB comparison, realized/unrealized PnL, winrate, profit factor, average R, max drawdown, trade frequency, symbol/strategy breakdown, open-position risk.
-  - Purpose: v2.0 remains the champion benchmark; v2.1 must prove better risk-adjusted performance before MAINNET_LIVE.
-  - Quick public API snapshot saved: `D:\Codex\outputs\v2_vs_v2_1_public_compare_report.txt`.
-  - Snapshot result: v2.0 leads realized PnL and trade count; v2.1 has similar average R but lower trade frequency.
-  - Adjustment prepared: high-confidence `SQUEEZE_BREAKOUT` release signals may override the UTC 0-1 avoided-session filter.
-  - Adjustment prepared: universe widened from top 30/50 to top 40/80 and `min_symbol_quality_score` relaxed from 70 to 60 while preserving minimum volume, spread, and order-book liquidity filters.
-  - Local verification: `22 passed`.
-  - Deployed on VPS: 2026-05-13 10:57 UTC.
+- `[~]` P3-01 Unit tests для live safety gates, order IDs, duplicate prevention и ML shadow/validation gates.
+  - Локальная syntax-проверка прошла через `compileall`.
+  - VPS public health check после деплоя прошел: `/status` active и `/db` HTTP 200.
+  - VPS migration check через скачанную DB прошел: таблица `ml_feature_snapshots` существует.
+  - VPS runtime check за один цикл прошел: после деплоя в логах есть свежий universe scan.
+  - Data restore исправлен: историческая закрытая v2.1 HBAR-сделка восстановлена из `/root/bot_v2_1_prev_20260512_113908`.
+  - Ожидает: задеплоить paper-monitor fix, который сохраняет исходное quantity на полностью закрытых partial trades, затем починить восстановленную строку `quantity=0`.
+  - VPS verification script подготовлен в `verify_bot_v2_1.cmd`; ожидается remote pytest result.
+- `[ ]` P3-02 Integration tests на Binance demo/testnet: entry, SL, TP, cancel и restart recovery.
+- `[ ]` P3-03 Chaos tests: reboot VPS, timeout Binance, потеря сети, stale user stream.
+- `[ ]` P3-04 14-дневный paper/testnet soak без технических инцидентов.
+- `[~]` P3-05 A/B benchmark против bot v2.0 перед live-промоушеном.
+  - Подготовлено: `D:\Codex\compare_bot_v2_vs_v2_1.cmd`.
+  - Подготовлено: `D:\Codex\vps_downloads\compare_bot_v2_vs_v2_1.sh`.
+  - Область: read-only сравнение DB, realized/unrealized PnL, winrate, profit factor, average R, max drawdown, частота сделок, breakdown по symbol/strategy, риск открытых позиций.
+  - Цель: v2.0 остается benchmark-чемпионом; v2.1 должен доказать лучшую risk-adjusted performance перед `MAINNET_LIVE`.
+  - Быстрый public API snapshot сохранен: `D:\Codex\outputs\v2_vs_v2_1_public_compare_report.txt`.
+  - Результат snapshot: v2.0 лидирует по realized PnL и числу сделок; v2.1 имеет близкий average R, но меньшую частоту сделок.
+  - Подготовлена правка: high-confidence `SQUEEZE_BREAKOUT` release signals могут обходить UTC 0-1 avoided-session filter.
+  - Подготовлена правка: universe расширен с top 30/50 до top 40/80, а `min_symbol_quality_score` смягчен с 70 до 60 при сохранении min volume, spread и order-book liquidity filters.
+  - Локальная проверка: `22 passed`.
+  - Деплой на VPS: 2026-05-13 10:57 UTC.
   - Post-deploy public checks: v2.1 `active`, paper monitor `active`, v2.0 still `active`.
-  - Post-deploy universe includes broader candidates such as `ASTERUSDT`, `MUSDT`, `SKYUSDT`, `ETCUSDT`, `QNTUSDT`, `POLUSDT`, `KASUSDT`, and `RENDERUSDT`.
-  - No new post-deploy UTC rejection observed yet; old `ZECUSDT` UTC rejections remain historical evidence from before deployment.
-  - Daily public API report prepared: `D:\Codex\daily_ab_report_v2_vs_v2_1.cmd`.
-  - Daily report outputs timestamped JSON/TXT under `D:\Codex\outputs\ab_reports`, updates `v2_vs_v2_1_daily_latest.*`, and appends `v2_vs_v2_1_daily_history.csv`.
-  - Latest daily report result: v2.0 leads realized PnL and sample size; v2.1 has higher winrate but only 3 closed trades.
+  - Post-deploy universe включает более широкий набор кандидатов: `ASTERUSDT`, `MUSDT`, `SKYUSDT`, `ETCUSDT`, `QNTUSDT`, `POLUSDT`, `KASUSDT`, `RENDERUSDT`.
+  - Новых post-deploy UTC rejection пока не найдено; старые `ZECUSDT` UTC rejections остаются историческими данными до деплоя.
+  - Daily public API report подготовлен: `D:\Codex\daily_ab_report_v2_vs_v2_1.cmd`.
+  - Daily report пишет timestamped JSON/TXT в `D:\Codex\outputs\ab_reports`, обновляет `v2_vs_v2_1_daily_latest.*` и дописывает `v2_vs_v2_1_daily_history.csv`.
+  - Последний daily report: v2.0 лидирует по realized PnL и размеру выборки; у v2.1 выше winrate, но только 3 закрытые сделки.
 
-## P4 Strategy Expansion
+## P4 Расширение стратегий
 
-- `[x]` P4-01 Per-strategy scorecard foundation.
-  - Done: `/strategy-scorecard` returns closed trades, open trades/risk, realized/unrealized PnL, winrate, profit factor, average R, max drawdown, trade frequency, symbol/direction breakdown, and rejection reasons by strategy.
-  - Done: dashboard now shows the strategy scorecard as a separate table.
-  - Done: local calculation tests added; `24 passed`.
-  - Done: automated per-strategy gates now report `PROMOTABLE`, `WATCH`, or `BLOCKED` from min trades, sample age, trade frequency, winrate, profit factor, average R, and drawdown.
-  - Done: strategy runtime modes now split `live`, `paper`, `shadow`, and `disabled`; current paper execution is `SQUEEZE_BREAKOUT` plus `MEAN_REVERSION`, while `TREND_PULLBACK` is shadow-only.
-  - Done: scorecard now reports raw trades plus cluster-adjusted counts/Win/PF/Avg R so repeated fast entries on one coin do not inflate strategy evidence.
-  - Gate: no strategy can be promoted without its own scorecard and a passing gate.
-- `[x]` P4-02 Improve `SQUEEZE_BREAKOUT` as the champion strategy.
-  - Keep it as the live allow-list leader.
-  - Continue tuning universe breadth, UTC override, squeeze release detection, volume confirmation, and partial exits.
-  - Target: higher trade frequency without reducing positive average R.
-  - Done: added an SQZ champion quality gate: release follow-through can be caught for more bars, but entries must break out of the compression range, avoid late overextension, and use the strongest volume confirmation in the release window.
-  - Done: early `build` entries remain possible only as stricter `early_breakout` setups with longer squeeze duration, stronger volume, and structural breakout confirmation.
-  - Done: SQZ signals now carry `squeeze_entry_timing`, `breakout_atr`, `compression_high/low`, and `squeeze_release_offset` metadata so scorecard/log review can separate clean releases from early breakouts.
-  - Verification: `62 passed`.
-- `[x]` P4-02A Add retest confirmation to late `SQUEEZE_BREAKOUT` follow-through entries.
-  - Done: late release follow-through entries now require a retest/rejection or absorption touch of the compression breakout level.
-  - Done: immediate release entries are not forced to wait for a retest, so the champion strategy is not silenced.
-  - Done: SQZ metadata now includes `squeeze_retest_required`, `squeeze_retest_confirmed`, retest level, bars ago, rejection type, and body size in ATR.
-  - Verification: SQZ candidate tests cover late follow-through with and without retest.
-- `[x]` P4-03 Rework `MEAN_REVERSION` as a paper candidate, not a live strategy.
-  - Done: promoted from `shadow` to `paper` for v2.1 paper trading after bot 2.0 evidence showed strong MR contribution.
-  - Done: `MAINNET_LIVE` remains protected because paper-mode strategies do not execute in mainnet and the live allow-list still contains only `SQUEEZE_BREAKOUT`.
-  - Done: added stricter exhaustion rules: RSI extreme, ATR deviation, divergence, volume confirmation, reversal wick/absorption/sweep confirmation, and confluence scoring.
-  - Done: added `MR_CONTEXT` gate before paper entry; MR is blocked when BTC 4h impulse is strongly against the trade or order-flow/liquidation context is hostile.
-  - Done: `/strategy-scorecard` now summarizes candidate evidence from shadow signals: average confidence, average confluence, divergence, volume, edge, and reversal counts.
-  - Require separate v2.1 paper/testnet evidence before enabling beyond paper observation.
-- `[x]` P4-04 Add `TREND_PULLBACK` candidate.
-  - Goal: enter on pullbacks inside a strong trend, not at random highs/lows.
-  - Expected use: catch moves that squeeze misses after the trend is already active.
-  - Done: added as `shadow`; requires higher-timeframe trend, controlled pullback depth, continuation candle, volume, order-flow alignment, and confluence evidence.
-- `[x]` P4-04A Add shadow-paper simulation for candidate strategies.
-  - Done: shadow strategies now open virtual trades in a separate `shadow_trades` table with entry, SL, TP, risk, PnL, and R.
-  - Done: `paper_monitor_v2.py` closes shadow-paper trades by SL/TP without touching regular paper trades, balance, or SQZ PnL.
-  - Done: `/strategy-scorecard` and `/shadow-trades` expose separate shadow-paper metrics.
-  - Done: shadow-paper sizing now uses compounding paper equity and the same margin-cap sizing rules as regular paper entries when symbol filters are available.
-- `[x]` P4-05 Add shadow candidate pack for strategy discovery.
-  - Done: added `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION`, `MOMENTUM_CONTINUATION`, and cautious `RANGE_GRID` as `shadow` strategies.
-  - Done: all new strategies write regular shadow signals and shadow-paper trades only; they do not affect main paper/live PnL.
-  - Done: `RANGE_GRID` is explicitly marked as cautious shadow-only research.
-- `[x]` P4-06 Add funding/carry filter as an enhancer, not a standalone strategy.
-  - Goal: avoid entries against extreme funding pressure and optionally prefer direction with favorable carry.
-  - Gate: cannot override risk rules or force entries alone.
-  - Done: funding carry can penalize or block candidate signals when funding is strongly adverse to direction.
+- `[x]` P4-01 База per-strategy scorecard.
+  - Готово: `/strategy-scorecard` возвращает closed trades, open trades/risk, realized/unrealized PnL, winrate, profit factor, average R, max drawdown, trade frequency, breakdown по symbol/direction и причины rejection по стратегиям.
+  - Готово: dashboard показывает strategy scorecard отдельной таблицей.
+  - Готово: добавлены локальные calculation tests; `24 passed`.
+  - Готово: автоматические per-strategy gates показывают `PROMOTABLE`, `WATCH` или `BLOCKED` по min trades, sample age, trade frequency, winrate, profit factor, average R и drawdown.
+  - Готово: strategy runtime modes разделены на `live`, `paper`, `shadow` и `disabled`; текущее paper-исполнение - `SQUEEZE_BREAKOUT` плюс `MEAN_REVERSION`, а `TREND_PULLBACK` работает shadow-only.
+  - Готово: scorecard показывает raw trades плюс cluster-adjusted counts/Win/PF/Avg R, чтобы быстрые повторные входы по одной монете не раздували evidence.
+  - Gate: ни одна стратегия не может быть promoted без собственного scorecard и проходящего gate.
+- `[x]` P4-02 Улучшить `SQUEEZE_BREAKOUT` как champion-стратегию.
+  - Оставить ее лидером live allow-list.
+  - Продолжать настройку ширины universe, UTC override, squeeze release detection, volume confirmation и partial exits.
+  - Цель: повысить частоту сделок без ухудшения положительного average R.
+  - Готово: добавлен SQZ champion quality gate: release follow-through может ловиться больше баров, но вход должен пробивать compression range, избегать поздней overextension и использовать сильнейшее volume confirmation в release window.
+  - Готово: ранние `build`-входы возможны только как более строгие `early_breakout` setups с более долгим squeeze, более сильным volume и structural breakout confirmation.
+  - Готово: SQZ signals теперь несут `squeeze_entry_timing`, `breakout_atr`, `compression_high/low` и `squeeze_release_offset`, чтобы scorecard/log review разделял clean releases и early breakouts.
+  - Проверка: `62 passed`.
+- `[x]` P4-02A Добавить retest confirmation для поздних `SQUEEZE_BREAKOUT` follow-through входов.
+  - Готово: поздние release follow-through входы теперь требуют retest/rejection или absorption touch уровня compression breakout.
+  - Готово: immediate release entries не обязаны ждать retest, чтобы champion-стратегия не замолчала.
+  - Готово: SQZ metadata теперь включает `squeeze_retest_required`, `squeeze_retest_confirmed`, retest level, bars ago, rejection type и body size in ATR.
+  - Проверка: SQZ candidate tests покрывают late follow-through с retest и без него.
+- `[x]` P4-03 Переработать `MEAN_REVERSION` как paper-кандидата, а не live-стратегию.
+  - Готово: стратегия переведена из `shadow` в `paper` для v2.1 paper trading после сильной MR-статистики bot 2.0.
+  - Готово: `MAINNET_LIVE` остается защищенным, потому что paper-mode стратегии не исполняются в mainnet, а live allow-list все еще содержит только `SQUEEZE_BREAKOUT`.
+  - Готово: добавлены более строгие exhaustion rules: RSI extreme, ATR deviation, divergence, volume confirmation, reversal wick/absorption/sweep confirmation и confluence scoring.
+  - Готово: добавлен `MR_CONTEXT` gate перед paper-входом; MR блокируется, если BTC 4h impulse резко против сделки или order-flow/liquidation context враждебен.
+  - Готово: `/strategy-scorecard` суммирует candidate evidence из shadow signals: average confidence, average confluence, divergence, volume, edge и reversal counts.
+  - Требуется отдельная v2.1 paper/testnet-статистика перед включением за пределами paper-наблюдения.
+- `[x]` P4-04 Добавить кандидата `TREND_PULLBACK`.
+  - Цель: входить на pullback внутри сильного тренда, а не на случайных highs/lows.
+  - Ожидаемая польза: ловить движения, которые squeeze пропускает после того, как тренд уже активен.
+  - Готово: добавлена как `shadow`; требует higher-timeframe trend, controlled pullback depth, continuation candle, volume, order-flow alignment и confluence evidence.
+- `[x]` P4-04A Добавить shadow-paper simulation для candidate strategies.
+  - Готово: shadow strategies открывают виртуальные сделки в отдельной таблице `shadow_trades` с entry, SL, TP, risk, PnL и R.
+  - Готово: `paper_monitor_v2.py` закрывает shadow-paper trades по SL/TP, не трогая regular paper trades, balance или SQZ PnL.
+  - Готово: `/strategy-scorecard` и `/shadow-trades` показывают отдельные shadow-paper metrics.
+  - Готово: shadow-paper sizing использует compounding paper equity и те же margin-cap sizing rules, что regular paper entries, когда доступны symbol filters.
+- `[x]` P4-05 Добавить shadow candidate pack для поиска стратегий.
+  - Готово: добавлены `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION`, `MOMENTUM_CONTINUATION` и осторожная `RANGE_GRID` как `shadow` strategies.
+  - Готово: все новые стратегии пишут только regular shadow signals и shadow-paper trades; они не влияют на main paper/live PnL.
+  - Готово: `RANGE_GRID` явно помечена как cautious shadow-only research.
+- `[x]` P4-06 Добавить funding/carry filter как enhancer, а не отдельную стратегию.
+  - Цель: избегать входов против extreme funding pressure и при возможности предпочитать направление с favorable carry.
+  - Gate: не может обходить risk rules или сам принудительно создавать входы.
+  - Готово: funding carry может penalize или block candidate signals, когда funding сильно adverse к направлению.
 - `[x]` P4-07 Research order-flow/liquidation strategy candidate.
-  - Use liquidation zones, open interest change, taker flow, and sweep/absorption features.
-  - Start as signal annotation and rejection/acceptance evidence, not live execution.
-  - Done: added research-only `ORDER_FLOW_ANNOTATION` snapshots for paper and shadow signals.
-  - Done: annotations score flow alignment, liquidation-zone proximity, taker flow, order-book imbalance, aggressive delta, open-interest expansion/drop, funding crowding, sweep, absorption, and structure-break context.
-  - Done: `/order-flow` exposes recent annotations and aggregate alignment/risk summaries.
-  - Done: `/strategy-scorecard` and dashboard rows include compact order-flow evidence without changing execution allow-lists.
+  - Использовать liquidation zones, open interest change, taker flow и sweep/absorption features.
+  - Стартовать как signal annotation и rejection/acceptance evidence, не live execution.
+  - Готово: добавлены research-only `ORDER_FLOW_ANNOTATION` snapshots для paper и shadow signals.
+  - Готово: annotations оценивают flow alignment, liquidation-zone proximity, taker flow, order-book imbalance, aggressive delta, open-interest expansion/drop, funding crowding, sweep, absorption и structure-break context.
+  - Готово: `/order-flow` показывает recent annotations и aggregate alignment/risk summaries.
+  - Готово: `/strategy-scorecard` и dashboard rows включают компактный order-flow evidence без изменения execution allow-lists.
 - `[x]` P4-08 Strategy selector / portfolio allocator.
-  - Once several candidates have evidence, allocate by recent strategy expectancy, drawdown, and market regime.
-  - Until then, no automatic switching in live.
-  - Done: added advisory-only `/strategy-allocator`; it ranks paper/shadow strategies by expectancy, PF, drawdown, and maturity.
-  - Done: dashboard scorecard now shows `Alloc` with suggested risk weight and action (`CORE`, `CHAMP`, `PROMOTE`, `WATCH`, `RESEARCH`, `REDUCE`).
-  - Done: allocator is explicitly `ADVISORY_ONLY`; it does not switch strategy modes or enable live execution.
-- `[x]` P4-09 ML meta-filter remains shadow-only.
-  - ML should filter/score strategy signals, not invent trades.
-  - Mainnet ML requires at least 500 validated rows and a walk-forward report not worse than baseline.
-  - Done: ML now records `ML_SHADOW_SCORE` when enabled but does not block trades unless `ml.enforce_decisions=true`.
-  - Done: `ml.enforce_decisions` defaults to `false`; a validated model can advise before it is allowed to reject entries.
+  - Когда несколько кандидатов накопят evidence, распределять риск по recent strategy expectancy, drawdown и market regime.
+  - До этого автоматического переключения в live нет.
+  - Готово: добавлен advisory-only `/strategy-allocator`; он ранжирует paper/shadow strategies по expectancy, PF, drawdown и maturity.
+  - Готово: dashboard scorecard показывает `Alloc` с suggested risk weight и action (`CORE`, `CHAMP`, `PROMOTE`, `WATCH`, `RESEARCH`, `REDUCE`).
+  - Готово: allocator явно `ADVISORY_ONLY`; он не переключает strategy modes и не включает live execution.
+- `[x]` P4-09 ML meta-filter остается shadow-only.
+  - ML должен фильтровать/оценивать strategy signals, а не изобретать сделки.
+  - Mainnet ML требует минимум 500 validated rows и walk-forward report не хуже baseline.
+  - Готово: ML теперь пишет `ML_SHADOW_SCORE` при включении, но не блокирует сделки, если `ml.enforce_decisions=true` не установлен.
+  - Готово: `ml.enforce_decisions` по умолчанию `false`; validated model может советовать до того, как ему разрешат отклонять входы.
 - `[x]` P4-10 Shadow promotion assistant.
-  - Done: scorecard now includes `Shadow Gate` with `TESTING`, `WATCH`, and `PROMOTE`.
-  - Done: dashboard shows a `PROMOTE TO PAPER` badge when a shadow strategy passes the shadow-paper gate.
-  - Done: `/strategy-promotions` returns promotion candidates for human review.
-- `[x]` P4-11 Retune losing shadow candidates and restart evidence collection.
-  - Done: first shadow-paper drawdown scan found `LIQUIDITY_SWEEP_REVERSAL`, old `VWAP_REVERSION`, `MOMENTUM_CONTINUATION`, and `TREND_FOLLOWING` had negative early expectancy.
-  - Done: those strategies are back in `shadow` after retuning; `SQUEEZE_BREAKOUT` and `MEAN_REVERSION` paper modes are unchanged.
-  - Done: `LIQUIDITY_SWEEP_REVERSAL` now requires stronger sweep reclaim, volume, edge, absorption, and directional flow.
-  - Done: `VWAP_REVERSION` now requires a larger VWAP stretch, real progress back toward VWAP, adequate ATR, and stronger volume.
-  - Done: `MOMENTUM_CONTINUATION` now blocks overextended/too-volatile breakouts and requires stronger edge/volume/flow.
-  - Done: `TREND_FOLLOWING` now requires stronger edge, volume, and minimum ATR before shadow entries.
-  - Prepared: `D:\Codex\archive_quarantined_shadow_stats.cmd` archives old losing shadow rows on VPS so the retuned strategies restart from a clean baseline.
-- `[x]` P4-12 Expose shadow-paper rejects in the dashboard rejection journal.
-  - Done: `/rejections` now merges hard `filter_rejections` with shadow-paper `SHADOW_PAPER_REJECTED_RISK` and `SHADOW_PAPER_REJECTED_COOLDOWN` snapshots.
-  - Done: `/rejection-stats` counts `SHADOW_RISK` and `SHADOW_COOLDOWN` so the journal no longer looks silent while shadow strategies are being filtered.
-  - Done: dashboard badges/styles now render shadow rejection types separately.
+  - Готово: scorecard включает `Shadow Gate` со статусами `TESTING`, `WATCH` и `PROMOTE`.
+  - Готово: dashboard показывает badge `PROMOTE TO PAPER`, когда shadow strategy проходит shadow-paper gate.
+  - Готово: `/strategy-promotions` возвращает promotion candidates для human review.
+- `[x]` P4-11 Перенастроить убыточные shadow candidates и начать сбор evidence заново.
+  - Готово: первый shadow-paper drawdown scan показал, что `LIQUIDITY_SWEEP_REVERSAL`, старый `VWAP_REVERSION`, `MOMENTUM_CONTINUATION` и `TREND_FOLLOWING` имели отрицательную early expectancy.
+  - Готово: эти стратегии возвращены в `shadow` после retuning; `SQUEEZE_BREAKOUT` и `MEAN_REVERSION` paper modes не изменены.
+  - Готово: `LIQUIDITY_SWEEP_REVERSAL` теперь требует более сильные sweep reclaim, volume, edge, absorption и directional flow.
+  - Готово: `VWAP_REVERSION` теперь требует больший VWAP stretch, реальный progress обратно к VWAP, достаточный ATR и более сильный volume.
+  - Готово: `MOMENTUM_CONTINUATION` теперь блокирует overextended/too-volatile breakouts и требует более сильные edge/volume/flow.
+  - Готово: `TREND_FOLLOWING` теперь требует более сильные edge, volume и minimum ATR перед shadow entries.
+  - Подготовлено: `D:\Codex\archive_quarantined_shadow_stats.cmd` архивирует старые убыточные shadow rows на VPS, чтобы retuned strategies стартовали с чистой baseline.
+- `[x]` P4-12 Показать shadow-paper rejects в dashboard rejection journal.
+  - Готово: `/rejections` объединяет hard `filter_rejections` с shadow-paper `SHADOW_PAPER_REJECTED_RISK` и `SHADOW_PAPER_REJECTED_COOLDOWN` snapshots.
+  - Готово: `/rejection-stats` считает `SHADOW_RISK` и `SHADOW_COOLDOWN`, поэтому журнал больше не выглядит пустым, пока shadow strategies фильтруются.
+  - Готово: dashboard badges/styles отдельно отображают shadow rejection types.
 
-## P5: Realistic Paper Execution
+## P5 Реалистичное paper-исполнение
 
-- `[x]` P5-01 Simulate net paper execution before using scorecard evidence.
-  - Done: paper exits now store gross PnL, taker fees, slippage cost, funding cost, held hours, and net PnL in trade metadata.
-  - Done: paper monitor uses 1m high/low snapshots and pessimistically chooses SL first when SL and TP/partial TP are both inside the same candle.
-  - Done: paper partial TP can move SL to the same breakeven price used by the risk plan; paper trailing updates the stop when trailing is active.
-  - Done: regular paper and shadow-paper closures use net PnL, so scorecard/equity evidence is no longer based on ideal fills.
-- `[x]` P5-02 Add dashboard cost breakdown for recent closed trades.
-  - Done: `/trades` and `/shadow-trades` return `execution_costs` with gross PnL, fees, slippage, funding, total cost, and net PnL.
-  - Done: dashboard trade history shows a compact `Costs` column with tooltip breakdown; pre-P5 trades are explicitly shown as missing cost detail.
-- `[x]` P5-03 Backfill/flag older paper trades as pre-P5 so old ideal fills are not mixed with realistic-fill evidence without warning.
-  - Done: API marks trades without `paper_execution_summary` as `pre_p5_ideal_fill=true`.
-  - Done: dashboard `Costs` column labels those rows as pre-P5/missing realistic cost detail instead of implying zero costs.
-- `[x]` P5-04 Fix opening-candle high/low ambiguity in paper exits.
-  - Done: `MarketSnapshot` now carries 1m kline open/close timestamps.
-  - Done: if a trade opened after the current kline started, paper exits use a conservative price-only snapshot until the next candle.
-  - Done: regression tests cover fresh opening-candle positions and normal range-based exits after a new candle starts.
-  - Verification: `91 passed`.
-- `[x]` P5-05 Upgrade backtest and paper fill realism.
-  - Done: added a shared `trading_bot.backtester.realistic_execution` simulator for backtests.
-  - Done: simulator applies taker fees, base + spread/random slippage, signed funding estimate when available, partial TP, breakeven, trailing, timeout close, and pessimistic intrabar sequencing.
-  - Done: `BacktestEngine`, `backtest_real.py`, `backtest_multi.py`, and `walkforward.py` now use the shared realistic execution model instead of raw `+reward/-risk` exits.
-  - Done: regression tests cover costs, pessimistic intrabar, signed funding credit/debit, and cost-aware quantity sizing.
-  - Verification: `95 passed`.
-  - Next evidence task: run `walkforward.py` across top symbols and multiple market regimes before promoting any strategy.
-- `[x]` P5-06 Reset evidence gates to post-P5 realistic trades only.
-  - Done: `/strategy-scorecard` now exposes `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades`, and post-P5 realistic PnL separately from historical totals.
-  - Done: strategy Gate and paper allocator use only post-P5 realistic execution evidence, so pre-P5 ideal fills stay visible but cannot unlock promotion/live-readiness.
-  - Done: dashboard scorecard shows a compact `P5` evidence badge with post-P5 clusters versus total historical clusters.
-  - Verification: `96 passed`.
+- `[x]` P5-01 Симулировать net paper execution перед использованием scorecard evidence.
+  - Готово: paper exits теперь хранят gross PnL, taker fees, slippage cost, funding cost, held hours и net PnL в trade metadata.
+  - Готово: paper monitor использует 1m high/low snapshots и пессимистично выбирает SL первым, если SL и TP/partial TP попали в одну свечу.
+  - Готово: paper partial TP может переносить SL на тот же breakeven price, что risk plan; paper trailing обновляет stop при активном trailing.
+  - Готово: regular paper и shadow-paper closures используют net PnL, поэтому scorecard/equity evidence больше не основаны на ideal fills.
+- `[x]` P5-02 Добавить breakdown издержек в dashboard для последних закрытых сделок.
+  - Готово: `/trades` и `/shadow-trades` возвращают `execution_costs` с gross PnL, fees, slippage, funding, total cost и net PnL.
+  - Готово: dashboard trade history показывает компактную колонку `Costs` с tooltip breakdown; pre-P5 trades явно помечаются как missing cost detail.
+- `[x]` P5-03 Backfill/flag старых paper trades как pre-P5, чтобы старые ideal fills не смешивались с realistic-fill evidence без предупреждения.
+  - Готово: API помечает сделки без `paper_execution_summary` как `pre_p5_ideal_fill=true`.
+  - Готово: dashboard колонка `Costs` помечает такие строки как pre-P5/missing realistic cost detail, а не подразумевает нулевые costs.
+- `[x]` P5-04 Исправить opening-candle high/low ambiguity в paper exits.
+  - Готово: `MarketSnapshot` теперь содержит 1m kline open/close timestamps.
+  - Готово: если сделка открылась после старта текущей kline, paper exits используют conservative price-only snapshot до следующей свечи.
+  - Готово: regression tests покрывают fresh opening-candle positions и normal range-based exits после начала новой свечи.
+  - Проверка: `91 passed`.
+- `[x]` P5-05 Улучшить реалистичность backtest и paper fills.
+  - Готово: добавлен общий simulator `trading_bot.backtester.realistic_execution` для backtests.
+  - Готово: simulator применяет taker fees, base + spread/random slippage, signed funding estimate при наличии, partial TP, breakeven, trailing, timeout close и pessimistic intrabar sequencing.
+  - Готово: `BacktestEngine`, `backtest_real.py`, `backtest_multi.py` и `walkforward.py` теперь используют общий realistic execution model вместо raw `+reward/-risk` exits.
+  - Готово: regression tests покрывают costs, pessimistic intrabar, signed funding credit/debit и cost-aware quantity sizing.
+  - Проверка: `95 passed`.
+  - Следующая evidence-задача: прогнать `walkforward.py` по top symbols и нескольким market regimes перед promotion любой стратегии.
+- `[x]` P5-06 Сбросить evidence gates только на post-P5 realistic trades.
+  - Готово: `/strategy-scorecard` отдельно показывает `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades` и post-P5 realistic PnL.
+  - Готово: strategy Gate и paper allocator используют только post-P5 realistic execution evidence, поэтому pre-P5 ideal fills видны, но не могут открыть promotion/live-readiness.
+  - Готово: dashboard scorecard показывает компактный `P5` evidence badge с post-P5 clusters против total historical clusters.
+  - Проверка: `96 passed`.
 
-## P6: Production Hardening Addendum
+## P6 Production hardening
 
-- `[ ]` P6-01 Add max funding impact to risk planning.
-  - Keep existing funding/carry filters, but also cap estimated funding impact per trade as `max_funding_impact_bps`.
-  - Use signed funding estimates where possible instead of always treating funding as a fixed cost.
-- `[ ]` P6-02 Strengthen post-fill live protection checks.
-  - After entry fill, verify protective SL and reduce-only TP ladder are active on Binance.
-  - If verification fails, cancel leftovers and close the position defensively.
-  - Preserve `executedQty`, `cumulativeQuoteQty`, average fill price, and partial-fill state in reconciliation metadata.
-- `[ ]` P6-03 Add restart recovery evidence for active live/testnet trades.
-  - Rebuild managed trade state from DB plus Binance open orders/positions after process restart.
-  - Add testnet proof for entry, SL, TP, cancel, partial fill, and restart recovery before any mainnet unlock.
-- `[ ]` P6-04 Improve portfolio-level risk controls.
-  - Add real-time correlation checks across open positions, not only static correlation groups.
-  - Raise same symbol+strategy cooldown after stop-loss to 180 minutes for testnet/mainnet profiles.
-  - Keep scale-in disabled by default unless a separate evidence gate proves it.
-- `[ ]` P6-05 Add operational watchdogs and incident alerts.
-  - Add systemd watchdog/health timeout for paper monitor and control API.
-  - Add alerting for stale user stream, repeated rate limits, rejected protective orders, drawdown, and funding pressure.
-- `[ ]` P6-06 Strategy promotion and demotion discipline.
-  - `SQUEEZE_BREAKOUT` remains champion, but still needs post-P5 realistic evidence.
-  - `MEAN_REVERSION` stays paper-only until at least 200 closed v2.1 trades plus positive walk-forward.
-  - `TREND_PULLBACK` can be considered for paper only after the shadow promotion gate and human review.
-  - `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION(_WATCH)`, `MOMENTUM_CONTINUATION`, `RANGE_GRID`, and `TREND_FOLLOWING` stay shadow/research until their own net-cost evidence is positive.
-  - Done: shadow loss adaptation pass tightened LSR reclaim/follow-through/edge, VWR/VWR-W reversion flow quality, and GRID range-edge microstructure gates after live shadow evidence turned negative.
-  - Verification: `99 passed`.
-- `[ ]` P6-07 Improve exit architecture.
-  - Treat exchange-side OCO as an OCO-like managed bracket for Binance Futures where native OCO is unavailable or insufficient.
-  - Rework partial TP ladder so trailing has remaining size to manage after TP1/TP2, rather than activating when the position is already fully closed.
+- `[ ]` P6-01 Добавить max funding impact в risk planning.
+  - Оставить существующие funding/carry filters, но также ограничить estimated funding impact per trade через `max_funding_impact_bps`.
+  - По возможности использовать signed funding estimates, а не всегда считать funding фиксированной издержкой.
+- `[ ]` P6-02 Усилить post-fill live protection checks.
+  - После entry fill проверять, что protective SL и reduce-only TP ladder активны на Binance.
+  - Если проверка не прошла, отменить остатки и defensively close position.
+  - Сохранять `executedQty`, `cumulativeQuoteQty`, average fill price и partial-fill state в reconciliation metadata.
+- `[ ]` P6-03 Добавить restart recovery evidence для активных live/testnet trades.
+  - Восстанавливать managed trade state из DB плюс Binance open orders/positions после рестарта процесса.
+  - Добавить testnet proof для entry, SL, TP, cancel, partial fill и restart recovery перед любым mainnet unlock.
+- `[ ]` P6-04 Улучшить portfolio-level risk controls.
+  - Добавить real-time correlation checks по открытым позициям, не только static correlation groups.
+  - Поднять same symbol+strategy cooldown после stop-loss до 180 минут для testnet/mainnet profiles.
+  - Держать scale-in выключенным по умолчанию, пока отдельный evidence gate не докажет его пользу.
+- `[ ]` P6-05 Добавить operational watchdogs и incident alerts.
+  - Добавить systemd watchdog/health timeout для paper monitor и control API.
+  - Добавить alerts по stale user stream, repeated rate limits, rejected protective orders, drawdown и funding pressure.
+- `[ ]` P6-06 Дисциплина strategy promotion/demotion.
+  - `SQUEEZE_BREAKOUT` остается champion, но ей все равно нужна post-P5 realistic evidence.
+  - `MEAN_REVERSION` остается paper-only до минимум 200 закрытых v2.1 сделок и положительного walk-forward.
+  - `TREND_PULLBACK` можно рассматривать для paper только после shadow promotion gate и human review.
+  - `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION(_WATCH)`, `MOMENTUM_CONTINUATION`, `RANGE_GRID` и `TREND_FOLLOWING` остаются shadow/research, пока их собственная net-cost evidence не станет положительной.
+  - Готово: shadow loss adaptation pass ужесточил LSR reclaim/follow-through/edge, VWR/VWR-W reversion flow quality и GRID range-edge microstructure gates после отрицательной live shadow evidence.
+  - Проверка: `99 passed`.
+- `[ ]` P6-07 Улучшить exit architecture.
+  - Рассматривать exchange-side OCO как OCO-like managed bracket для Binance Futures, где native OCO недоступен или недостаточен.
+  - Переработать partial TP ladder так, чтобы trailing имел оставшийся size для управления после TP1/TP2, а не активировался, когда позиция уже полностью закрыта.
 - `[ ]` P6-08 Weekly research report.
-  - Generate weekly ranking, promotion, demotion, and anomaly report from scorecard, shadow-paper, order-flow, and ML snapshots.
-  - ML remains advisory/shadow; enforcement requires a positive walk-forward delta and a substantially larger evidence base.
-- `[x]` P6-09 Add confidence-based dynamic sizing without breaking the SQZ champion line.
-  - Done: new dynamic sizing layer adjusts per-trade risk and selected leverage from strategy profile, signal confidence, order-flow alignment, funding penalty, and hard per-strategy caps.
-  - Done: `SQUEEZE_BREAKOUT` remains the champion paper row with a conservative 2.0% risk cap, while `SQUEEZE_BREAKOUT_DYNAMIC` runs as a separate shadow challenger.
-  - Done: paper/shadow trades persist `dynamic_sizing` metadata with chosen risk, leverage, multiplier, cap, and reasons.
+  - Генерировать недельный ranking, promotion, demotion и anomaly report из scorecard, shadow-paper, order-flow и ML snapshots.
+  - ML остается advisory/shadow; enforcement требует положительный walk-forward delta и существенно большую evidence base.
+- `[x]` P6-09 Добавить confidence-based dynamic sizing, не ломая SQZ champion line.
+  - Готово: новый dynamic sizing layer регулирует per-trade risk и selected leverage по strategy profile, signal confidence, order-flow alignment, funding penalty и жестким per-strategy caps.
+  - Готово: `SQUEEZE_BREAKOUT` остается champion paper row с консервативным 2.0% risk cap, а `SQUEEZE_BREAKOUT_DYNAMIC` работает как отдельный shadow challenger.
+  - Готово: paper/shadow trades сохраняют `dynamic_sizing` metadata с выбранным risk, leverage, multiplier, cap и reasons.
 
-## Evidence Required Before MAINNET_LIVE
+## Evidence, необходимый перед MAINNET_LIVE
 
-- `[ ]` At least 500 closed v2.1 post-P5 realistic paper/testnet trades.
-- `[ ]` At least 100 closed paper/testnet trades for every strategy enabled in live.
+- `[ ]` Минимум 500 закрытых v2.1 post-P5 realistic paper/testnet trades.
+- `[ ]` Минимум 100 закрытых paper/testnet trades для каждой стратегии, включенной в live.
 - `[ ]` Profit factor >= 1.30.
 - `[ ]` Winrate >= 40%.
 - `[ ]` Average R >= +0.25.
-- `[ ]` Max drawdown better than -10%.
-- `[ ]` v2.1 beats or clearly matches v2.0 on risk-adjusted A/B metrics, not only headline PnL.
-- `[ ]` No enabled live strategy has negative average R or materially worsens portfolio drawdown.
-- `[ ]` Zero duplicate orders/positions.
-- `[ ]` Zero unprotected live/testnet positions after restart.
-- `[ ]` Zero critical technical incidents for 14+ continuous days.
+- `[ ]` Max drawdown лучше -10%.
+- `[ ]` v2.1 обгоняет или явно не хуже v2.0 по risk-adjusted A/B metrics, а не только по headline PnL.
+- `[ ]` Ни одна включенная live-стратегия не имеет отрицательный average R и не ухудшает portfolio drawdown.
+- `[ ]` Ноль duplicate orders/positions.
+- `[ ]` Ноль unprotected live/testnet positions после restart.
+- `[ ]` Ноль критических технических инцидентов за 14+ непрерывных дней.
 - `[ ]` P3/P6 testnet lifecycle evidence pack: entry, SL, TP, cancel, partial fill, restart recovery.
 - `[ ]` Human-reviewed `data/production_unlock.json`.
