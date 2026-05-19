@@ -262,6 +262,8 @@ Status legend:
   - `MEAN_REVERSION` stays paper-only until at least 200 closed v2.1 trades plus positive walk-forward.
   - `TREND_PULLBACK` can be considered for paper only after the shadow promotion gate and human review.
   - `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION(_WATCH)`, `MOMENTUM_CONTINUATION`, `RANGE_GRID`, and `TREND_FOLLOWING` stay shadow/research until their own net-cost evidence is positive.
+  - Done: shadow loss adaptation pass tightened LSR reclaim/follow-through/edge, VWR/VWR-W reversion flow quality, and GRID range-edge microstructure gates after live shadow evidence turned negative.
+  - Verification: `99 passed`.
 - `[ ]` P6-07 Improve exit architecture.
   - Treat exchange-side OCO as an OCO-like managed bracket for Binance Futures where native OCO is unavailable or insufficient.
   - Rework partial TP ladder so trailing has remaining size to manage after TP1/TP2, rather than activating when the position is already fully closed.

@@ -29,18 +29,18 @@ def strategy_config(**overrides) -> StrategyConfig:
         "max_abs_funding_rate": Decimal("0.0008"),
         "liquidity_sweep_lookback": 18,
         "liquidity_sweep_stop_atr_multiplier": Decimal("1.35"),
-        "liquidity_sweep_take_profit_rr": Decimal("1.35"),
-        "liquidity_sweep_min_edge_score": Decimal("0.58"),
-        "liquidity_sweep_min_reclaim_atr": Decimal("0.70"),
-        "liquidity_sweep_follow_through_min_body_atr": Decimal("0.18"),
+        "liquidity_sweep_take_profit_rr": Decimal("1.55"),
+        "liquidity_sweep_min_edge_score": Decimal("0.65"),
+        "liquidity_sweep_min_reclaim_atr": Decimal("0.90"),
+        "liquidity_sweep_follow_through_min_body_atr": Decimal("0.25"),
         "momentum_continuation_min_volume_ratio": Decimal("1.80"),
         "momentum_continuation_stop_atr_multiplier": Decimal("1.60"),
         "momentum_continuation_take_profit_rr": Decimal("1.30"),
         "momentum_continuation_min_edge_score": Decimal("0.60"),
-        "range_grid_take_profit_rr": Decimal("1.10"),
-        "range_grid_entry_zone_pct": Decimal("0.15"),
-        "range_grid_rsi_long_max": Decimal("40"),
-        "range_grid_rsi_short_min": Decimal("60"),
+        "range_grid_take_profit_rr": Decimal("1.40"),
+        "range_grid_entry_zone_pct": Decimal("0.10"),
+        "range_grid_rsi_long_max": Decimal("35"),
+        "range_grid_rsi_short_min": Decimal("65"),
     }
     values.update(overrides)
     return StrategyConfig(**values)
@@ -134,7 +134,7 @@ def test_liquidity_sweep_requires_strict_edge_and_flow(monkeypatch) -> None:
 
     assert signal is not None
     assert signal.metadata["strategy"] == "LIQUIDITY_SWEEP_REVERSAL"
-    assert Decimal(signal.metadata["reclaim_atr"]) >= Decimal("0.70")
+    assert Decimal(signal.metadata["reclaim_atr"]) >= Decimal("0.90")
     assert signal.metadata["follow_through_confirmed"] == "True"
 
     assert strategy.generate(
@@ -235,7 +235,7 @@ def test_range_grid_requires_deeper_range_edge_and_better_rr(monkeypatch) -> Non
         return result
 
     monkeypatch.setattr(candidates, "atr", lambda items, period: [4.0] * len(items))
-    monkeypatch.setattr(candidates, "rsi", lambda values, period: [Decimal("38")] * len(values))
+    monkeypatch.setattr(candidates, "rsi", lambda values, period: [Decimal("34")] * len(values))
 
     strategy = RangeGridStrategy(strategy_config(), FakeRangeRegimeDetector())
 
@@ -245,5 +245,6 @@ def test_range_grid_requires_deeper_range_edge_and_better_rr(monkeypatch) -> Non
 
     assert signal is not None
     assert signal.metadata["strategy"] == "RANGE_GRID"
-    assert signal.metadata["entry_zone"] == "0.15"
-    assert signal.metadata["rr"] == "1.10"
+    assert signal.metadata["entry_zone"] == "0.10"
+    assert signal.metadata["rr"] == "1.40"
+    assert signal.metadata["flow_safe"] == "True"

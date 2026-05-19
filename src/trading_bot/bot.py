@@ -1131,7 +1131,7 @@ def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
 
 def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     strategy = _signal_strategy(signal)
-    if strategy not in {"LIQUIDITY_SWEEP_REVERSAL", "VWAP_REVERSION_WATCH", "RANGE_GRID"}:
+    if strategy not in {"LIQUIDITY_SWEEP_REVERSAL", "VWAP_REVERSION", "VWAP_REVERSION_WATCH", "RANGE_GRID"}:
         return None
 
     order_flow = _order_flow_metadata(signal)
@@ -1144,19 +1144,37 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     if strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:
             return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
-        if alignment == "against" or score < Decimal("0.55"):
+        if alignment == "against" or score < Decimal("0.70"):
             return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
-    elif strategy == "VWAP_REVERSION_WATCH":
-        if risk_flags.intersection({"adverse_liquidity_nearby", "liquidation_cascade"}):
+    elif strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
+        dangerous_flags = {
+            "adverse_liquidity_nearby",
+            "liquidation_cascade",
+            "structure_break_against",
+            "aggressive_delta_against",
+        }
+        if risk_flags.intersection(dangerous_flags):
             flags = ",".join(sorted(risk_flags))
-            return f"VWR-W shadow blocked: dangerous liquidity context ({flags})."
-        if alignment == "against" and score < Decimal("0.45"):
-            return f"VWR-W shadow blocked: order-flow is against reversion with score {score:.2f}."
+            return f"{strategy} shadow blocked: dangerous liquidity context ({flags})."
+        if alignment == "against" or score < Decimal("0.62"):
+            return f"{strategy} shadow blocked: order-flow is not clean enough for reversion, score {score:.2f}."
     elif strategy == "RANGE_GRID":
+        dangerous_flags = {
+            "adverse_liquidity_nearby",
+            "book_imbalance_against",
+            "taker_flow_against",
+            "aggressive_delta_against",
+            "structure_break_against",
+            "absorption_against",
+            "liquidation_cascade",
+        }
+        if risk_flags.intersection(dangerous_flags):
+            flags = ",".join(sorted(risk_flags))
+            return f"GRID shadow blocked: dangerous range-edge flow ({flags})."
         if alignment == "against":
             return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
-        if "adverse_liquidity_nearby" in risk_flags and score < Decimal("0.35"):
-            return f"GRID shadow blocked: adverse liquidity near range edge with score {score:.2f}."
+        if alignment == "mixed" and score < Decimal("0.55"):
+            return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
     return None
 
 

@@ -31,9 +31,9 @@ def strategy_config(**overrides) -> StrategyConfig:
         "vwap_reversion_watch_deviation_atr": Decimal("1.80"),
         "vwap_reversion_watch_max_deviation_atr": Decimal("8.00"),
         "vwap_reversion_watch_min_volume_ratio": Decimal("1.05"),
-        "vwap_reversion_min_progress_atr": Decimal("0.50"),
-        "vwap_reversion_watch_min_progress_atr": Decimal("0.75"),
-        "vwap_reversion_reversal_min_body_atr": Decimal("0.12"),
+        "vwap_reversion_min_progress_atr": Decimal("0.80"),
+        "vwap_reversion_watch_min_progress_atr": Decimal("1.10"),
+        "vwap_reversion_reversal_min_body_atr": Decimal("0.20"),
         "vwap_reversion_stop_atr_multiplier": Decimal("1.00"),
         "vwap_reversion_take_profit_rr": Decimal("1.35"),
     }
@@ -96,7 +96,7 @@ def patch_indicators(monkeypatch, *, rsi_value: float = 30.0, volume_ratio: Deci
 
 
 def test_vwap_reversion_waits_for_reversal_and_flow_confirmation(monkeypatch) -> None:
-    candles_15m = candles(120, previous_close="96", open_="95", close="96.5")
+    candles_15m = candles(120, previous_close="95.5", open_="95", close="96.5")
     patch_indicators(monkeypatch)
 
     signal = VwapReversionStrategy(strategy_config()).generate(
@@ -150,7 +150,7 @@ def test_vwap_reversion_requires_progress_back_toward_vwap(monkeypatch) -> None:
 
 
 def test_vwap_reversion_watch_uses_relaxed_thresholds(monkeypatch) -> None:
-    candles_15m = candles(120, previous_close="97.0", open_="97.2", close="98.0")
+    candles_15m = candles(120, previous_close="96.7", open_="97.2", close="98.0")
     patch_indicators(monkeypatch)
     strategy = VwapReversionStrategy(strategy_config())
 
@@ -160,7 +160,7 @@ def test_vwap_reversion_watch_uses_relaxed_thresholds(monkeypatch) -> None:
     assert watch is not None
     assert watch.metadata["strategy"] == "VWAP_REVERSION_WATCH"
     assert watch.metadata["vwap_variant"] == "watch"
-    assert Decimal(watch.metadata["min_progress_atr"]) >= Decimal("0.75")
+    assert Decimal(watch.metadata["min_progress_atr"]) >= Decimal("1.10")
 
 
 def test_vwap_reversion_watch_blocks_weak_progress(monkeypatch) -> None:
@@ -195,3 +195,24 @@ def test_vwap_reversion_blocks_extreme_deviation_and_weak_flow(monkeypatch) -> N
         candles(120),
         metrics(taker_buy_ratio=Decimal("0.42")),
     ) is None
+
+
+def test_vwap_reversion_blocks_one_sided_impulse_flow(monkeypatch) -> None:
+    candles_15m = candles(120, previous_close="95.5", open_="95", close="96.5")
+    patch_indicators(monkeypatch)
+    strategy = VwapReversionStrategy(strategy_config())
+
+    signal, diagnostic = strategy.evaluate(
+        "BTCUSDT",
+        candles_15m,
+        candles(120),
+        candles(120),
+        metrics(
+            taker_buy_ratio=Decimal("0.94"),
+            aggressive_buy_sell_delta=Decimal("0.90"),
+            order_book_imbalance=Decimal("0.88"),
+        ),
+    )
+
+    assert signal is None
+    assert diagnostic["block_reason"] == "flow_too_one_sided_for_reversion"

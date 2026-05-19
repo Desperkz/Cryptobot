@@ -330,8 +330,9 @@ class VwapReversionStrategy:
         if reversion_progress_atr < min_progress_atr:
             diagnostic["block_reason"] = "no_vwap_reversion_progress"
             return None, diagnostic
-        if not _vwap_flow_confirmed(metrics, direction):
-            diagnostic["block_reason"] = "flow_against_reversion"
+        flow_ok, flow_reason = _vwap_reversion_flow_quality(metrics, direction)
+        if not flow_ok:
+            diagnostic["block_reason"] = flow_reason
             return None, diagnostic
         stop_distance = atr_15m * self.config.vwap_reversion_stop_atr_multiplier
         rr = self.config.vwap_reversion_take_profit_rr
@@ -443,6 +444,26 @@ def _vwap_flow_confirmed(metrics: MarketMetrics, direction: Direction) -> bool:
             return False
         return True
     return False
+
+
+def _vwap_reversion_flow_quality(metrics: MarketMetrics, direction: Direction) -> tuple[bool, str]:
+    if not _vwap_flow_confirmed(metrics, direction):
+        return False, "flow_against_reversion"
+
+    taker_buy_ratio = metrics.taker_buy_ratio
+    delta = metrics.aggressive_buy_sell_delta
+    book_imbalance = metrics.order_book_imbalance
+    if direction == Direction.LONG:
+        if taker_buy_ratio is not None and taker_buy_ratio > Decimal("0.92"):
+            return False, "flow_too_one_sided_for_reversion"
+        if delta > Decimal("0.85") or book_imbalance > Decimal("0.85"):
+            return False, "flow_too_one_sided_for_reversion"
+    elif direction == Direction.SHORT:
+        if taker_buy_ratio is not None and taker_buy_ratio < Decimal("0.08"):
+            return False, "flow_too_one_sided_for_reversion"
+        if delta < Decimal("-0.85") or book_imbalance < Decimal("-0.85"):
+            return False, "flow_too_one_sided_for_reversion"
+    return True, "passed"
 
 
 def _strict_directional_flow_confirmed(metrics: MarketMetrics, direction: Direction) -> bool:
@@ -602,7 +623,9 @@ class RangeGridStrategy:
         atr_15m = to_decimal(atr(candles_15m, self.config.atr_period)[-1])
         if entry <= 0 or range_size <= 0 or atr_15m <= 0:
             return None
-        if range_size < atr_15m * Decimal("1.5") or range_size > atr_15m * Decimal("8"):
+        if range_size < atr_15m * Decimal("2.20") or range_size > atr_15m * Decimal("8"):
+            return None
+        if metrics.spread_bps > Decimal("5"):
             return None
 
         position_in_range = (entry - range_low) / range_size
@@ -614,6 +637,8 @@ class RangeGridStrategy:
         elif position_in_range >= Decimal("1") - entry_zone and rsi_value >= self.config.range_grid_rsi_short_min:
             direction = Direction.SHORT
         if direction == Direction.NONE:
+            return None
+        if not _range_grid_flow_safe(metrics, direction):
             return None
 
         stop_distance = atr_15m * self.config.range_grid_stop_atr_multiplier
@@ -642,8 +667,33 @@ class RangeGridStrategy:
                 "entry_zone": str(entry_zone),
                 "range_atr": str(range_size / atr_15m),
                 "rsi": str(rsi_value),
+                "spread_bps": str(metrics.spread_bps),
+                "flow_safe": "True",
                 "atr_pct": str(_atr_pct(atr_15m, entry)),
                 "rr": str(rr),
                 "caution": "shadow_only_range_grid",
             },
         )
+
+
+def _range_grid_flow_safe(metrics: MarketMetrics, direction: Direction) -> bool:
+    taker_buy_ratio = metrics.taker_buy_ratio
+    delta = metrics.aggressive_buy_sell_delta
+    book_imbalance = metrics.order_book_imbalance
+    if direction == Direction.LONG:
+        if taker_buy_ratio is not None and (taker_buy_ratio < Decimal("0.12") or taker_buy_ratio > Decimal("0.82")):
+            return False
+        if delta < Decimal("-0.55") or book_imbalance < Decimal("-0.45"):
+            return False
+        if delta > Decimal("0.85") or book_imbalance > Decimal("0.85"):
+            return False
+    elif direction == Direction.SHORT:
+        if taker_buy_ratio is not None and (taker_buy_ratio > Decimal("0.88") or taker_buy_ratio < Decimal("0.18")):
+            return False
+        if delta > Decimal("0.55") or book_imbalance > Decimal("0.45"):
+            return False
+        if delta < Decimal("-0.85") or book_imbalance < Decimal("-0.85"):
+            return False
+    else:
+        return False
+    return True
