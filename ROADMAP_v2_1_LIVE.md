@@ -1,6 +1,6 @@
 # Bot v2.1 Live Readiness Roadmap
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 Status legend:
 - `[x]` done and locally verified
@@ -270,6 +270,10 @@ Status legend:
 - `[ ]` P6-08 Weekly research report.
   - Generate weekly ranking, promotion, demotion, and anomaly report from scorecard, shadow-paper, order-flow, and ML snapshots.
   - ML remains advisory/shadow; enforcement requires a positive walk-forward delta and a substantially larger evidence base.
+- `[x]` P6-09 Add confidence-based dynamic sizing without breaking the SQZ champion line.
+  - Done: new dynamic sizing layer adjusts per-trade risk and selected leverage from strategy profile, signal confidence, order-flow alignment, funding penalty, and hard per-strategy caps.
+  - Done: `SQUEEZE_BREAKOUT` remains the champion paper row with a conservative 2.0% risk cap, while `SQUEEZE_BREAKOUT_DYNAMIC` runs as a separate shadow challenger.
+  - Done: paper/shadow trades persist `dynamic_sizing` metadata with chosen risk, leverage, multiplier, cap, and reasons.
 
 ## Evidence Required Before MAINNET_LIVE
 

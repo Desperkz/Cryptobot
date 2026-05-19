@@ -276,6 +276,43 @@ class RiskConfig:
     kelly_fraction: Decimal = Decimal("0.5")
     kelly_min_risk_pct: Decimal = Decimal("0.005")
     kelly_max_risk_pct: Decimal = Decimal("0.03")
+    dynamic_sizing_enabled: bool = True
+    dynamic_sizing_min_risk_pct: Decimal = Decimal("0.003")
+    dynamic_sizing_max_risk_pct: Decimal = Decimal("0.025")
+    dynamic_sizing_shadow_max_risk_pct: Decimal = Decimal("0.020")
+    dynamic_sizing_high_confidence: Decimal = Decimal("0.82")
+    dynamic_sizing_elite_confidence: Decimal = Decimal("0.90")
+    dynamic_leverage_enabled: bool = True
+    dynamic_leverage_min: int = 1
+    dynamic_leverage_max: int = 5
+    dynamic_strategy_risk_multipliers: dict[str, Decimal] = field(
+        default_factory=lambda: {
+            "SQUEEZE_BREAKOUT": Decimal("1.00"),
+            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("1.15"),
+            "MEAN_REVERSION": Decimal("0.65"),
+            "TREND_PULLBACK": Decimal("0.75"),
+            "LIQUIDITY_SWEEP_REVERSAL": Decimal("0.60"),
+            "VWAP_REVERSION": Decimal("0.45"),
+            "VWAP_REVERSION_WATCH": Decimal("0.50"),
+            "MOMENTUM_CONTINUATION": Decimal("0.75"),
+            "RANGE_GRID": Decimal("0.25"),
+            "TREND_FOLLOWING": Decimal("0.60"),
+        }
+    )
+    dynamic_strategy_max_risk_pct: dict[str, Decimal] = field(
+        default_factory=lambda: {
+            "SQUEEZE_BREAKOUT": Decimal("0.020"),
+            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("0.030"),
+            "MEAN_REVERSION": Decimal("0.014"),
+            "TREND_PULLBACK": Decimal("0.016"),
+            "LIQUIDITY_SWEEP_REVERSAL": Decimal("0.012"),
+            "VWAP_REVERSION": Decimal("0.010"),
+            "VWAP_REVERSION_WATCH": Decimal("0.012"),
+            "MOMENTUM_CONTINUATION": Decimal("0.016"),
+            "RANGE_GRID": Decimal("0.006"),
+            "TREND_FOLLOWING": Decimal("0.012"),
+        }
+    )
     correlation_groups: dict[str, list[str]] = field(default_factory=dict)
 
 
@@ -897,6 +934,27 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             kelly_fraction=to_decimal(raw["risk"].get("kelly_fraction", "0.5")),
             kelly_min_risk_pct=to_decimal(raw["risk"].get("kelly_min_risk_pct", "0.005")),
             kelly_max_risk_pct=to_decimal(raw["risk"].get("kelly_max_risk_pct", "0.03")),
+            dynamic_sizing_enabled=bool(raw["risk"].get("dynamic_sizing_enabled", True)),
+            dynamic_sizing_min_risk_pct=to_decimal(raw["risk"].get("dynamic_sizing_min_risk_pct", "0.003")),
+            dynamic_sizing_max_risk_pct=to_decimal(raw["risk"].get("dynamic_sizing_max_risk_pct", "0.025")),
+            dynamic_sizing_shadow_max_risk_pct=to_decimal(
+                raw["risk"].get("dynamic_sizing_shadow_max_risk_pct", "0.020")
+            ),
+            dynamic_sizing_high_confidence=to_decimal(
+                raw["risk"].get("dynamic_sizing_high_confidence", "0.82")
+            ),
+            dynamic_sizing_elite_confidence=to_decimal(
+                raw["risk"].get("dynamic_sizing_elite_confidence", "0.90")
+            ),
+            dynamic_leverage_enabled=bool(raw["risk"].get("dynamic_leverage_enabled", True)),
+            dynamic_leverage_min=int(raw["risk"].get("dynamic_leverage_min", 1)),
+            dynamic_leverage_max=int(raw["risk"].get("dynamic_leverage_max", raw["risk"]["max_leverage"])),
+            dynamic_strategy_risk_multipliers=_dec_map(
+                raw["risk"].get("dynamic_strategy_risk_multipliers", {})
+            )
+            or RiskConfig.__dataclass_fields__["dynamic_strategy_risk_multipliers"].default_factory(),
+            dynamic_strategy_max_risk_pct=_dec_map(raw["risk"].get("dynamic_strategy_max_risk_pct", {}))
+            or RiskConfig.__dataclass_fields__["dynamic_strategy_max_risk_pct"].default_factory(),
             correlation_groups={k: list(v) for k, v in raw["risk"].get("correlation_groups", {}).items()},
         ),
         trade_management=TradeManagementConfig(

@@ -78,6 +78,11 @@ class StrategyRouter:
             if signal:
                 candidates.append(signal)
 
+        if "SQUEEZE_BREAKOUT_DYNAMIC" in enabled and self.squeeze_breakout:
+            signal = self.squeeze_breakout.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
+            if signal:
+                candidates.append(_as_squeeze_dynamic_variant(signal))
+
         if "TREND_PULLBACK" in enabled and self.trend_pullback:
             signal = self.trend_pullback.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
             if signal:
@@ -195,3 +200,19 @@ class StrategyRouter:
         metrics: MarketMetrics,
     ) -> list[Signal]:
         return self._generate_candidates(symbol, candles_15m, candles_1h, candles_4h, metrics, self.shadow_enabled)
+
+
+def _as_squeeze_dynamic_variant(signal: Signal) -> Signal:
+    metadata = {
+        **dict(signal.metadata or {}),
+        "strategy": "SQUEEZE_BREAKOUT_DYNAMIC",
+        "parent_strategy": "SQUEEZE_BREAKOUT",
+        "sizing_variant": "dynamic_challenger",
+    }
+    return replace(
+        signal,
+        metadata=metadata,
+        reason=signal.reason.replace("SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC", 1)
+        if "SQUEEZE_BREAKOUT" in signal.reason
+        else f"SQUEEZE_BREAKOUT_DYNAMIC: {signal.reason}",
+    )

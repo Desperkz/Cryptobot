@@ -65,7 +65,7 @@ class MarketEntryFilter:
         if hour not in self.config.high_confidence_squeeze_allowed_hours:
             return False
         metadata = signal.metadata
-        if str(metadata.get("strategy", "")).upper() != "SQUEEZE_BREAKOUT":
+        if str(metadata.get("strategy", "")).upper() not in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
             return False
         if str(metadata.get("squeeze_state", "")).lower() != "release":
             return False

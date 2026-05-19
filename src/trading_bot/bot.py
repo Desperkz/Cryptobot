@@ -23,7 +23,14 @@ from trading_bot.ml import MLSignalFilter
 from trading_bot.models import Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
 from trading_bot.order_manager import OrderManager
 from trading_bot.position_manager import PositionManager
-from trading_bot.risk_manager import KellyRiskSizer, CorrelationFilter, RiskError, RiskManager
+from trading_bot.risk_manager import (
+    DynamicSizingDecision,
+    KellyRiskSizer,
+    CorrelationFilter,
+    RiskError,
+    RiskManager,
+    dynamic_position_sizing,
+)
 from trading_bot.strategy_engine.edge import EdgeAnalyzer
 from trading_bot.strategy_engine.order_flow import OrderFlowAnnotation, OrderFlowAnnotator
 from trading_bot.strategy_engine.candidate_strategies import (
@@ -467,13 +474,16 @@ class TradingBot:
             await self.db.insert_signal(signal)
             await self.telegram.signal(signal.symbol, signal.direction.value, signal.style.value, signal.reason)
             try:
+                sizing = self._dynamic_sizing_decision(signal, effective_risk_pct)
+                signal = self._annotate_dynamic_sizing(signal, sizing)
                 plan = self.risk.calculate_plan(
                     signal=signal,
                     equity_usdt=equity,
                     filters=asset.filters,
+                    leverage=sizing.leverage,
                     active_positions=await self.positions.active_positions(),
                     live_mode=self.config.is_live,
-                    risk_per_trade_pct=effective_risk_pct,
+                    risk_per_trade_pct=sizing.risk_pct,
                 )
                 for warning in plan.warnings:
                     await self.telegram.risk_warning(warning)
@@ -496,6 +506,7 @@ class TradingBot:
                         "entry_order": result.entry_order,
                         "stop_order": result.stop_order,
                         "take_profit_orders": list(result.take_profit_orders),
+                        "dynamic_sizing": sizing.to_metadata(),
                         "signal_metadata": plan.signal_metadata,
                         **_trade_cluster_metadata(
                             signal,
@@ -579,6 +590,29 @@ class TradingBot:
         }
         return replace(signal, metadata=metadata), annotation
 
+    def _dynamic_sizing_decision(
+        self,
+        signal: Signal,
+        base_risk_pct: Decimal,
+        strategy_mode: str | None = None,
+    ) -> DynamicSizingDecision:
+        mode = strategy_mode or str((signal.metadata or {}).get("strategy_mode") or "paper")
+        return dynamic_position_sizing(
+            signal=signal,
+            config=self.config.risk,
+            base_risk_pct=base_risk_pct,
+            strategy_mode=mode,
+        )
+
+    def _annotate_dynamic_sizing(self, signal: Signal, sizing: DynamicSizingDecision) -> Signal:
+        metadata = {
+            **dict(signal.metadata or {}),
+            "dynamic_sizing": sizing.to_metadata(),
+            "risk_per_trade_pct": str(sizing.risk_pct),
+            "leverage": sizing.leverage,
+        }
+        return replace(signal, metadata=metadata)
+
     async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
         shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
         logger.info(
@@ -649,9 +683,16 @@ class TradingBot:
             equity = self.config.account.initial_equity_usdt
         if equity is None or equity <= 0:
             return
+        sizing = self._dynamic_sizing_decision(
+            signal,
+            self.config.risk.risk_per_trade_pct,
+            strategy_mode="shadow",
+        )
+        signal = self._annotate_dynamic_sizing(signal, sizing)
         plan_metadata: dict[str, Any] = {
             "equity_used": str(equity),
-            "risk_per_trade_pct": str(self.config.risk.risk_per_trade_pct),
+            "risk_per_trade_pct": str(sizing.risk_pct),
+            "dynamic_sizing": sizing.to_metadata(),
         }
         if filters is not None:
             try:
@@ -659,9 +700,10 @@ class TradingBot:
                     signal=signal,
                     equity_usdt=equity,
                     filters=filters,
+                    leverage=sizing.leverage,
                     active_positions=[],
                     live_mode=False,
-                    risk_per_trade_pct=self.config.risk.risk_per_trade_pct,
+                    risk_per_trade_pct=sizing.risk_pct,
                 )
             except RiskError as exc:
                 logger.info("Shadow paper rejected by risk manager for %s %s: %s", strategy, signal.symbol, exc)
@@ -679,7 +721,7 @@ class TradingBot:
                 }
             )
         else:
-            quantity, risk_amount = self._fallback_shadow_size(signal, equity)
+            quantity, risk_amount = self._fallback_shadow_size(signal, equity, sizing.risk_pct)
             if quantity is None or risk_amount is None:
                 return
             plan_metadata["sizing_fallback"] = True
@@ -720,11 +762,16 @@ class TradingBot:
         except Exception:
             logger.exception("Failed to open shadow paper trade for %s %s", strategy, signal.symbol)
 
-    def _fallback_shadow_size(self, signal: Signal, equity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+    def _fallback_shadow_size(
+        self,
+        signal: Signal,
+        equity: Decimal,
+        risk_per_trade_pct: Decimal | None = None,
+    ) -> tuple[Decimal | None, Decimal | None]:
         stop_distance = abs(signal.entry_price - signal.stop_loss)
         if stop_distance <= 0:
             return None, None
-        risk_amount = equity * self.config.risk.risk_per_trade_pct
+        risk_amount = equity * (risk_per_trade_pct or self.config.risk.risk_per_trade_pct)
         if risk_amount <= 0:
             return None, None
         quantity = risk_amount / stop_distance

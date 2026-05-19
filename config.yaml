@@ -91,6 +91,7 @@ strategy:
   enabled_strategies: ["MEAN_REVERSION", "SQUEEZE_BREAKOUT"]  # SQZ/MR execute; retuned candidates are shadow-only
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
+    SQUEEZE_BREAKOUT_DYNAMIC: shadow
     MEAN_REVERSION: paper
     TREND_PULLBACK: shadow
     LIQUIDITY_SWEEP_REVERSAL: shadow
@@ -210,6 +211,37 @@ risk:
   kelly_fraction: 0.50
   kelly_min_risk_pct: 0.005
   kelly_max_risk_pct: 0.03
+  dynamic_sizing_enabled: true
+  dynamic_sizing_min_risk_pct: 0.003
+  dynamic_sizing_max_risk_pct: 0.025
+  dynamic_sizing_shadow_max_risk_pct: 0.020
+  dynamic_sizing_high_confidence: 0.82
+  dynamic_sizing_elite_confidence: 0.90
+  dynamic_leverage_enabled: true
+  dynamic_leverage_min: 1
+  dynamic_leverage_max: 5
+  dynamic_strategy_risk_multipliers:
+    SQUEEZE_BREAKOUT: 1.00          # champion: can reduce weak entries, but cannot over-risk current paper line
+    SQUEEZE_BREAKOUT_DYNAMIC: 1.15  # challenger: separate shadow evidence for stronger sizing
+    MEAN_REVERSION: 0.65
+    TREND_PULLBACK: 0.75
+    LIQUIDITY_SWEEP_REVERSAL: 0.60
+    VWAP_REVERSION: 0.45
+    VWAP_REVERSION_WATCH: 0.50
+    MOMENTUM_CONTINUATION: 0.75
+    RANGE_GRID: 0.25
+    TREND_FOLLOWING: 0.60
+  dynamic_strategy_max_risk_pct:
+    SQUEEZE_BREAKOUT: 0.020
+    SQUEEZE_BREAKOUT_DYNAMIC: 0.030
+    MEAN_REVERSION: 0.014
+    TREND_PULLBACK: 0.016
+    LIQUIDITY_SWEEP_REVERSAL: 0.012
+    VWAP_REVERSION: 0.010
+    VWAP_REVERSION_WATCH: 0.012
+    MOMENTUM_CONTINUATION: 0.016
+    RANGE_GRID: 0.006
+    TREND_FOLLOWING: 0.012
   correlation_groups:
     majors: ["BTCUSDT", "ETHUSDT"]
     l1_beta: ["SOLUSDT", "BNBUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "NEARUSDT"]

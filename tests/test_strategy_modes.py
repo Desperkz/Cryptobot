@@ -96,6 +96,7 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     ]
     assert cfg.strategy.execution_strategies(TradingMode.MAINNET_LIVE) == []
     assert cfg.strategy.shadow_strategies() == [
+        "SQUEEZE_BREAKOUT_DYNAMIC",
         "TREND_PULLBACK",
         "LIQUIDITY_SWEEP_REVERSAL",
         "VWAP_REVERSION",
@@ -122,3 +123,22 @@ def test_router_records_shadow_candidates_separately_from_execution() -> None:
     assert execution is not None
     assert execution.metadata["strategy"] == "SQUEEZE_BREAKOUT"
     assert [item.metadata["strategy"] for item in shadow] == ["MEAN_REVERSION", "TREND_PULLBACK"]
+
+
+def test_router_can_emit_sqz_dynamic_as_separate_shadow_challenger() -> None:
+    router = StrategyRouter(
+        trend=StubStrategy(None),
+        mean_reversion=StubStrategy(None),
+        squeeze_breakout=StubStrategy(signal("SQUEEZE_BREAKOUT", "0.9")),
+        enabled_strategies=["SQUEEZE_BREAKOUT"],
+        shadow_strategies=["SQUEEZE_BREAKOUT_DYNAMIC"],
+    )
+
+    execution = router.generate("BTCUSDT", [], [], [], None)
+    shadow = router.generate_shadow("BTCUSDT", [], [], [], None)
+
+    assert execution is not None
+    assert execution.metadata["strategy"] == "SQUEEZE_BREAKOUT"
+    assert len(shadow) == 1
+    assert shadow[0].metadata["strategy"] == "SQUEEZE_BREAKOUT_DYNAMIC"
+    assert shadow[0].metadata["parent_strategy"] == "SQUEEZE_BREAKOUT"
