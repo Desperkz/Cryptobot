@@ -1543,7 +1543,8 @@ def api_rejections(limit: int = 100) -> list[dict]:
                 WHERE decision IN (
                     'SHADOW_PAPER_REJECTED_RISK',
                     'SHADOW_PAPER_REJECTED_COOLDOWN',
-                    'SHADOW_PAPER_REJECTED_CONTEXT'
+                    'SHADOW_PAPER_REJECTED_CONTEXT',
+                    'STRATEGY_DIAGNOSTIC'
                 )
                 ORDER BY id DESC
                 LIMIT ?
@@ -1575,7 +1576,8 @@ def api_rejection_stats() -> dict:
                 WHERE decision IN (
                     'SHADOW_PAPER_REJECTED_RISK',
                     'SHADOW_PAPER_REJECTED_COOLDOWN',
-                    'SHADOW_PAPER_REJECTED_CONTEXT'
+                    'SHADOW_PAPER_REJECTED_CONTEXT',
+                    'STRATEGY_DIAGNOSTIC'
                 )
                 GROUP BY decision
             """).fetchall()
@@ -1590,6 +1592,8 @@ def api_rejection_stats() -> dict:
 
 
 def _shadow_rejection_filter_type(decision: str) -> str:
+    if decision == "STRATEGY_DIAGNOSTIC":
+        return "DIAGNOSTIC"
     if decision == "SHADOW_PAPER_REJECTED_COOLDOWN":
         return "SHADOW_COOLDOWN"
     if decision == "SHADOW_PAPER_REJECTED_RISK":

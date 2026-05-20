@@ -1,9 +1,9 @@
 """
-Paper Trading Monitor — v2
-Мониторит открытые позиции бота v2 и закрывает по стопу/тейку.
+Paper Trading Monitor — v2.1
+Мониторит открытые paper-позиции бота v2.1 и закрывает по стопу/тейку.
 
-Запуск: python3 /root/bot_v2/paper_monitor_v2.py
-Запускать параллельно с ботом через systemd (paper-monitor-v2.service).
+Запуск: python3 /root/bot_v2_1/paper_monitor_v2.py
+Запускать параллельно с ботом через systemd (paper-monitor-v2-1.service).
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(os.getenv("PAPER_DB_PATH", "/root/bot_v2/data/trading_bot.sqlite3"))
+DB_PATH = Path(os.getenv("PAPER_DB_PATH", "/root/bot_v2_1/data/trading_bot_v2_1.sqlite3"))
 CHECK_INTERVAL_SEC = 15
 BASE_URL = os.getenv("PAPER_PRICE_BASE_URL", "https://fapi.binance.com")
 TAKER_FEE_BPS = Decimal(os.getenv("PAPER_TAKER_FEE_BPS", "4.0"))

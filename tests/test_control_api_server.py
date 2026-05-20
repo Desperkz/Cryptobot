@@ -73,6 +73,13 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
                'LSR shadow blocked: adverse liquidity remains nearby after the sweep.', '{}', '{}', '2026-05-17 05:41:00')
         """
     )
+    conn.execute(
+        """
+        INSERT INTO ml_feature_snapshots(symbol, direction, strategy, confidence, decision, reason, features, metadata, created_at)
+        VALUES('BTCUSDT', 'SHORT', 'VWAP_REVERSION_WATCH', '0.0', 'STRATEGY_DIAGNOSTIC',
+               'below_min_deviation_or_rsi', '{}', '{}', '2026-05-17 05:42:00')
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -82,9 +89,10 @@ def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch
     types = [row["filter_type"] for row in rows]
     stats = bot_control_v2.api_rejection_stats()
 
-    assert types[:3] == ["SHADOW_CONTEXT", "SHADOW_COOLDOWN", "SHADOW_RISK"]
+    assert types[:4] == ["DIAGNOSTIC", "SHADOW_CONTEXT", "SHADOW_COOLDOWN", "SHADOW_RISK"]
     assert "RISK" in types
-    assert stats["total"] == 4
+    assert stats["total"] == 5
+    assert stats["by_type"]["DIAGNOSTIC"] == 1
     assert stats["by_type"]["SHADOW_RISK"] == 1
     assert stats["by_type"]["SHADOW_COOLDOWN"] == 1
     assert stats["by_type"]["SHADOW_CONTEXT"] == 1

@@ -35,6 +35,7 @@ def _rsi_divergence(candles: list[Candle], direction: Direction, rsi_period: int
 
     vals = closes(candles)
     rsi_vals = rsi(vals, rsi_period)
+    window_start = len(candles) - lookback
 
     if direction == Direction.SHORT:
         # Ищем два последних ценовых максимума
@@ -44,11 +45,10 @@ def _rsi_divergence(candles: list[Candle], direction: Direction, rsi_period: int
         prev_high = highs[prev_high_idx]
 
         curr_rsi = rsi_vals[-1]
-        # Безопасный индекс: отступаем от конца на (lookback - prev_high_idx) баров
-        rsi_offset = lookback - prev_high_idx
-        if rsi_offset <= 0 or rsi_offset > len(rsi_vals):
+        prev_rsi_idx = window_start + prev_high_idx
+        if prev_rsi_idx < 0 or prev_rsi_idx >= len(rsi_vals):
             return False
-        prev_rsi = rsi_vals[-rsi_offset]
+        prev_rsi = rsi_vals[prev_rsi_idx]
 
         # Цена выше, RSI ниже — медвежья дивергенция
         return curr_high >= prev_high * Decimal("0.998") and curr_rsi < prev_rsi - 2
@@ -61,11 +61,10 @@ def _rsi_divergence(candles: list[Candle], direction: Direction, rsi_period: int
         prev_low = lows[prev_low_idx]
 
         curr_rsi = rsi_vals[-1]
-        # Безопасный индекс: отступаем от конца на (lookback - prev_low_idx) баров
-        rsi_offset = lookback - prev_low_idx
-        if rsi_offset <= 0 or rsi_offset > len(rsi_vals):
+        prev_rsi_idx = window_start + prev_low_idx
+        if prev_rsi_idx < 0 or prev_rsi_idx >= len(rsi_vals):
             return False
-        prev_rsi = rsi_vals[-rsi_offset]
+        prev_rsi = rsi_vals[prev_rsi_idx]
 
         # Цена ниже, RSI выше — бычья дивергенция
         return curr_low <= prev_low * Decimal("1.002") and curr_rsi > prev_rsi + 2

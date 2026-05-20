@@ -41,7 +41,7 @@ account:
   quote_asset: "USDT"
 
 trading:
-  timeframes: ["15m", "1h", "4h"]  # 15m отключён — на нём 49% WR, только 1h сигналы
+  timeframes: ["15m", "1h", "4h"]  # обязательные TF: 15m для входа, 1h/4h для режима и контекста
   poll_interval_sec: 60
   max_symbols: 10
   margin_type: "ISOLATED"
@@ -204,6 +204,8 @@ risk:
   taker_fee_bps: 4.0
   slippage_bps: 5.0
   funding_buffer_bps: 1.0
+  max_funding_impact_bps: 8.0
+  funding_impact_holding_hours: 8
   liquidation_buffer_pct: 0.03
   require_liquidation_check_in_live: true
   adaptive_kelly_enabled: true
@@ -260,6 +262,75 @@ trade_management:
       reward_risk: 1.1    # финальный выход на целевом RR
       fraction: 0.50
       activate_trailing: true
+  strategy_exit_profiles:
+    SQUEEZE_BREAKOUT:
+      - name: "TP1"
+        reward_risk: 0.8
+        fraction: 0.35
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.4
+        fraction: 0.35
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 1.8
+        fraction: 0.30
+        activate_trailing: true
+    SQUEEZE_BREAKOUT_DYNAMIC:
+      - name: "TP1"
+        reward_risk: 0.8
+        fraction: 0.35
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.5
+        fraction: 0.35
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 2.0
+        fraction: 0.30
+        activate_trailing: true
+    TREND_PULLBACK:
+      - name: "TP1"
+        reward_risk: 0.9
+        fraction: 0.30
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.5
+        fraction: 0.35
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 2.2
+        fraction: 0.35
+        activate_trailing: true
+    MOMENTUM_CONTINUATION:
+      - name: "TP1"
+        reward_risk: 0.9
+        fraction: 0.30
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.4
+        fraction: 0.35
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 2.0
+        fraction: 0.35
+        activate_trailing: true
+    MEAN_REVERSION:
+      - name: "TP1"
+        reward_risk: 0.75
+        fraction: 0.45
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.1
+        fraction: 0.55
+    RANGE_GRID:
+      - name: "TP1"
+        reward_risk: 0.8
+        fraction: 0.40
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.4
+        fraction: 0.60
   breakeven_offset_bps: 2.0
   trailing_enabled: true
   trailing_activation_reward_risk: 0.8

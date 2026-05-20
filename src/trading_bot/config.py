@@ -271,6 +271,8 @@ class RiskConfig:
     funding_buffer_bps: Decimal
     liquidation_buffer_pct: Decimal
     require_liquidation_check_in_live: bool
+    max_funding_impact_bps: Decimal = Decimal("8.0")
+    funding_impact_holding_hours: Decimal = Decimal("8")
     adaptive_kelly_enabled: bool = True
     kelly_lookback_trades: int = 50
     kelly_fraction: Decimal = Decimal("0.5")
@@ -337,6 +339,7 @@ class TradeManagementConfig:
     trailing_activation_reward_risk: Decimal
     trailing_callback_rate_pct: dict[str, Decimal]
     trailing_client_side: bool = False
+    strategy_exit_profiles: dict[str, list[PartialTakeProfitConfig]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -540,6 +543,13 @@ class AppConfig:
         tp_fraction = sum(target.fraction for target in self.trade_management.partial_take_profits)
         if tp_fraction != Decimal("1"):
             raise ConfigError("trade_management.partial_take_profits fractions must sum to 1.0.")
+        for strategy, targets in self.trade_management.strategy_exit_profiles.items():
+            profile_fraction = sum(target.fraction for target in targets)
+            if profile_fraction != Decimal("1"):
+                raise ConfigError(
+                    "trade_management.strategy_exit_profiles fractions must sum to 1.0 "
+                    f"for {strategy}."
+                )
         if self.risk.risk_per_trade_pct >= self.risk.aggressive_risk_threshold_pct:
             warnings.append(
                 f"risk_per_trade_pct={self.risk.risk_per_trade_pct:.2%} is aggressive for futures."
@@ -927,6 +937,8 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             taker_fee_bps=to_decimal(raw["risk"]["taker_fee_bps"]),
             slippage_bps=to_decimal(raw["risk"]["slippage_bps"]),
             funding_buffer_bps=to_decimal(raw["risk"]["funding_buffer_bps"]),
+            max_funding_impact_bps=to_decimal(raw["risk"].get("max_funding_impact_bps", "8.0")),
+            funding_impact_holding_hours=to_decimal(raw["risk"].get("funding_impact_holding_hours", "8")),
             liquidation_buffer_pct=to_decimal(raw["risk"]["liquidation_buffer_pct"]),
             require_liquidation_check_in_live=bool(raw["risk"]["require_liquidation_check_in_live"]),
             adaptive_kelly_enabled=bool(raw["risk"].get("adaptive_kelly_enabled", True)),
@@ -977,6 +989,19 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             trailing_activation_reward_risk=to_decimal(raw["trade_management"]["trailing_activation_reward_risk"]),
             trailing_callback_rate_pct=_dec_map(raw["trade_management"]["trailing_callback_rate_pct"]),
             trailing_client_side=bool(raw["trade_management"].get("trailing_client_side", False)),
+            strategy_exit_profiles={
+                _strategy_name(strategy): [
+                    PartialTakeProfitConfig(
+                        name=str(item["name"]),
+                        reward_risk=to_decimal(item["reward_risk"]),
+                        fraction=to_decimal(item["fraction"]),
+                        move_stop_to_breakeven=bool(item.get("move_stop_to_breakeven", False)),
+                        activate_trailing=bool(item.get("activate_trailing", False)),
+                    )
+                    for item in items
+                ]
+                for strategy, items in raw["trade_management"].get("strategy_exit_profiles", {}).items()
+            },
         ),
         edge_filters=EdgeFilterConfig(
             enabled=bool(raw["edge_filters"]["enabled"]),

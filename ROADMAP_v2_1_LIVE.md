@@ -206,6 +206,7 @@
   - Готово: `/rejections` объединяет hard `filter_rejections` с shadow-paper `SHADOW_PAPER_REJECTED_RISK` и `SHADOW_PAPER_REJECTED_COOLDOWN` snapshots.
   - Готово: `/rejection-stats` считает `SHADOW_RISK` и `SHADOW_COOLDOWN`, поэтому журнал больше не выглядит пустым, пока shadow strategies фильтруются.
   - Готово: dashboard badges/styles отдельно отображают shadow rejection types.
+  - Готово: `/rejections` также показывает свежие `STRATEGY_DIAGNOSTIC` snapshots как `DIAGNOSTIC`, чтобы журнал отражал текущие причины отсутствия входов, а не только hard risk rejects.
 
 ## P5 Реалистичное paper-исполнение
 
@@ -240,9 +241,13 @@
 
 ## P6 Production hardening
 
-- `[ ]` P6-01 Добавить max funding impact в risk planning.
+- `[x]` P6-01 Добавить max funding impact в risk planning.
   - Оставить существующие funding/carry filters, но также ограничить estimated funding impact per trade через `max_funding_impact_bps`.
   - По возможности использовать signed funding estimates, а не всегда считать funding фиксированной издержкой.
+  - Готово: risk planning теперь читает `funding_rate` из signal metadata и считает signed funding impact по направлению сделки.
+  - Готово: adverse funding выше `risk.max_funding_impact_bps` блокирует сделку до sizing/execution.
+  - Готово: favorable funding не получает фиксированный funding-buffer penalty, а unknown funding остается на старом `funding_buffer_bps` fallback.
+  - Готово: `RiskPlan.signal_metadata` сохраняет `risk_funding_impact_bps`, `risk_signed_funding_impact_bps`, `risk_funding_impact_source` и общий `risk_cost_bps` для последующей проверки.
 - `[ ]` P6-02 Усилить post-fill live protection checks.
   - После entry fill проверять, что protective SL и reduce-only TP ladder активны на Binance.
   - Если проверка не прошла, отменить остатки и defensively close position.
@@ -274,6 +279,35 @@
   - Готово: новый dynamic sizing layer регулирует per-trade risk и selected leverage по strategy profile, signal confidence, order-flow alignment, funding penalty и жестким per-strategy caps.
   - Готово: `SQUEEZE_BREAKOUT` остается champion paper row с консервативным 2.0% risk cap, а `SQUEEZE_BREAKOUT_DYNAMIC` работает как отдельный shadow challenger.
   - Готово: paper/shadow trades сохраняют `dynamic_sizing` metadata с выбранным risk, leverage, multiplier, cap и reasons.
+- `[x]` P6-10 Исправить paper equity accounting.
+  - Paper equity должен учитывать realized PnL, unrealized PnL открытых paper-позиций и оставшийся open risk, а не только закрытые сделки.
+  - Это важно для compounding, max margin usage и daily loss логики: бот не должен увеличивать sizing, пока открытая позиция уже в плавающей просадке.
+  - Готово: `current_equity_usdt()` в `PAPER_TRADING` теперь складывает стартовый депозит, realized PnL и unrealized PnL открытых paper trades по текущему ticker price.
+  - Готово: добавлен regression test для LONG/SHORT unrealized PnL и compounding equity.
+- `[x]` P6-11 Убрать hardcoded disaster daily-loss limit.
+  - `DisasterConfig.max_daily_loss_pct` должен браться из `risk.max_daily_loss_pct`, чтобы config и disaster detector не жили с разными лимитами.
+  - Добавить regression test, который ловит расхождение `config.yaml` 6% vs hardcoded 8%.
+  - Готово: `TradingBot` строит `DisasterConfig` через config-driven helper, daily-loss limit берется из `config.risk.max_daily_loss_pct`.
+  - Готово: добавлен regression test для `0.06`.
+- `[ ]` P6-12 Сделать MR cost-aware и expectancy-aware.
+  - Пересмотреть `mean_reversion_take_profit_rr=1.1`: поднять RR или добавить strategy-specific post-cost expectancy gate.
+  - MR не переводить в live до собственной post-P5 статистики, где комиссии, slippage, funding и partial exits уже учтены.
+- `[x]` P6-13 Починить RSI divergence indexing.
+  - `_rsi_divergence()` должен сопоставлять RSI с тем же absolute candle index, где найден предыдущий price extreme.
+  - Добавить regression tests для bullish/bearish divergence.
+  - Готово: `_rsi_divergence()` больше не считает RSI через offset от конца массива; используется absolute index найденного high/low.
+  - Готово: добавлены bearish/bullish regression tests.
+- `[x]` P6-14 Strategy-specific exit profiles.
+  - SQZ/TPB/MOM должны иметь runner-friendly partial exits, чтобы TP1 не срезал лучшие трендовые сделки.
+  - MR/GRID должны иметь отдельный более короткий/строгий exit profile, завязанный на post-cost expectancy.
+  - Готово: добавлен `trade_management.strategy_exit_profiles` с отдельными TP-ladders для `SQUEEZE_BREAKOUT`, `SQUEEZE_BREAKOUT_DYNAMIC`, `TREND_PULLBACK`, `MOMENTUM_CONTINUATION`, `MEAN_REVERSION` и `RANGE_GRID`.
+  - Готово: `ExitPlanBuilder` выбирает профиль по `signal.metadata.strategy`, а неизвестные стратегии остаются на дефолтной лестнице.
+  - Готово: target reward/risk capped by исходный signal take_profit RR, чтобы профиль не ставил TP дальше, чем разрешила стратегия.
+  - Проверка: `115 passed`.
+- `[x]` P6-15 Убрать старые v2.0 fallback paths из v2.1 paper monitor.
+  - `paper_monitor_v2.py` не должен при ручном запуске случайно читать `/root/bot_v2/data/trading_bot.sqlite3`.
+  - Исправить устаревшие комментарии запуска и fallback DB path.
+  - Готово: fallback DB path и комментарии запуска переведены на `/root/bot_v2_1` и `trading_bot_v2_1.sqlite3`.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

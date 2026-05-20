@@ -22,6 +22,13 @@ class RiskState:
     pnl_date_utc: str = ""  # дата UTC когда обнулился realized_pnl_today (YYYY-MM-DD)
 
 
+@dataclass(frozen=True)
+class FundingImpactEstimate:
+    cost_bps: Decimal
+    signed_bps: Decimal | None
+    source: str
+
+
 class RiskManager:
     def __init__(
         self,
@@ -84,7 +91,13 @@ class RiskManager:
 
         effective_risk_pct = risk_per_trade_pct or self.config.risk_per_trade_pct
         risk_budget = equity_usdt * effective_risk_pct
-        cost_bps = self.config.taker_fee_bps * Decimal("2") + self.config.slippage_bps + self.config.funding_buffer_bps
+        funding_impact = _estimate_funding_impact_bps(signal.direction, signal.metadata, self.config)
+        if funding_impact.cost_bps > self.config.max_funding_impact_bps:
+            raise RiskError(
+                "Estimated funding impact "
+                f"{funding_impact.cost_bps:.2f} bps exceeds maximum {self.config.max_funding_impact_bps} bps."
+            )
+        cost_bps = self.config.taker_fee_bps * Decimal("2") + self.config.slippage_bps + funding_impact.cost_bps
         estimated_cost_per_unit = stop_distance + (entry * cost_bps / Decimal("10000"))
         raw_qty = risk_budget / estimated_cost_per_unit
 
@@ -126,6 +139,11 @@ class RiskManager:
             warnings.append("Position size was capped by max leverage.")
         if raw_qty > max_qty_by_margin:
             warnings.append("Position size was capped by max margin usage.")
+        if funding_impact.source == "signed_estimate" and funding_impact.signed_bps is not None:
+            if funding_impact.signed_bps < 0:
+                warnings.append("Estimated funding is favorable for this direction; no funding buffer was charged.")
+            elif funding_impact.signed_bps > Decimal("0"):
+                warnings.append(f"Estimated adverse funding impact: {funding_impact.cost_bps:.2f} bps.")
 
         partial_take_profits = ()
         protection = None
@@ -157,6 +175,12 @@ class RiskManager:
                 "style": signal.style.value,
                 "direction": signal.direction.value,
                 "confidence": str(signal.confidence),
+                "risk_cost_bps": str(cost_bps),
+                "risk_funding_impact_bps": str(funding_impact.cost_bps),
+                "risk_funding_impact_source": funding_impact.source,
+                "risk_signed_funding_impact_bps": (
+                    str(funding_impact.signed_bps) if funding_impact.signed_bps is not None else None
+                ),
             },
             warnings=tuple(warnings),
         )
@@ -277,3 +301,36 @@ def _estimated_liquidation_price(direction: Direction, entry: Decimal, leverage:
     if direction == Direction.SHORT:
         return entry * (Decimal("1") + leverage_buffer)
     return None
+
+
+def _estimate_funding_impact_bps(
+    direction: Direction,
+    metadata: dict[str, object] | None,
+    config: RiskConfig,
+) -> FundingImpactEstimate:
+    funding_rate = _metadata_decimal(metadata or {}, "funding_rate")
+    if funding_rate is None:
+        return FundingImpactEstimate(
+            cost_bps=max(Decimal("0"), config.funding_buffer_bps),
+            signed_bps=None,
+            source="fallback_buffer",
+        )
+
+    holding_hours = max(Decimal("0"), config.funding_impact_holding_hours)
+    signed_rate = funding_rate if direction == Direction.LONG else -funding_rate
+    signed_bps = signed_rate * Decimal("10000") * holding_hours / Decimal("8")
+    return FundingImpactEstimate(
+        cost_bps=max(Decimal("0"), signed_bps),
+        signed_bps=signed_bps,
+        source="signed_estimate",
+    )
+
+
+def _metadata_decimal(metadata: dict[str, object], key: str) -> Decimal | None:
+    value = metadata.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        return to_decimal(value)
+    except Exception:
+        return None

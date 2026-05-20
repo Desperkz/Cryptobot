@@ -54,6 +54,17 @@ from trading_bot.disaster_mode import DisasterDetector, DisasterConfig, Disaster
 logger = logging.getLogger(__name__)
 
 
+def _disaster_config_from_app_config(config: AppConfig) -> DisasterConfig:
+    return DisasterConfig(
+        api_max_consecutive_failures=3,
+        ws_stale_after_sec=30.0,
+        max_spread_bps_disaster=50.0,
+        max_consecutive_losses=5,
+        max_daily_loss_pct=float(config.risk.max_daily_loss_pct),
+        recovery_cooldown_sec=300.0,
+    )
+
+
 class TradingBot:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -119,14 +130,7 @@ class TradingBot:
         self.supervisor.set_warning_callback(self.telegram.risk_warning)
         self.supervisor.set_trade_closed_callback(self._mark_trade_closed)
         self.disaster = DisasterDetector(
-            config=DisasterConfig(
-                api_max_consecutive_failures=3,
-                ws_stale_after_sec=30.0,
-                max_spread_bps_disaster=50.0,
-                max_consecutive_losses=5,
-                max_daily_loss_pct=0.08,
-                recovery_cooldown_sec=300.0,
-            ),
+            config=_disaster_config_from_app_config(config),
             warn_callback=self.telegram.risk_warning,
             emergency_callback=self._handle_emergency,
         )
@@ -859,12 +863,35 @@ class TradingBot:
                 "No USDT-equivalent starting equity configured. Set STARTING_DEPOSIT_USDT or MANUAL_TENGE_USDT_RATE."
             )
         if self.config.mode == TradingMode.PAPER_TRADING:
+            realized_pnl = Decimal("0")
             try:
                 summary = await self.db.pnl_summary()
-                return equity + Decimal(str(summary.get("realized_pnl") or "0"))
+                realized_pnl = Decimal(str(summary.get("realized_pnl") or "0"))
             except Exception:
                 logger.exception("Could not include realized paper PnL in equity.")
+            unrealized_pnl = Decimal("0")
+            try:
+                unrealized_pnl = await self._paper_unrealized_pnl()
+            except Exception:
+                logger.exception("Could not include unrealized paper PnL in equity.")
+            return equity + realized_pnl + unrealized_pnl
         return equity
+
+    async def _paper_unrealized_pnl(self) -> Decimal:
+        trades = await self.db.recent_trades(5_000)
+        mark_prices: dict[str, Decimal] = {}
+        total = Decimal("0")
+        for trade in trades:
+            if not _is_open_paper_trade(trade):
+                continue
+            symbol = str(trade.get("symbol") or "")
+            if not symbol:
+                continue
+            if symbol not in mark_prices:
+                price_payload = await self.binance.ticker_price(symbol)
+                mark_prices[symbol] = to_decimal(price_payload.get("price", "0"))
+            total += _paper_trade_unrealized_pnl(trade, mark_prices[symbol])
+        return total
 
     async def _sync_paper_positions(self) -> None:
         if self.config.mode != TradingMode.PAPER_TRADING:
@@ -1125,6 +1152,31 @@ def _signal_strategy(signal: Signal) -> str:
 
 
 ACTIVE_TRADE_STATUSES = {"ACCEPTED", "OPEN", "ACTIVE"}
+
+
+def _is_open_paper_trade(trade: dict[str, Any]) -> bool:
+    return (
+        str(trade.get("mode") or "") == TradingMode.PAPER_TRADING.value
+        and _trade_status(trade) in ACTIVE_TRADE_STATUSES
+    )
+
+
+def _paper_trade_unrealized_pnl(trade: dict[str, Any], mark_price: Decimal) -> Decimal:
+    if mark_price <= 0:
+        return Decimal("0")
+    try:
+        direction = Direction(str(trade.get("direction") or Direction.NONE.value))
+    except ValueError:
+        return Decimal("0")
+    quantity = _decimal_or_zero(trade.get("quantity"))
+    entry_price = _decimal_or_zero(trade.get("entry_price"))
+    if quantity <= 0 or entry_price <= 0:
+        return Decimal("0")
+    if direction == Direction.LONG:
+        return (mark_price - entry_price) * quantity
+    if direction == Direction.SHORT:
+        return (entry_price - mark_price) * quantity
+    return Decimal("0")
 
 
 def _trade_metadata(trade: dict[str, Any]) -> dict[str, Any]:

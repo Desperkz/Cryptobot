@@ -461,6 +461,7 @@ canvas { width: 100%; display: block; }
 .rj-badge.corr { border-color: rgba(0,255,157,0.3); color: var(--green); }
 .rj-badge.risk { border-color: rgba(255,59,92,0.4); color: var(--red); }
 .rj-badge.ml { border-color: rgba(77,159,255,0.4); color: var(--blue); }
+.rj-badge.diag { border-color: rgba(77,159,255,0.35); color: var(--blue); }
 .rj-badge.shadow { border-color: rgba(255,215,0,0.35); color: var(--yellow); }
 
 .rj-table { width: 100%; border-collapse: collapse; }
@@ -487,6 +488,7 @@ canvas { width: 100%; display: block; }
 .ftype-CORRELATION { background: rgba(0,255,157,0.12); color: var(--green); }
 .ftype-RISK { background: rgba(255,59,92,0.15); color: var(--red); }
 .ftype-ML { background: rgba(77,159,255,0.15); color: var(--blue); }
+.ftype-DIAGNOSTIC { background: rgba(77,159,255,0.12); color: var(--blue); }
 .ftype-SHADOW_RISK, .ftype-SHADOW_COOLDOWN { background: rgba(255,215,0,0.15); color: var(--yellow); }
 .ftype-OTHER { background: var(--bg3); color: var(--text-muted); }
 
@@ -1432,7 +1434,8 @@ async function loadRejections() {
     document.getElementById('rj-total').textContent = (stats.total || 0) + ' отказов';
     const typeColors = {
       BTC_DROP:'btc', UTC:'utc', OI:'oi', CORRELATION:'corr',
-      RISK:'risk', ML:'ml', SHADOW_RISK:'shadow', SHADOW_COOLDOWN:'shadow', OTHER:'other'
+      RISK:'risk', ML:'ml', DIAGNOSTIC:'diag',
+      SHADOW_RISK:'shadow', SHADOW_COOLDOWN:'shadow', SHADOW_CONTEXT:'shadow', OTHER:'other'
     };
     if (stats.by_type && Object.keys(stats.by_type).length) {
       setHTML('rj-stats', Object.entries(stats.by_type).map(([k,v]) =>

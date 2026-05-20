@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -97,6 +98,45 @@ def test_position_size_uses_stop_distance_and_caps_risk() -> None:
     assert len(plan.partial_take_profits) == 3
     assert sum(target.quantity for target in plan.partial_take_profits) == plan.quantity
     assert plan.protection is not None
+
+
+def test_signed_funding_impact_blocks_expensive_adverse_direction() -> None:
+    manager = RiskManager(risk_config(), trade_management_config())
+    signal = replace(long_signal(), metadata={"funding_rate": "0.0010"})
+
+    with pytest.raises(RiskError, match="Estimated funding impact 10.00 bps exceeds maximum"):
+        manager.calculate_plan(signal, Decimal("1000"), filters(), leverage=3)
+
+
+def test_signed_funding_credit_does_not_charge_fixed_buffer() -> None:
+    manager = RiskManager(risk_config(), trade_management_config())
+    signal = Signal(
+        symbol="BTCUSDT",
+        direction=Direction.SHORT,
+        style=TradingStyle.INTRADAY,
+        entry_price=Decimal("100"),
+        stop_loss=Decimal("105"),
+        take_profit=Decimal("90"),
+        confidence=Decimal("0.7"),
+        reason="favorable funding",
+        metadata={"funding_rate": "0.0010"},
+    )
+
+    plan = manager.calculate_plan(signal, Decimal("1000"), filters(), leverage=3)
+
+    assert plan.signal_metadata["risk_funding_impact_bps"] == "0"
+    assert plan.signal_metadata["risk_signed_funding_impact_bps"] == "-10.0000"
+    assert plan.signal_metadata["risk_funding_impact_source"] == "signed_estimate"
+    assert any("funding is favorable" in item for item in plan.warnings)
+
+
+def test_missing_funding_rate_keeps_fallback_buffer() -> None:
+    manager = RiskManager(risk_config(), trade_management_config())
+
+    plan = manager.calculate_plan(long_signal(), Decimal("1000"), filters(), leverage=3)
+
+    assert plan.signal_metadata["risk_funding_impact_bps"] == "1.0"
+    assert plan.signal_metadata["risk_funding_impact_source"] == "fallback_buffer"
 
 
 def test_position_size_is_reduced_to_margin_usage_limit_instead_of_rejected() -> None:

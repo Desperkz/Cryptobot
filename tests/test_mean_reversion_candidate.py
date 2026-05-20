@@ -73,6 +73,51 @@ def candles(count: int, *, last_short_reversal: bool = False) -> list[Candle]:
     return result
 
 
+def divergence_candles(count: int, *, previous_window_index: int, direction: Direction) -> list[Candle]:
+    result = candles(count)
+    window_start = count - 20
+    previous_index = window_start + previous_window_index
+    if direction == Direction.SHORT:
+        result[previous_index] = Candle(
+            open_time=result[previous_index].open_time,
+            open=Decimal("100"),
+            high=Decimal("105"),
+            low=Decimal("98"),
+            close=Decimal("102"),
+            volume=Decimal("100"),
+            close_time=result[previous_index].close_time,
+        )
+        result[-1] = Candle(
+            open_time=result[-1].open_time,
+            open=Decimal("102"),
+            high=Decimal("106"),
+            low=Decimal("99"),
+            close=Decimal("101"),
+            volume=Decimal("100"),
+            close_time=result[-1].close_time,
+        )
+    else:
+        result[previous_index] = Candle(
+            open_time=result[previous_index].open_time,
+            open=Decimal("100"),
+            high=Decimal("102"),
+            low=Decimal("95"),
+            close=Decimal("98"),
+            volume=Decimal("100"),
+            close_time=result[previous_index].close_time,
+        )
+        result[-1] = Candle(
+            open_time=result[-1].open_time,
+            open=Decimal("98"),
+            high=Decimal("101"),
+            low=Decimal("94"),
+            close=Decimal("99"),
+            volume=Decimal("100"),
+            close_time=result[-1].close_time,
+        )
+    return result
+
+
 class FakeRegimeDetector:
     def detect(self, _candles):
         return RegimeSnapshot(
@@ -164,6 +209,26 @@ def test_mean_reversion_blocks_shadow_candidate_without_required_divergence(monk
     )
 
     assert strategy.generate("BTCUSDT", candles_15m, candles_1h, candles_4h, metrics()) is None
+
+
+def test_rsi_divergence_uses_absolute_price_extreme_index_for_short(monkeypatch) -> None:
+    items = divergence_candles(45, previous_window_index=7, direction=Direction.SHORT)
+    rsi_values = [50.0] * len(items)
+    rsi_values[len(items) - 20 + 7] = 80.0
+    rsi_values[-1] = 70.0
+    monkeypatch.setattr(mean_reversion, "rsi", lambda *_args, **_kwargs: rsi_values)
+
+    assert mean_reversion._rsi_divergence(items, Direction.SHORT, rsi_period=14, lookback=20)
+
+
+def test_rsi_divergence_uses_absolute_price_extreme_index_for_long(monkeypatch) -> None:
+    items = divergence_candles(45, previous_window_index=8, direction=Direction.LONG)
+    rsi_values = [50.0] * len(items)
+    rsi_values[len(items) - 20 + 8] = 20.0
+    rsi_values[-1] = 25.0
+    monkeypatch.setattr(mean_reversion, "rsi", lambda *_args, **_kwargs: rsi_values)
+
+    assert mean_reversion._rsi_divergence(items, Direction.LONG, rsi_period=14, lookback=20)
 
 
 def test_mean_reversion_blocks_shadow_candidate_without_edge_or_reversal(monkeypatch) -> None:
