@@ -119,7 +119,7 @@ strategy:
   trend_pullback_min_depth_atr: 0.25
   trend_pullback_max_depth_atr: 2.20
   trend_pullback_stop_atr_multiplier: 1.20
-  trend_pullback_take_profit_rr: 1.60
+  trend_pullback_take_profit_rr: 2.20
   trend_pullback_min_confluence: 4
   trend_pullback_min_edge_score: 0.25
   liquidity_sweep_lookback: 18
@@ -142,7 +142,7 @@ strategy:
   vwap_reversion_take_profit_rr: 1.35
   momentum_continuation_min_volume_ratio: 1.90
   momentum_continuation_stop_atr_multiplier: 1.60
-  momentum_continuation_take_profit_rr: 1.30
+  momentum_continuation_take_profit_rr: 2.00
   momentum_continuation_min_edge_score: 0.70
   range_grid_lookback: 48
   range_grid_stop_atr_multiplier: 1.00
@@ -286,7 +286,7 @@ trade_management:
         fraction: 0.35
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 2.0
+        reward_risk: 1.8
         fraction: 0.30
         activate_trailing: true
     TREND_PULLBACK:

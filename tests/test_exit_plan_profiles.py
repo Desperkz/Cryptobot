@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 from trading_bot.config import PartialTakeProfitConfig, TradeManagementConfig
+from trading_bot.config import load_config
 from trading_bot.models import Direction, Signal, SymbolFilters, TradingStyle
 from trading_bot.trade_manager.exit_plan import ExitPlanBuilder
 
@@ -91,3 +93,22 @@ def test_profile_targets_are_capped_at_signal_take_profit_rr() -> None:
     assert [target.name for target in targets] == ["TP1", "TP2", "RUNNER"]
     assert targets[-1].reward_risk == Decimal("1.5")
     assert targets[-1].price == Decimal("107.5")
+
+
+def test_runtime_config_profiles_fit_strategy_take_profit_rr() -> None:
+    cfg = load_config(Path("config.yaml"), Path(".env.example"))
+    strategy_rr = {
+        "SQUEEZE_BREAKOUT": cfg.strategy.take_profit_rr["INTRADAY"],
+        "SQUEEZE_BREAKOUT_DYNAMIC": cfg.strategy.take_profit_rr["INTRADAY"],
+        "TREND_PULLBACK": cfg.strategy.trend_pullback_take_profit_rr,
+        "MOMENTUM_CONTINUATION": cfg.strategy.momentum_continuation_take_profit_rr,
+        "MEAN_REVERSION": cfg.strategy.mean_reversion_take_profit_rr,
+        "RANGE_GRID": cfg.strategy.range_grid_take_profit_rr,
+    }
+
+    for strategy, profile in cfg.trade_management.strategy_exit_profiles.items():
+        expected_max = strategy_rr.get(strategy)
+        if expected_max is None:
+            continue
+        profile_max = max(target.reward_risk for target in profile)
+        assert profile_max <= expected_max, f"{strategy} profile RR {profile_max} exceeds signal RR {expected_max}"

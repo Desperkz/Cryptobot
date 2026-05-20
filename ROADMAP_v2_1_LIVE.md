@@ -303,7 +303,9 @@
   - Готово: добавлен `trade_management.strategy_exit_profiles` с отдельными TP-ladders для `SQUEEZE_BREAKOUT`, `SQUEEZE_BREAKOUT_DYNAMIC`, `TREND_PULLBACK`, `MOMENTUM_CONTINUATION`, `MEAN_REVERSION` и `RANGE_GRID`.
   - Готово: `ExitPlanBuilder` выбирает профиль по `signal.metadata.strategy`, а неизвестные стратегии остаются на дефолтной лестнице.
   - Готово: target reward/risk capped by исходный signal take_profit RR, чтобы профиль не ставил TP дальше, чем разрешила стратегия.
-  - Проверка: `115 passed`.
+  - Аудит: найден и исправлен конфликт, где TPB/MOM runner-профили были выше исходного strategy RR и фактически обрезались; strategy RR теперь согласован с профилями.
+  - Защита: добавлен runtime-config test, который проверяет, что max RR профиля не превышает TP RR самой стратегии.
+  - Проверка: `116 passed`.
 - `[x]` P6-15 Убрать старые v2.0 fallback paths из v2.1 paper monitor.
   - `paper_monitor_v2.py` не должен при ручном запуске случайно читать `/root/bot_v2/data/trading_bot.sqlite3`.
   - Исправить устаревшие комментарии запуска и fallback DB path.
