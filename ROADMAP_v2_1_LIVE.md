@@ -278,13 +278,16 @@
   - Готово: добавлен throttled `IncidentAlerter`, чтобы повторные аварийные события не спамили Telegram каждый цикл.
   - Готово: бот алертит stale user stream, repeated Binance rate limits, protective-order incidents, drawdown pressure и adverse funding pressure.
   - Проверка: добавлены regression tests для alert throttling, disabled systemd notifier и rate-limit counter.
-- `[ ]` P6-06 Дисциплина strategy promotion/demotion.
+- `[x]` P6-06 Дисциплина strategy promotion/demotion.
   - `SQUEEZE_BREAKOUT` остается champion, но ей все равно нужна post-P5 realistic evidence.
   - `MEAN_REVERSION` остается paper-only до минимум 200 закрытых v2.1 сделок и положительного walk-forward.
   - `TREND_PULLBACK` можно рассматривать для paper только после shadow promotion gate и human review.
   - `LIQUIDITY_SWEEP_REVERSAL`, `VWAP_REVERSION(_WATCH)`, `MOMENTUM_CONTINUATION`, `RANGE_GRID` и `TREND_FOLLOWING` остаются shadow/research, пока их собственная net-cost evidence не станет положительной.
   - Готово: shadow loss adaptation pass ужесточил LSR reclaim/follow-through/edge, VWR/VWR-W reversion flow quality и GRID range-edge microstructure gates после отрицательной live shadow evidence.
-  - Проверка: `99 passed`.
+  - Готово: `/strategy-scorecard` добавляет `promotion_policy` с tier/action/review permissions, а dashboard показывает колонку `Policy`.
+  - Готово: `/strategy-promotions` больше не трактует research shadow spike как автоматический перевод в paper; он возвращает human-review/retest рекомендации.
+  - Готово: добавлен `/strategy-policy` как явная карта дисциплины promotion/demotion.
+  - Проверка: regression tests для MR paper-only, TPB human review и research-only shadow strategies.
 - `[ ]` P6-07 Улучшить exit architecture.
   - Рассматривать exchange-side OCO как OCO-like managed bracket для Binance Futures, где native OCO недоступен или недостаточен.
   - Переработать partial TP ladder так, чтобы trailing имел оставшийся size для управления после TP1/TP2, а не активировался, когда позиция уже полностью закрыта.

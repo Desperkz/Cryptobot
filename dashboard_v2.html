@@ -757,13 +757,13 @@ canvas { width: 100%; display: block; }
       <table class="tr-table sc-table">
         <thead>
           <tr>
-            <th>Стратегия</th><th>Gate</th><th>P5</th><th>Shadow Gate</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
+            <th>Стратегия</th><th>Gate</th><th>P5</th><th>Shadow Gate</th><th>Policy</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
             <th>Alloc</th><th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
             <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
           </tr>
         </thead>
         <tbody id="sc-body">
-          <tr><td colspan="18" class="empty">Нет данных по стратегиям</td></tr>
+          <tr><td colspan="19" class="empty">Нет данных по стратегиям</td></tr>
         </tbody>
       </table>
     </div>
@@ -1043,7 +1043,7 @@ async function loadStrategyScorecard() {
     document.getElementById('sc-total').textContent =
       `${summary.strategies || 0} стратегий · P5 ${summary.post_p5_closed_trade_clusters || 0}/${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
     if (!rows.length) {
-      setHTML('sc-body', '<tr><td colspan="18" class="empty">Нет данных по стратегиям</td></tr>');
+      setHTML('sc-body', '<tr><td colspan="19" class="empty">Нет данных по стратегиям</td></tr>');
       return;
     }
     setHTML('sc-body', rows.map(s => {
@@ -1080,6 +1080,29 @@ async function loadStrategyScorecard() {
       const sgLabel = sgStatus === 'PROMOTE' ? 'PROMOTE TO PAPER' : sgStatus;
       const spTrades = (sp.closed_trades || sp.open_trades) ? `SP ${sp.closed_trades || 0}/${sp.open_trades || 0}` : '';
       const spPnl = (sp.closed_trades || sp.open_trades) ? inlinePnl(sp.total_pnl || 0) : '';
+      const policy = s.promotion_policy || {};
+      const policyAction = policy.action || 'KEEP_COLLECTING_EVIDENCE';
+      const policyTier = policy.tier || 'UNKNOWN';
+      const policyTitle = [
+        `tier: ${policyTier}`,
+        `action: ${policyAction}`,
+        `paper review: ${policy.paper_review_allowed ? 'yes' : 'no'}`,
+        `live review: ${policy.live_review_allowed ? 'yes' : 'no'}`,
+        ...(policy.reasons || []),
+        ...(policy.notes || []),
+      ].join('\n');
+      const policyCls =
+        policy.live_review_allowed ? 'sc-alloc-core' :
+        policy.paper_review_allowed ? 'sc-alloc-watch' :
+        ['CHAMPION'].includes(policyTier) ? 'sc-alloc-watch' :
+        ['PAPER_ONLY','CHALLENGER'].includes(policyTier) ? 'sc-alloc-research' :
+        'sc-alloc-research';
+      const policyLabel = String(policyTier)
+        .replace('SHADOW_REVIEW','SHADOW')
+        .replace('PAPER_ONLY','PAPER')
+        .replace('CHALLENGER','CHALL')
+        .replace('CHAMPION','CHAMP');
+      const policyHtml = `<span class="sc-tag ${policyCls}" title="${esc(policyTitle)}">${esc(policyLabel)}</span>`;
       const diagnostics = s.candidate_evidence?.diagnostics || {};
       const orderFlow = s.candidate_evidence?.order_flow || {};
       const diagLine = diagnostics.total ? `DG ${diagnostics.total}` : '';
@@ -1151,6 +1174,7 @@ async function loadStrategyScorecard() {
         <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
         <td>${p5Html}</td>
         <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
+        <td>${policyHtml}</td>
         <td>${ofHtml}</td>
         <td>${s.closed_trades || 0}</td>
         <td>${clusterCount}${clusterHint ? `<div class="sc-muted">${esc(clusterHint)}</div>` : ''}</td>

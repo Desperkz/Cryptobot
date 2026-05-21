@@ -60,6 +60,94 @@ ALLOCATOR_WEIGHT_CAPS = {
     "PROMOTION_REVIEW": float(os.getenv("ALLOCATOR_PROMOTION_REVIEW_CAP_PCT", "10")),
     "WATCH_SHADOW": float(os.getenv("ALLOCATOR_SHADOW_WATCH_CAP_PCT", "5")),
 }
+STRATEGY_PROMOTION_POLICIES = {
+    "SQUEEZE_BREAKOUT": {
+        "tier": "CHAMPION",
+        "allowed_modes": ["paper", "live"],
+        "paper_promotion": "HUMAN_REVIEW_AFTER_POST_P5_GATE",
+        "live_promotion": "HUMAN_REVIEW_AFTER_TESTNET_AND_POST_P5_GATE",
+        "min_post_p5_clusters": STRATEGY_GATE_DEFAULTS["min_closed_trades"],
+        "notes": [
+            "Champion strategy, but live sizing still depends on post-P5 realistic evidence.",
+            "Do not replace the current SQZ line with challenger variants without separate evidence.",
+        ],
+    },
+    "SQUEEZE_BREAKOUT_DYNAMIC": {
+        "tier": "CHALLENGER",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "HUMAN_REVIEW_AFTER_SHADOW_GATE",
+        "live_promotion": "BLOCKED_UNTIL_PAPER_PROVEN",
+        "min_post_p5_clusters": STRATEGY_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Separate SQZ challenger; never auto-promote over the champion."],
+    },
+    "MEAN_REVERSION": {
+        "tier": "PAPER_ONLY",
+        "allowed_modes": ["paper", "shadow"],
+        "paper_promotion": "COLLECT_200_CLOSED_TRADES_AND_WALK_FORWARD",
+        "live_promotion": "BLOCKED_UNTIL_WALK_FORWARD",
+        "min_post_p5_clusters": 200,
+        "notes": [
+            "MR can die against liquidation cascades and squeeze trends.",
+            "Require positive walk-forward before any live discussion.",
+        ],
+    },
+    "TREND_PULLBACK": {
+        "tier": "SHADOW_REVIEW",
+        "allowed_modes": ["shadow", "paper"],
+        "paper_promotion": "HUMAN_REVIEW_AFTER_SHADOW_GATE",
+        "live_promotion": "BLOCKED_UNTIL_PAPER_PROVEN",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Can be considered for paper only after shadow gate plus human review."],
+    },
+    "LIQUIDITY_SWEEP_REVERSAL": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Keep shadow until positive post-cost evidence survives retest."],
+    },
+    "VWAP_REVERSION": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Keep shadow until reversion edge is positive after costs."],
+    },
+    "VWAP_REVERSION_WATCH": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Watch variant stays research-only until a clean retest passes."],
+    },
+    "MOMENTUM_CONTINUATION": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Needs independent post-cost trend-following evidence."],
+    },
+    "RANGE_GRID": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Grid stays research-only because small TP can be erased by costs."],
+    },
+    "TREND_FOLLOWING": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "RESEARCH_RETEST_REQUIRED",
+        "live_promotion": "BLOCKED",
+        "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": ["Collect shadow evidence on the current universe first."],
+    },
+}
 
 
 class ControlHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -554,6 +642,112 @@ def evaluate_shadow_gate(metrics: dict[str, Any], thresholds: dict[str, Any] | N
         "passed_checks": [check["id"] for check in checks if check["passed"]],
         "thresholds": limits,
         "checks": checks,
+    }
+
+
+def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
+    strategy_key = str(strategy or "UNKNOWN").upper()
+    policy = STRATEGY_PROMOTION_POLICIES.get(strategy_key)
+    if policy is None:
+        policy = {
+            "tier": "UNKNOWN",
+            "allowed_modes": ["shadow"],
+            "paper_promotion": "MANUAL_POLICY_REQUIRED",
+            "live_promotion": "BLOCKED",
+            "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+            "notes": ["No explicit promotion policy is defined for this strategy."],
+        }
+    return {"strategy": strategy_key, **policy}
+
+
+def apply_strategy_promotion_policy(row: dict[str, Any]) -> dict[str, Any]:
+    strategy = str(row.get("strategy") or "UNKNOWN").upper()
+    mode = str(row.get("strategy_mode") or "unknown").lower()
+    policy = strategy_promotion_policy(strategy)
+    gate = row.get("gate") or {}
+    shadow_gate = row.get("shadow_gate") or {}
+    shadow_paper = row.get("shadow_paper") or {}
+    post_p5 = row.get("post_p5_evidence") or {}
+    tier = policy.get("tier")
+    reasons: list[str] = []
+
+    post_p5_clusters = int(_to_float(post_p5.get("closed_trade_clusters"), 0) or 0)
+    shadow_closed = int(_to_float(shadow_paper.get("closed_trades"), 0) or 0)
+    gate_promotable = gate.get("status") == "PROMOTABLE"
+    shadow_promotable = bool(shadow_gate.get("promotion_candidate"))
+    paper_review_allowed = False
+    live_review_allowed = False
+    action = "KEEP_COLLECTING_EVIDENCE"
+
+    if mode not in set(policy.get("allowed_modes", [])):
+        reasons.append(f"mode {mode or 'unknown'} is outside policy allowed modes")
+
+    if tier == "CHAMPION":
+        if gate_promotable:
+            action = "REVIEW_FOR_CORE_OR_LIVE"
+            paper_review_allowed = True
+            live_review_allowed = True
+            reasons.append("champion post-P5 gate passed")
+        else:
+            action = "KEEP_CHAMPION_UNDER_REVIEW"
+            reasons.append("champion still needs post-P5 realistic evidence before promotion")
+    elif tier == "CHALLENGER":
+        if shadow_promotable:
+            action = "REVIEW_CHALLENGER_FOR_LIMITED_PAPER"
+            paper_review_allowed = True
+            reasons.append("challenger shadow gate passed; human review required")
+        else:
+            action = "KEEP_CHALLENGER_IN_SHADOW"
+            reasons.append("challenger is not ready to challenge the SQZ champion")
+    elif tier == "PAPER_ONLY":
+        required = int(policy.get("min_post_p5_clusters", 200))
+        if post_p5_clusters < required:
+            action = "COLLECT_PAPER_EVIDENCE"
+            reasons.append(f"paper-only strategy needs {required} post-P5 clusters before review")
+        elif gate_promotable:
+            action = "WALK_FORWARD_REVIEW_REQUIRED"
+            reasons.append("paper gate passed, but walk-forward proof is still required")
+        else:
+            action = "KEEP_LIMITED_PAPER_OR_DEMOTE_REVIEW"
+            reasons.append("paper-only strategy gate has not passed")
+    elif tier == "SHADOW_REVIEW":
+        if shadow_promotable:
+            action = "HUMAN_REVIEW_FOR_PAPER"
+            paper_review_allowed = True
+            reasons.append("shadow gate passed; paper promotion still requires human review")
+        elif shadow_closed <= 0:
+            action = "COLLECT_SHADOW_EVIDENCE"
+            reasons.append("no closed shadow-paper trades yet")
+        else:
+            action = "KEEP_SHADOW"
+            reasons.append("shadow evidence exists but promotion gate has not passed")
+    elif tier == "RESEARCH":
+        if shadow_promotable:
+            action = "RESEARCH_RETEST_BEFORE_PAPER"
+            reasons.append("positive shadow gate found, but policy requires retest before paper")
+        elif shadow_closed <= 0:
+            action = "COLLECT_RESEARCH_EVIDENCE"
+            reasons.append("research strategy has no closed shadow-paper trades yet")
+        else:
+            action = "KEEP_RESEARCH"
+            reasons.append("research strategy remains shadow-only until post-cost retest is positive")
+    else:
+        action = "MANUAL_POLICY_REQUIRED"
+        reasons.append("strategy has no explicit promotion/demotion policy")
+
+    if policy.get("live_promotion", "").startswith("BLOCKED"):
+        live_review_allowed = False
+
+    return {
+        **policy,
+        "current_mode": mode,
+        "action": action,
+        "paper_review_allowed": bool(paper_review_allowed),
+        "live_review_allowed": bool(live_review_allowed),
+        "human_review_required": True,
+        "post_p5_clusters": post_p5_clusters,
+        "shadow_closed_trades": shadow_closed,
+        "reasons": reasons,
     }
 
 
@@ -1063,6 +1257,7 @@ def build_strategy_scorecard(
         row["gate"]["post_p5_closed_trades"] = post_p5_closed_count
         row["gate"]["post_p5_closed_trade_clusters"] = post_p5_clusters["closed_clusters"]
         row["gate"]["pre_p5_closed_trades"] = pre_p5_closed_count
+        row["promotion_policy"] = apply_strategy_promotion_policy(row)
         strategies.append(row)
         summary["closed_trades"] += closed_count
         summary["closed_trade_clusters"] += clusters["closed_clusters"]
@@ -1165,6 +1360,7 @@ def build_strategy_allocator(scorecard: dict[str, Any]) -> dict[str, Any]:
         total_pnl = _to_float(metrics.get("total_pnl"), 0.0) or 0.0
         gate = row.get("gate") or {}
         shadow_gate = row.get("shadow_gate") or {}
+        policy = row.get("promotion_policy") or apply_strategy_promotion_policy(row)
         score = _allocator_score(metrics)
         reasons: list[str] = []
 
@@ -1212,11 +1408,16 @@ def build_strategy_allocator(scorecard: dict[str, Any]) -> dict[str, Any]:
             reasons.append("strategy is not active")
 
         suggested = round(min(cap, cap * score / 100.0), 2) if cap > 0 and score > 0 else 0.0
+        reasons.extend(policy.get("reasons", [])[:2])
         allocations.append({
             "strategy": strategy,
             "mode": mode,
             "evidence_source": source,
             "action": action,
+            "policy_action": policy.get("action"),
+            "policy_tier": policy.get("tier"),
+            "paper_review_allowed": bool(policy.get("paper_review_allowed")),
+            "live_review_allowed": bool(policy.get("live_review_allowed")),
             "score": score,
             "suggested_risk_weight_pct": suggested,
             "max_risk_weight_pct": cap,
@@ -1777,11 +1978,28 @@ def api_strategy_promotions() -> dict:
     for row in scorecard.get("strategies", []):
         shadow_gate = row.get("shadow_gate") or {}
         shadow_paper = row.get("shadow_paper") or {}
-        if shadow_gate.get("promotion_candidate"):
+        policy = row.get("promotion_policy") or apply_strategy_promotion_policy(row)
+        policy_action = str(policy.get("action") or "")
+        is_review_candidate = bool(policy.get("paper_review_allowed") or policy.get("live_review_allowed"))
+        is_shadow_candidate = bool(shadow_gate.get("promotion_candidate"))
+        is_warning_candidate = policy_action in {
+            "RESEARCH_RETEST_BEFORE_PAPER",
+            "WALK_FORWARD_REVIEW_REQUIRED",
+            "KEEP_LIMITED_PAPER_OR_DEMOTE_REVIEW",
+            "KEEP_CHAMPION_UNDER_REVIEW",
+        }
+        if is_review_candidate or is_shadow_candidate or is_warning_candidate:
             candidates.append({
                 "strategy": row.get("strategy"),
-                "recommendation": shadow_gate.get("recommendation", "PROMOTE_TO_PAPER"),
+                "recommendation": policy_action or shadow_gate.get("recommendation", "KEEP_SHADOW"),
                 "current_mode": row.get("strategy_mode"),
+                "policy_tier": policy.get("tier"),
+                "paper_review_allowed": bool(policy.get("paper_review_allowed")),
+                "live_review_allowed": bool(policy.get("live_review_allowed")),
+                "human_review_required": bool(policy.get("human_review_required", True)),
+                "policy_reasons": policy.get("reasons", []),
+                "shadow_gate_status": shadow_gate.get("status"),
+                "shadow_gate_recommendation": shadow_gate.get("recommendation", "KEEP_SHADOW"),
                 "closed_shadow_trades": shadow_paper.get("closed_trades", 0),
                 "open_shadow_trades": shadow_paper.get("open_trades", 0),
                 "shadow_total_pnl": shadow_paper.get("total_pnl", 0),
@@ -1796,6 +2014,14 @@ def api_strategy_promotions() -> dict:
         "generated_at": scorecard.get("generated_at"),
         "promotion_count": len(candidates),
         "candidates": candidates,
+    }
+
+
+def api_strategy_policy() -> dict:
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "auto_promotion_enabled": False,
+        "policies": STRATEGY_PROMOTION_POLICIES,
     }
 
 
@@ -1820,6 +2046,7 @@ ROUTES = {
     "/rejection-stats": api_rejection_stats,
     "/strategy-scorecard": api_strategy_scorecard,
     "/strategy-promotions": api_strategy_promotions,
+    "/strategy-policy": api_strategy_policy,
     "/strategy-allocator": api_strategy_allocator,
     "/order-flow": api_order_flow,
 }

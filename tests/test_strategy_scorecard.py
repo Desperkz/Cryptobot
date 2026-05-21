@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 
-from bot_control_v2 import build_strategy_allocator, build_strategy_scorecard, evaluate_shadow_gate
+from bot_control_v2 import (
+    apply_strategy_promotion_policy,
+    build_strategy_allocator,
+    build_strategy_scorecard,
+    evaluate_shadow_gate,
+)
 
 
 def trade(
@@ -636,3 +641,78 @@ def test_strategy_allocator_is_advisory_and_ranks_positive_evidence() -> None:
     assert by_name["VWAP_REVERSION_WATCH"]["max_risk_weight_pct"] == 10
     assert by_name["RANGE_GRID"]["action"] == "RESEARCH_ONLY"
     assert by_name["RANGE_GRID"]["suggested_risk_weight_pct"] == 0
+
+
+def test_promotion_policy_keeps_mean_reversion_paper_only_until_large_walk_forward_sample() -> None:
+    trades = [
+        trade(
+            trade_id=i,
+            strategy="MEAN_REVERSION",
+            pnl="10",
+            r_value="0.5",
+            created_at=f"2026-01-{(i % 28) + 1:02d} 00:00:00",
+            closed_at=f"2026-01-{(i % 28) + 1:02d} 01:00:00",
+        )
+        for i in range(1, 41)
+    ]
+    scorecard = build_strategy_scorecard(
+        trades,
+        [],
+        initial_equity=1000,
+        gate_thresholds={
+            "min_closed_trades": 20,
+            "min_sample_age_days": 1,
+            "min_closed_trades_per_day": 0,
+            "min_winrate": 40,
+            "min_profit_factor": 1.25,
+            "min_avg_r": 0,
+            "max_drawdown": -10,
+        },
+        strategy_modes={"MEAN_REVERSION": "paper"},
+    )
+
+    row = by_strategy(scorecard, "MEAN_REVERSION")
+
+    assert row["gate"]["status"] == "PROMOTABLE"
+    assert row["promotion_policy"]["tier"] == "PAPER_ONLY"
+    assert row["promotion_policy"]["action"] == "COLLECT_PAPER_EVIDENCE"
+    assert row["promotion_policy"]["paper_review_allowed"] is False
+    assert row["promotion_policy"]["live_review_allowed"] is False
+    assert row["promotion_policy"]["post_p5_clusters"] < 200
+
+
+def test_promotion_policy_requires_human_review_for_trend_pullback_shadow_promotion() -> None:
+    row = {
+        "strategy": "TREND_PULLBACK",
+        "strategy_mode": "shadow",
+        "gate": {"status": "WATCH"},
+        "shadow_gate": {"status": "PROMOTE", "promotion_candidate": True},
+        "shadow_paper": {"closed_trades": 35},
+        "post_p5_evidence": {"closed_trade_clusters": 0},
+    }
+
+    policy = apply_strategy_promotion_policy(row)
+
+    assert policy["tier"] == "SHADOW_REVIEW"
+    assert policy["action"] == "HUMAN_REVIEW_FOR_PAPER"
+    assert policy["paper_review_allowed"] is True
+    assert policy["live_review_allowed"] is False
+    assert policy["human_review_required"] is True
+
+
+def test_promotion_policy_blocks_research_strategy_even_when_shadow_gate_promotes() -> None:
+    row = {
+        "strategy": "VWAP_REVERSION_WATCH",
+        "strategy_mode": "shadow",
+        "gate": {"status": "WATCH"},
+        "shadow_gate": {"status": "PROMOTE", "promotion_candidate": True},
+        "shadow_paper": {"closed_trades": 40},
+        "post_p5_evidence": {"closed_trade_clusters": 0},
+    }
+
+    policy = apply_strategy_promotion_policy(row)
+
+    assert policy["tier"] == "RESEARCH"
+    assert policy["action"] == "RESEARCH_RETEST_BEFORE_PAPER"
+    assert policy["paper_review_allowed"] is False
+    assert policy["live_review_allowed"] is False
