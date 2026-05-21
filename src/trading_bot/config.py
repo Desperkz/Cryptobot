@@ -142,6 +142,9 @@ class StrategyConfig:
     mean_reversion_btc_direction_gate_pct: Decimal = Decimal("0.012")
     mean_reversion_order_flow_gate_enabled: bool = True
     mean_reversion_min_order_flow_score: Decimal = Decimal("0.25")
+    mean_reversion_min_net_reward_risk: Decimal = Decimal("1.15")
+    mean_reversion_min_expected_net_r: Decimal = Decimal("0.05")
+    mean_reversion_expected_winrate_floor: Decimal = Decimal("0.48")
     trend_pullback_min_volume_ratio: Decimal = Decimal("1.10")
     trend_pullback_min_trend_strength: Decimal = Decimal("0.35")
     trend_pullback_min_depth_atr: Decimal = Decimal("0.25")
@@ -811,6 +814,15 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ),
             mean_reversion_min_order_flow_score=to_decimal(
                 raw["strategy"].get("mean_reversion_min_order_flow_score", "0.25")
+            ),
+            mean_reversion_min_net_reward_risk=to_decimal(
+                raw["strategy"].get("mean_reversion_min_net_reward_risk", "1.15")
+            ),
+            mean_reversion_min_expected_net_r=to_decimal(
+                raw["strategy"].get("mean_reversion_min_expected_net_r", "0.05")
+            ),
+            mean_reversion_expected_winrate_floor=to_decimal(
+                raw["strategy"].get("mean_reversion_expected_winrate_floor", "0.48")
             ),
             trend_pullback_min_volume_ratio=to_decimal(
                 raw["strategy"].get("trend_pullback_min_volume_ratio", "1.10")

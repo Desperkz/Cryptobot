@@ -315,9 +315,12 @@
   - Добавить regression test, который ловит расхождение `config.yaml` 6% vs hardcoded 8%.
   - Готово: `TradingBot` строит `DisasterConfig` через config-driven helper, daily-loss limit берется из `config.risk.max_daily_loss_pct`.
   - Готово: добавлен regression test для `0.06`.
-- `[ ]` P6-12 Сделать MR cost-aware и expectancy-aware.
+- `[x]` P6-12 Сделать MR cost-aware и expectancy-aware.
   - Пересмотреть `mean_reversion_take_profit_rr=1.1`: поднять RR или добавить strategy-specific post-cost expectancy gate.
   - MR не переводить в live до собственной post-P5 статистики, где комиссии, slippage, funding и partial exits уже учтены.
+  - Готово: MR TP поднят до `1.35R`, а exit profile стал `TP1 0.8R / TP2 1.35R`.
+  - Готово: добавлен `MR_EXPECTANCY` gate, который до входа считает net RR и expected net R после fee/slippage/funding.
+  - Готово: успешные MR-сигналы получают metadata `mr_net_reward_risk`, `mr_expected_net_r`, `mr_estimated_cost_bps`.
 - `[x]` P6-13 Починить RSI divergence indexing.
   - `_rsi_divergence()` должен сопоставлять RSI с тем же absolute candle index, где найден предыдущий price extreme.
   - Добавить regression tests для bullish/bearish divergence.

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from types import SimpleNamespace
 
-from trading_bot.bot import _mean_reversion_context_rejection_reason
+from trading_bot.bot import _mean_reversion_context_rejection_reason, _mean_reversion_expectancy_rejection_reason
 from trading_bot.models import Direction, Signal, TradingStyle
 from trading_bot.strategy_engine.order_flow import OrderFlowAnnotation
 
@@ -14,6 +15,9 @@ def config(**overrides):
         "mean_reversion_btc_direction_gate_pct": Decimal("0.012"),
         "mean_reversion_order_flow_gate_enabled": True,
         "mean_reversion_min_order_flow_score": Decimal("0.25"),
+        "mean_reversion_min_net_reward_risk": Decimal("1.15"),
+        "mean_reversion_min_expected_net_r": Decimal("0.05"),
+        "mean_reversion_expected_winrate_floor": Decimal("0.48"),
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -134,3 +138,38 @@ def test_mr_context_gate_ignores_non_mr_signals() -> None:
         )
         is None
     )
+
+
+def test_mr_expectancy_gate_blocks_low_net_rr_after_costs() -> None:
+    weak = signal(Direction.LONG)
+    weak = replace(weak, take_profit=Decimal("101.05"), confidence=Decimal("0.60"))
+
+    reason = _mean_reversion_expectancy_rejection_reason(
+        weak,
+        config(),
+        SimpleNamespace(taker_fee_bps=Decimal("4"), slippage_bps=Decimal("5"), funding_buffer_bps=Decimal("1")),
+    )
+
+    assert reason is not None
+    assert reason[0] == "MR_EXPECTANCY"
+    assert "net RR" in reason[1]
+
+
+def test_mr_expectancy_gate_records_positive_metadata_when_cost_adjusted_edge_passes() -> None:
+    strong = signal(Direction.LONG)
+    strong.metadata["funding_rate"] = "-0.0001"
+
+    reason = _mean_reversion_expectancy_rejection_reason(
+        strong,
+        config(),
+        SimpleNamespace(
+            taker_fee_bps=Decimal("4"),
+            slippage_bps=Decimal("5"),
+            funding_buffer_bps=Decimal("1"),
+            funding_impact_holding_hours=Decimal("8"),
+        ),
+    )
+
+    assert reason is None
+    assert Decimal(strong.metadata["mr_net_reward_risk"]) > Decimal("1.15")
+    assert Decimal(strong.metadata["mr_expected_net_r"]) > Decimal("0.05")

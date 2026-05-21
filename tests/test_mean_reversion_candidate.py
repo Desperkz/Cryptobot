@@ -35,7 +35,7 @@ def strategy_config(**overrides) -> StrategyConfig:
         "mean_reversion_deviation_atr": Decimal("2.0"),
         "mean_reversion_rsi_oversold": Decimal("25"),
         "mean_reversion_rsi_overbought": Decimal("75"),
-        "mean_reversion_take_profit_rr": Decimal("1.1"),
+        "mean_reversion_take_profit_rr": Decimal("1.35"),
         "mean_reversion_min_volume_ratio": Decimal("1.05"),
         "mean_reversion_min_edge_score": Decimal("0.40"),
         "mean_reversion_min_confluence": 4,
@@ -192,6 +192,7 @@ def test_mean_reversion_shadow_candidate_records_strict_evidence(monkeypatch) ->
     assert signal.metadata["divergence"] == "yes"
     assert signal.metadata["edge_confirms"] == "True"
     assert signal.metadata["reversal_candle"] == "True"
+    assert signal.metadata["mr_reward_risk"] == "1.35"
     assert int(signal.metadata["mr_confluence"]) >= 6
     assert "edge" in signal.metadata["mr_confirmation_flags"]
 

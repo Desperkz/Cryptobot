@@ -104,7 +104,10 @@ strategy:
   mean_reversion_rsi_oversold: 25       # ужесточено с 28 — только экстремальные входы
   mean_reversion_rsi_overbought: 75     # ужесточено с 72
   mean_reversion_stop_atr_multiplier: 1.0
-  mean_reversion_take_profit_rr: 1.1    # снижено с 1.4 — TP достигается чаще
+  mean_reversion_take_profit_rr: 1.35   # P6-12: выше TP, чтобы комиссии/slippage не съедали матожидание
+  mean_reversion_min_net_reward_risk: 1.15
+  mean_reversion_min_expected_net_r: 0.05
+  mean_reversion_expected_winrate_floor: 0.48
   mean_reversion_min_volume_ratio: 1.05
   mean_reversion_min_edge_score: 0.40
   mean_reversion_min_confluence: 4
@@ -325,12 +328,12 @@ trade_management:
         activate_trailing: true
     MEAN_REVERSION:
       - name: "TP1"
-        reward_risk: 0.75
-        fraction: 0.45
+        reward_risk: 0.8
+        fraction: 0.40
         move_stop_to_breakeven: true
       - name: "TP2"
-        reward_risk: 1.1
-        fraction: 0.55
+        reward_risk: 1.35
+        fraction: 0.60
     RANGE_GRID:
       - name: "TP1"
         reward_risk: 0.8

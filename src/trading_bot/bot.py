@@ -390,6 +390,27 @@ class TradingBot:
                     pass
                 await self._record_ml_feature_snapshot(signal, "REJECTED_MR_CONTEXT_GATE", reason)
                 continue
+            mr_expectancy_rejection = _mean_reversion_expectancy_rejection_reason(
+                signal,
+                self.config.strategy,
+                self.config.risk,
+            )
+            if mr_expectancy_rejection:
+                filter_type, reason = mr_expectancy_rejection
+                logger.info("MR expectancy gate rejected %s: %s", signal.symbol, reason)
+                try:
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_signal_strategy(signal),
+                        confidence=str(signal.confidence),
+                        filter_type=filter_type,
+                        reason=reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_MR_EXPECTANCY_GATE", reason)
+                continue
             oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
             filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
             if filter_decision.allowed:
@@ -1392,6 +1413,73 @@ def _mean_reversion_context_rejection_reason(
             )
 
     return None
+
+
+def _mean_reversion_expectancy_rejection_reason(
+    signal: Signal,
+    strategy_config: Any,
+    risk_config: Any,
+) -> tuple[str, str] | None:
+    if _signal_strategy(signal) != "MEAN_REVERSION":
+        return None
+    if signal.stop_loss is None or signal.take_profit is None:
+        return ("MR_EXPECTANCY", "MR blocked: missing stop-loss or take-profit for expectancy check.")
+
+    entry = to_decimal(signal.entry_price)
+    stop = to_decimal(signal.stop_loss)
+    take = to_decimal(signal.take_profit)
+    stop_distance = abs(entry - stop)
+    reward_distance = abs(take - entry)
+    if entry <= 0 or stop_distance <= 0:
+        return ("MR_EXPECTANCY", "MR blocked: invalid entry or stop distance for expectancy check.")
+
+    cost_bps = _mean_reversion_cost_bps(signal, risk_config)
+    cost_per_unit = entry * cost_bps / Decimal("10000")
+    net_reward_distance = reward_distance - cost_per_unit
+    net_rr = net_reward_distance / stop_distance
+    min_net_rr = Decimal(str(getattr(strategy_config, "mean_reversion_min_net_reward_risk", "1.15")))
+    if net_rr < min_net_rr:
+        return (
+            "MR_EXPECTANCY",
+            f"MR blocked: net RR {net_rr:.2f} below minimum {min_net_rr:.2f} after estimated costs {cost_bps:.2f} bps.",
+        )
+
+    min_winrate = Decimal(str(getattr(strategy_config, "mean_reversion_expected_winrate_floor", "0.48")))
+    estimated_winrate = max(min_winrate, min(Decimal("0.68"), signal.confidence * Decimal("0.75")))
+    expected_net_r = estimated_winrate * net_rr - (Decimal("1") - estimated_winrate)
+    min_expected = Decimal(str(getattr(strategy_config, "mean_reversion_min_expected_net_r", "0.05")))
+    if expected_net_r < min_expected:
+        return (
+            "MR_EXPECTANCY",
+            f"MR blocked: expected net R {expected_net_r:.3f} below minimum {min_expected:.3f} "
+            f"(p={estimated_winrate:.2f}, net_rr={net_rr:.2f}, costs={cost_bps:.2f} bps).",
+        )
+
+    metadata = signal.metadata if isinstance(signal.metadata, dict) else {}
+    metadata["mr_net_reward_risk"] = str(net_rr)
+    metadata["mr_expected_net_r"] = str(expected_net_r)
+    metadata["mr_estimated_cost_bps"] = str(cost_bps)
+    metadata["mr_estimated_winrate"] = str(estimated_winrate)
+    return None
+
+
+def _mean_reversion_cost_bps(signal: Signal, risk_config: Any) -> Decimal:
+    metadata = signal.metadata if isinstance(signal.metadata, dict) else {}
+    taker_fee_bps = Decimal(str(getattr(risk_config, "taker_fee_bps", "4")))
+    slippage_bps = Decimal(str(getattr(risk_config, "slippage_bps", "5")))
+    funding_buffer_bps = Decimal(str(getattr(risk_config, "funding_buffer_bps", "1")))
+    holding_hours = max(Decimal("0"), Decimal(str(getattr(risk_config, "funding_impact_holding_hours", "8"))))
+    funding_rate_raw = metadata.get("funding_rate")
+    funding_cost_bps = funding_buffer_bps
+    if funding_rate_raw not in (None, ""):
+        try:
+            funding_rate = Decimal(str(funding_rate_raw))
+            signed_rate = funding_rate if signal.direction == Direction.LONG else -funding_rate
+            signed_bps = signed_rate * Decimal("10000") * (holding_hours / Decimal("8"))
+            funding_cost_bps = max(Decimal("0"), signed_bps)
+        except Exception:
+            funding_cost_bps = funding_buffer_bps
+    return taker_fee_bps * Decimal("2") + slippage_bps + funding_cost_bps
 
 
 def _strategy_reentry_policy_reason(
