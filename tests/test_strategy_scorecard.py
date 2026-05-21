@@ -6,6 +6,7 @@ from bot_control_v2 import (
     apply_strategy_promotion_policy,
     build_strategy_allocator,
     build_strategy_scorecard,
+    build_weekly_research_report,
     evaluate_shadow_gate,
 )
 
@@ -716,3 +717,101 @@ def test_promotion_policy_blocks_research_strategy_even_when_shadow_gate_promote
     assert policy["action"] == "RESEARCH_RETEST_BEFORE_PAPER"
     assert policy["paper_review_allowed"] is False
     assert policy["live_review_allowed"] is False
+
+
+def test_weekly_research_report_ranks_and_flags_actions() -> None:
+    scorecard = {
+        "generated_at": "2026-05-21T00:00:00+00:00",
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "strategy_mode": "paper",
+                "post_p5_evidence": {
+                    "closed_trade_clusters": 12,
+                    "realized_pnl": 44,
+                    "cluster_winrate": 70,
+                    "cluster_profit_factor": 1.8,
+                    "cluster_avg_r": 0.18,
+                    "max_drawdown": -3,
+                },
+                "candidate_evidence": {"order_flow": {"avg_score": 0.62}},
+                "promotion_policy": {
+                    "tier": "CHAMPION",
+                    "action": "KEEP_CHAMPION_UNDER_REVIEW",
+                    "paper_review_allowed": False,
+                    "live_review_allowed": False,
+                    "reasons": ["needs post-P5 evidence"],
+                },
+            },
+            {
+                "strategy": "RANGE_GRID",
+                "strategy_mode": "shadow",
+                "shadow_paper": {
+                    "closed_trades": 18,
+                    "open_trades": 0,
+                    "total_pnl": -14,
+                    "winrate": 55,
+                    "profit_factor": 0.8,
+                    "avg_r": -0.04,
+                    "max_drawdown": -6,
+                },
+                "candidate_evidence": {"order_flow": {"avg_score": 0.28}},
+                "promotion_policy": {
+                    "tier": "RESEARCH",
+                    "action": "KEEP_RESEARCH",
+                    "paper_review_allowed": False,
+                    "live_review_allowed": False,
+                    "reasons": ["research only"],
+                },
+            },
+        ],
+    }
+    allocator = {
+        "mode": "ADVISORY_ONLY",
+        "allocations": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "evidence_source": "paper",
+                "action": "CHAMPION_WATCH",
+                "policy_action": "KEEP_CHAMPION_UNDER_REVIEW",
+                "suggested_risk_weight_pct": 12.5,
+                "max_risk_weight_pct": 45,
+            },
+            {
+                "strategy": "RANGE_GRID",
+                "evidence_source": "shadow_paper",
+                "action": "RESEARCH_ONLY",
+                "policy_action": "KEEP_RESEARCH",
+                "suggested_risk_weight_pct": 0,
+                "max_risk_weight_pct": 0,
+            },
+        ],
+    }
+    promotions = {
+        "candidates": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "recommendation": "KEEP_CHAMPION_UNDER_REVIEW",
+                "policy_tier": "CHAMPION",
+            }
+        ]
+    }
+    order_flow = {"summary": {"total": 25, "avg_score": 0.55}}
+    ml_report = {
+        "validated": True,
+        "baseline": {"trades": 20},
+        "ml_filtered": {"trades": 14},
+        "comparison": {"total_r_improvement": 1.2},
+    }
+
+    report = build_weekly_research_report(scorecard, allocator, promotions, order_flow, ml_report)
+
+    assert report["mode"] == "ADVISORY_ONLY"
+    assert report["summary"]["strategies"] == 2
+    assert report["summary"]["promotion_candidates"] == 1
+    assert report["summary"]["anomalies"] == 2
+    assert report["ranking"][0]["strategy"] == "SQUEEZE_BREAKOUT"
+    assert report["ranking"][0]["allocation"]["suggested_risk_weight_pct"] == 12.5
+    assert report["anomalies"][0]["strategy"] == "RANGE_GRID"
+    assert report["ml"]["validated"] is True
+    assert report["recommendations"]

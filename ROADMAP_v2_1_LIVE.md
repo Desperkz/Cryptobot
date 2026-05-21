@@ -295,9 +295,12 @@
   - Готово: config validation блокирует профили, где trailing включается только после финального target без оставшейся позиции.
   - Готово: live supervisor отменяет оставшиеся managed orders после protective exit или ACCOUNT_UPDATE с нулевой позицией.
   - Проверка: regression tests для exit profile validation, live protective cleanup и account-update cleanup.
-- `[ ]` P6-08 Weekly research report.
+- `[x]` P6-08 Weekly research report.
   - Генерировать недельный ranking, promotion, demotion и anomaly report из scorecard, shadow-paper, order-flow и ML snapshots.
   - ML остается advisory/shadow; enforcement требует положительный walk-forward delta и существенно большую evidence base.
+  - Готово: добавлен `/weekly-research-report` с advisory ranking, promotion candidates, demotion reviews, anomaly list, order-flow summary и ML walk-forward summary.
+  - Готово: добавлен `scripts/weekly_research_report.py`, который сохраняет timestamped JSON и `weekly_research_report_latest.json`.
+  - Проверка: regression test для weekly report ranking/anomaly/promotion/ML summary.
 - `[x]` P6-09 Добавить confidence-based dynamic sizing, не ломая SQZ champion line.
   - Готово: новый dynamic sizing layer регулирует per-trade risk и selected leverage по strategy profile, signal confidence, order-flow alignment, funding penalty и жестким per-strategy caps.
   - Готово: `SQUEEZE_BREAKOUT` остается champion paper row с консервативным 2.0% risk cap, а `SQUEEZE_BREAKOUT_DYNAMIC` работает как отдельный shadow challenger.

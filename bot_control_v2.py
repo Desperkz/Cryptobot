@@ -1453,6 +1453,176 @@ def build_strategy_allocator(scorecard: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_weekly_research_report(
+    scorecard: dict[str, Any],
+    allocator: dict[str, Any],
+    promotions: dict[str, Any],
+    order_flow: dict[str, Any],
+    ml_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    allocations = {row.get("strategy"): row for row in allocator.get("allocations", [])}
+    rankings: list[dict[str, Any]] = []
+    demotions: list[dict[str, Any]] = []
+    anomalies: list[dict[str, Any]] = []
+
+    for row in scorecard.get("strategies", []):
+        strategy = str(row.get("strategy") or "UNKNOWN")
+        mode = str(row.get("strategy_mode") or "unknown").lower()
+        shadow = row.get("shadow_paper") or {}
+        policy = row.get("promotion_policy") or apply_strategy_promotion_policy(row)
+        allocation = allocations.get(strategy, {})
+        source = allocation.get("evidence_source") or ("shadow_paper" if mode in {"shadow", "disabled"} else "paper")
+        if source == "shadow_paper":
+            pnl = _to_float(shadow.get("total_pnl"), 0.0) or 0.0
+            winrate = _to_float(shadow.get("winrate"), 0.0) or 0.0
+            profit_factor = _to_float(shadow.get("profit_factor"), 0.0) or 0.0
+            avg_r = _to_float(shadow.get("avg_r"), 0.0) or 0.0
+            max_drawdown = _to_float(shadow.get("max_drawdown"), 0.0) or 0.0
+            closed = int(_to_float(shadow.get("closed_trades"), 0) or 0)
+            open_trades = int(_to_float(shadow.get("open_trades"), 0) or 0)
+        else:
+            post_p5 = row.get("post_p5_evidence") or {}
+            pnl = _to_float(post_p5.get("realized_pnl", row.get("post_p5_realized_pnl")), 0.0) or 0.0
+            winrate = _to_float(post_p5.get("cluster_winrate", row.get("cluster_winrate")), 0.0) or 0.0
+            profit_factor = _to_float(post_p5.get("cluster_profit_factor", row.get("cluster_profit_factor")), 0.0) or 0.0
+            avg_r = _to_float(post_p5.get("cluster_avg_r", row.get("cluster_avg_r")), 0.0) or 0.0
+            max_drawdown = _to_float(post_p5.get("max_drawdown", row.get("max_drawdown")), 0.0) or 0.0
+            closed = int(_to_float(post_p5.get("closed_trade_clusters", row.get("closed_trade_clusters")), 0) or 0)
+            open_trades = int(_to_float(row.get("open_trades"), 0) or 0)
+
+        order_flow_summary = (row.get("candidate_evidence") or {}).get("order_flow") or {}
+        of_score = _to_float(order_flow_summary.get("avg_score"), 0.0) or 0.0
+        score = _research_score(pnl, profit_factor, avg_r, winrate, max_drawdown, of_score, closed)
+        action = str(allocation.get("policy_action") or policy.get("action") or allocation.get("action") or "REVIEW")
+        ranking = {
+            "strategy": strategy,
+            "mode": mode,
+            "tier": policy.get("tier"),
+            "evidence_source": source,
+            "score": score,
+            "action": action,
+            "closed": closed,
+            "open": open_trades,
+            "pnl": round(pnl, 4),
+            "winrate": round(winrate, 2),
+            "profit_factor": round(profit_factor, 3),
+            "avg_r": round(avg_r, 3),
+            "max_drawdown": round(max_drawdown, 2),
+            "order_flow_avg_score": round(of_score, 3),
+            "allocation": {
+                "action": allocation.get("action"),
+                "suggested_risk_weight_pct": allocation.get("suggested_risk_weight_pct", 0),
+                "max_risk_weight_pct": allocation.get("max_risk_weight_pct", 0),
+            },
+            "policy_reasons": policy.get("reasons", []),
+        }
+        rankings.append(ranking)
+
+        if mode in {"paper", "live"} and (
+            avg_r <= 0 or profit_factor < 1 or action in {"KEEP_LIMITED_PAPER_OR_DEMOTE_REVIEW"}
+        ) and closed > 0:
+            demotions.append({
+                "strategy": strategy,
+                "reason": "paper/live expectancy is weak or policy asks for demotion review",
+                "metrics": {k: ranking[k] for k in ("closed", "pnl", "profit_factor", "avg_r", "max_drawdown")},
+            })
+        if mode == "shadow" and closed >= 10 and (pnl <= 0 or avg_r <= 0 or profit_factor < 1):
+            anomalies.append({
+                "strategy": strategy,
+                "type": "negative_shadow_edge",
+                "reason": "shadow strategy has enough closed trades but no positive post-cost edge",
+                "metrics": {k: ranking[k] for k in ("closed", "pnl", "profit_factor", "avg_r", "order_flow_avg_score")},
+            })
+        if of_score and of_score < 0.35:
+            anomalies.append({
+                "strategy": strategy,
+                "type": "weak_order_flow",
+                "reason": "recent order-flow evidence is weak",
+                "metrics": {"order_flow_avg_score": round(of_score, 3), "closed": closed},
+            })
+
+    rankings.sort(key=lambda item: (item["score"], item["pnl"], item["closed"]), reverse=True)
+    promotion_candidates = promotions.get("candidates", [])
+    research_retest = [
+        item for item in promotion_candidates
+        if str(item.get("recommendation") or "").startswith("RESEARCH_RETEST")
+    ]
+    ml = ml_report or {}
+    ml_summary = {
+        "available": bool(ml),
+        "validated": bool(ml.get("validated")) if ml else False,
+        "baseline_trades": ((ml.get("baseline") or {}).get("trades") if ml else 0) or 0,
+        "filtered_trades": ((ml.get("ml_filtered") or {}).get("trades") if ml else 0) or 0,
+        "improvement": (ml.get("comparison") or {}).get("total_r_improvement") if ml else None,
+    }
+    recommendations = _weekly_report_recommendations(rankings, promotion_candidates, demotions, anomalies, ml_summary)
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "period": "rolling_week",
+        "mode": "ADVISORY_ONLY",
+        "summary": {
+            "strategies": len(rankings),
+            "promotion_candidates": len(promotion_candidates),
+            "research_retest_candidates": len(research_retest),
+            "demotion_reviews": len(demotions),
+            "anomalies": len(anomalies),
+            "order_flow_annotations": (order_flow.get("summary") or {}).get("total", 0),
+        },
+        "ranking": rankings,
+        "promotion_candidates": promotion_candidates,
+        "demotion_reviews": demotions,
+        "anomalies": anomalies,
+        "order_flow": order_flow.get("summary", {}),
+        "ml": ml_summary,
+        "recommendations": recommendations,
+    }
+
+
+def _research_score(
+    pnl: float,
+    profit_factor: float,
+    avg_r: float,
+    winrate: float,
+    max_drawdown: float,
+    order_flow_score: float,
+    closed: int,
+) -> float:
+    maturity = min(closed / 50.0, 1.0) * 15.0
+    pnl_score = max(min(pnl / 100.0, 1.0), -1.0) * 20.0
+    pf_score = max(min((profit_factor - 1.0) / 1.0, 1.0), -1.0) * 20.0
+    avg_r_score = max(min(avg_r / 0.25, 1.0), -1.0) * 20.0
+    win_score = max(min((winrate - 45.0) / 25.0, 1.0), -1.0) * 10.0
+    dd_score = 10.0 if max_drawdown >= -5.0 else 2.0 if max_drawdown >= -10.0 else -10.0
+    of_score = max(min((order_flow_score - 0.35) / 0.35, 1.0), -1.0) * 5.0 if order_flow_score else 0.0
+    return round(max(maturity + pnl_score + pf_score + avg_r_score + win_score + dd_score + of_score, 0.0), 2)
+
+
+def _weekly_report_recommendations(
+    rankings: list[dict[str, Any]],
+    promotions: list[dict[str, Any]],
+    demotions: list[dict[str, Any]],
+    anomalies: list[dict[str, Any]],
+    ml_summary: dict[str, Any],
+) -> list[str]:
+    recommendations: list[str] = []
+    if rankings:
+        leader = rankings[0]
+        recommendations.append(
+            f"Top strategy by research score: {leader['strategy']} ({leader['mode']}, score={leader['score']})."
+        )
+    if promotions:
+        recommendations.append("Review promotion candidates manually; auto-promotion remains disabled.")
+    if demotions:
+        recommendations.append("Review paper/live demotion candidates before increasing risk.")
+    if anomalies:
+        recommendations.append("Investigate anomaly list before trusting shadow edge.")
+    if not ml_summary.get("available"):
+        recommendations.append("ML walk-forward report is missing; keep ML advisory only.")
+    elif not ml_summary.get("validated"):
+        recommendations.append("ML walk-forward report is not validated; do not enforce ML decisions.")
+    return recommendations
+
+
 def service_status(name: str) -> str:
     result = subprocess.run(["systemctl", "is-active", name], capture_output=True, text=True)
     return result.stdout.strip() or "unknown"
@@ -1974,6 +2144,36 @@ def api_strategy_promotions() -> dict:
     scorecard = api_strategy_scorecard()
     if "error" in scorecard:
         return scorecard
+    return _strategy_promotions_from_scorecard(scorecard)
+
+
+def api_strategy_policy() -> dict:
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "auto_promotion_enabled": False,
+        "policies": STRATEGY_PROMOTION_POLICIES,
+    }
+
+
+def api_strategy_allocator() -> dict:
+    scorecard = api_strategy_scorecard()
+    if "error" in scorecard:
+        return scorecard
+    return build_strategy_allocator(scorecard)
+
+
+def api_weekly_research_report() -> dict:
+    scorecard = api_strategy_scorecard()
+    if "error" in scorecard:
+        return scorecard
+    allocator = build_strategy_allocator(scorecard)
+    promotions = _strategy_promotions_from_scorecard(scorecard)
+    order_flow = api_order_flow(limit=1000)
+    ml_report = _load_ml_validation_report()
+    return build_weekly_research_report(scorecard, allocator, promotions, order_flow, ml_report)
+
+
+def _strategy_promotions_from_scorecard(scorecard: dict[str, Any]) -> dict[str, Any]:
     candidates = []
     for row in scorecard.get("strategies", []):
         shadow_gate = row.get("shadow_gate") or {}
@@ -2017,19 +2217,18 @@ def api_strategy_promotions() -> dict:
     }
 
 
-def api_strategy_policy() -> dict:
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "auto_promotion_enabled": False,
-        "policies": STRATEGY_PROMOTION_POLICIES,
-    }
-
-
-def api_strategy_allocator() -> dict:
-    scorecard = api_strategy_scorecard()
-    if "error" in scorecard:
-        return scorecard
-    return build_strategy_allocator(scorecard)
+def _load_ml_validation_report() -> dict[str, Any]:
+    try:
+        config = api_config()
+        ml = config.get("ml") or {}
+        path = Path(str(ml.get("validation_report_path") or "data/ml/walk_forward_report.json"))
+        if not path.is_absolute():
+            path = Path(BOT_ROOT) / path
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"error": str(exc), "validated": False}
 
 
 ROUTES = {
@@ -2048,6 +2247,7 @@ ROUTES = {
     "/strategy-promotions": api_strategy_promotions,
     "/strategy-policy": api_strategy_policy,
     "/strategy-allocator": api_strategy_allocator,
+    "/weekly-research-report": api_weekly_research_report,
     "/order-flow": api_order_flow,
 }
 
