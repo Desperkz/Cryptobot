@@ -4,6 +4,7 @@ import json
 
 from bot_control_v2 import (
     apply_strategy_promotion_policy,
+    build_production_readiness_report,
     build_strategy_allocator,
     build_strategy_scorecard,
     build_weekly_research_report,
@@ -815,3 +816,74 @@ def test_weekly_research_report_ranks_and_flags_actions() -> None:
     assert report["anomalies"][0]["strategy"] == "RANGE_GRID"
     assert report["ml"]["validated"] is True
     assert report["recommendations"]
+
+
+def test_production_readiness_blocks_until_evidence_is_complete() -> None:
+    scorecard = {
+        "summary": {"post_p5_closed_trades": 42},
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "post_p5_evidence": {
+                    "closed_trade_clusters": 11,
+                    "cluster_profit_factor": 1.94,
+                    "cluster_winrate": 81.8,
+                    "cluster_avg_r": 0.033,
+                    "max_drawdown": -3.1,
+                },
+            }
+        ],
+    }
+
+    report = build_production_readiness_report(scorecard)
+
+    assert report["status"] == "BLOCKED"
+    blocker_ids = {item["id"] for item in report["blockers"]}
+    assert "post_p5_closed_trades" in blocker_ids
+    assert "squeeze_breakout_closed_clusters" in blocker_ids
+    assert "squeeze_breakout_avg_r" in blocker_ids
+    assert "testnet_restart_recovery" in blocker_ids
+    assert "production_unlock" in blocker_ids
+
+
+def test_production_readiness_passes_with_complete_evidence() -> None:
+    scorecard = {
+        "summary": {"post_p5_closed_trades": 520},
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "post_p5_evidence": {
+                    "closed_trade_clusters": 120,
+                    "cluster_profit_factor": 1.55,
+                    "cluster_winrate": 48.0,
+                    "cluster_avg_r": 0.31,
+                    "max_drawdown": -7.4,
+                },
+            }
+        ],
+    }
+    testnet_evidence = {
+        "lifecycle": {
+            "entry": True,
+            "stop_loss": True,
+            "take_profit": True,
+            "cancel": True,
+            "partial_fill": True,
+            "restart_recovery": True,
+        },
+        "duplicate_orders": 0,
+        "unprotected_positions": 0,
+        "critical_incidents": 0,
+        "soak_days": 14,
+    }
+    production_unlock = {
+        "human_approved_by": "operator",
+        "backtest_approved": True,
+        "paper_trading_approved": True,
+    }
+
+    report = build_production_readiness_report(scorecard, testnet_evidence, production_unlock)
+
+    assert report["status"] == "READY"
+    assert report["ready_for_mainnet"] is True
+    assert report["summary"]["blocked"] == 0

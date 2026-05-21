@@ -1578,6 +1578,188 @@ def build_weekly_research_report(
     }
 
 
+def build_production_readiness_report(
+    scorecard: dict[str, Any],
+    testnet_evidence: dict[str, Any] | None = None,
+    production_unlock: dict[str, Any] | None = None,
+    live_strategies: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a strict, advisory-only live readiness report from current evidence."""
+    testnet_evidence = testnet_evidence or {}
+    production_unlock = production_unlock or {}
+    live_strategies = live_strategies or ["SQUEEZE_BREAKOUT"]
+    rows = {str(row.get("strategy") or ""): row for row in scorecard.get("strategies", [])}
+    summary = scorecard.get("summary") or {}
+    checks: list[dict[str, Any]] = []
+
+    post_p5_closed = int(_to_float(summary.get("post_p5_closed_trades"), 0) or 0)
+    checks.append(_readiness_check(
+        "post_p5_closed_trades",
+        post_p5_closed >= 500,
+        "At least 500 closed v2.1 post-P5 realistic paper/testnet trades.",
+        actual=post_p5_closed,
+        required=500,
+    ))
+
+    for strategy in live_strategies:
+        row = rows.get(strategy) or {}
+        post_p5 = row.get("post_p5_evidence") or {}
+        clusters = int(_to_float(post_p5.get("closed_trade_clusters"), 0) or 0)
+        profit_factor = _to_float(post_p5.get("cluster_profit_factor"), 0.0) or 0.0
+        winrate = _to_float(post_p5.get("cluster_winrate"), 0.0) or 0.0
+        avg_r = _to_float(post_p5.get("cluster_avg_r"), 0.0) or 0.0
+        max_drawdown = _to_float(post_p5.get("max_drawdown"), 0.0) or 0.0
+        prefix = f"{strategy.lower()}_"
+        checks.extend([
+            _readiness_check(
+                prefix + "closed_clusters",
+                clusters >= 100,
+                f"{strategy} needs at least 100 closed post-P5 trade clusters.",
+                actual=clusters,
+                required=100,
+            ),
+            _readiness_check(
+                prefix + "profit_factor",
+                profit_factor >= 1.30,
+                f"{strategy} post-P5 profit factor must be >= 1.30.",
+                actual=round(profit_factor, 3),
+                required=1.30,
+            ),
+            _readiness_check(
+                prefix + "winrate",
+                winrate >= 40.0,
+                f"{strategy} post-P5 winrate must be >= 40%.",
+                actual=round(winrate, 2),
+                required=40.0,
+            ),
+            _readiness_check(
+                prefix + "avg_r",
+                avg_r >= 0.25,
+                f"{strategy} post-P5 average R must be >= +0.25.",
+                actual=round(avg_r, 3),
+                required=0.25,
+            ),
+            _readiness_check(
+                prefix + "max_drawdown",
+                max_drawdown >= -10.0,
+                f"{strategy} post-P5 max drawdown must be better than -10%.",
+                actual=round(max_drawdown, 2),
+                required=">= -10.0",
+            ),
+        ])
+        if avg_r < 0:
+            checks.append(_readiness_check(
+                prefix + "no_negative_avg_r",
+                False,
+                f"{strategy} has negative average R and cannot be live-enabled.",
+                actual=round(avg_r, 3),
+                required=">= 0",
+            ))
+
+    lifecycle_required = {
+        "entry": "Testnet entry order evidence.",
+        "stop_loss": "Testnet SL placement/fill evidence.",
+        "take_profit": "Testnet TP placement/fill evidence.",
+        "cancel": "Testnet cancel/cleanup evidence.",
+        "partial_fill": "Testnet partial-fill scaling evidence.",
+        "restart_recovery": "Testnet restart recovery evidence.",
+    }
+    lifecycle = testnet_evidence.get("lifecycle") or testnet_evidence
+    for key, description in lifecycle_required.items():
+        checks.append(_readiness_check(
+            f"testnet_{key}",
+            bool(lifecycle.get(key)),
+            description,
+            actual=bool(lifecycle.get(key)),
+            required=True,
+        ))
+
+    checks.extend([
+        _readiness_check(
+            "duplicate_orders",
+            int(_to_float(testnet_evidence.get("duplicate_orders"), 999)) == 0,
+            "No duplicate orders/positions in lifecycle evidence.",
+            actual=testnet_evidence.get("duplicate_orders"),
+            required=0,
+        ),
+        _readiness_check(
+            "unprotected_positions",
+            int(_to_float(testnet_evidence.get("unprotected_positions"), 999)) == 0,
+            "No unprotected testnet/live positions after restart.",
+            actual=testnet_evidence.get("unprotected_positions"),
+            required=0,
+        ),
+        _readiness_check(
+            "critical_incidents",
+            int(_to_float(testnet_evidence.get("critical_incidents"), 999)) == 0,
+            "No critical technical incidents in the soak window.",
+            actual=testnet_evidence.get("critical_incidents"),
+            required=0,
+        ),
+        _readiness_check(
+            "soak_days",
+            (_to_float(testnet_evidence.get("soak_days"), 0.0) or 0.0) >= 14.0,
+            "At least 14 continuous paper/testnet soak days.",
+            actual=testnet_evidence.get("soak_days"),
+            required=14,
+        ),
+        _readiness_check(
+            "production_unlock",
+            bool(production_unlock.get("human_approved_by"))
+            and bool(production_unlock.get("backtest_approved"))
+            and bool(production_unlock.get("paper_trading_approved")),
+            "Human-reviewed production unlock must approve backtest and paper trading.",
+            actual={
+                "human_approved_by": production_unlock.get("human_approved_by"),
+                "backtest_approved": bool(production_unlock.get("backtest_approved")),
+                "paper_trading_approved": bool(production_unlock.get("paper_trading_approved")),
+            },
+            required="human_approved_by + backtest_approved + paper_trading_approved",
+        ),
+    ])
+
+    blocked = [check for check in checks if check["status"] == "BLOCKED"]
+    warnings = [check for check in checks if check["status"] == "WARN"]
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "ADVISORY_ONLY",
+        "ready_for_mainnet": not blocked,
+        "status": "READY" if not blocked else "BLOCKED",
+        "summary": {
+            "checks": len(checks),
+            "passed": sum(1 for check in checks if check["status"] == "PASS"),
+            "blocked": len(blocked),
+            "warnings": len(warnings),
+            "live_strategies": live_strategies,
+        },
+        "checks": checks,
+        "blockers": blocked,
+        "warnings": warnings,
+        "notes": [
+            "This report is advisory and cannot unlock MAINNET_LIVE by itself.",
+            "Production unlock remains a separate human-reviewed file.",
+        ],
+    }
+
+
+def _readiness_check(
+    check_id: str,
+    passed: bool,
+    description: str,
+    *,
+    actual: Any,
+    required: Any,
+    warn: bool = False,
+) -> dict[str, Any]:
+    return {
+        "id": check_id,
+        "status": "PASS" if passed else "WARN" if warn else "BLOCKED",
+        "description": description,
+        "actual": actual,
+        "required": required,
+    }
+
+
 def _research_score(
     pnl: float,
     profit_factor: float,
@@ -2173,6 +2355,15 @@ def api_weekly_research_report() -> dict:
     return build_weekly_research_report(scorecard, allocator, promotions, order_flow, ml_report)
 
 
+def api_production_readiness() -> dict:
+    scorecard = api_strategy_scorecard()
+    if "error" in scorecard:
+        return scorecard
+    testnet_evidence = _load_optional_json("data/testnet_lifecycle_evidence.json")
+    production_unlock = _load_optional_json(_production_unlock_path())
+    return build_production_readiness_report(scorecard, testnet_evidence, production_unlock)
+
+
 def _strategy_promotions_from_scorecard(scorecard: dict[str, Any]) -> dict[str, Any]:
     candidates = []
     for row in scorecard.get("strategies", []):
@@ -2231,6 +2422,30 @@ def _load_ml_validation_report() -> dict[str, Any]:
         return {"error": str(exc), "validated": False}
 
 
+def _load_optional_json(path_value: str | Path) -> dict[str, Any]:
+    try:
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = Path(BOT_ROOT) / path
+        if not path.exists():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _production_unlock_path() -> str:
+    try:
+        import sys
+        sys.path.insert(0, f"{BOT_ROOT}/src")
+        from trading_bot.config import load_config
+
+        return load_config().safety.production_unlock_file
+    except Exception:
+        return "data/production_unlock.json"
+
+
 ROUTES = {
     "/status": api_status,
     "/positions": api_positions,
@@ -2248,6 +2463,7 @@ ROUTES = {
     "/strategy-policy": api_strategy_policy,
     "/strategy-allocator": api_strategy_allocator,
     "/weekly-research-report": api_weekly_research_report,
+    "/production-readiness": api_production_readiness,
     "/order-flow": api_order_flow,
 }
 

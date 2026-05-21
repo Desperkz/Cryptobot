@@ -344,6 +344,10 @@
   - `paper_monitor_v2.py` не должен при ручном запуске случайно читать `/root/bot_v2/data/trading_bot.sqlite3`.
   - Исправить устаревшие комментарии запуска и fallback DB path.
   - Готово: fallback DB path и комментарии запуска переведены на `/root/bot_v2_1` и `trading_bot_v2_1.sqlite3`.
+- `[x]` P6-16 Добавить production readiness/evidence report.
+  - Готово: `/production-readiness` собирает строгий live-readiness отчет по post-P5 evidence, SQZ metrics, testnet lifecycle evidence, soak, incident counters и production unlock.
+  - Готово: report не разблокирует `MAINNET_LIVE` сам по себе, а явно показывает blockers до ручного unlock.
+  - Готово: добавлен `scripts/production_readiness_report.py` для сохранения timestamped JSON и latest report.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 
