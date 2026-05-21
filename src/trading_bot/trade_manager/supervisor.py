@@ -221,10 +221,15 @@ class TradeSupervisor:
                 continue
             amount = to_decimal(item.get("pa", "0"))
             if amount == 0:
-                self.positions.clear_local_position(symbol)
-                state = self._managed.pop(symbol, None)
-                if state and self._trade_closed:
-                    await self._trade_closed(symbol, state.realized_pnl)
+                state = self._managed.get(symbol)
+                if state:
+                    await self._close_managed_trade(
+                        symbol,
+                        state,
+                        f"{symbol}: position closed by ACCOUNT_UPDATE reason={reason}.",
+                    )
+                else:
+                    self.positions.clear_local_position(symbol)
                 logger.info("%s position closed by ACCOUNT_UPDATE reason=%s", symbol, reason)
                 continue
             if symbol not in self._managed and self.config.safety.adopt_manual_positions:
@@ -318,6 +323,10 @@ class TradeSupervisor:
         )
 
     async def _close_managed_trade(self, symbol: str, state: ManagedTradeState, message: str) -> None:
+        try:
+            await self.binance.cancel_all_orders(symbol)
+        except Exception:
+            logger.exception("Failed to cancel remaining managed orders for %s", symbol)
         self._managed.pop(symbol, None)
         self.positions.clear_local_position(symbol)
         if self._trade_closed:

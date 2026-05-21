@@ -288,9 +288,13 @@
   - Готово: `/strategy-promotions` больше не трактует research shadow spike как автоматический перевод в paper; он возвращает human-review/retest рекомендации.
   - Готово: добавлен `/strategy-policy` как явная карта дисциплины promotion/demotion.
   - Проверка: regression tests для MR paper-only, TPB human review и research-only shadow strategies.
-- `[ ]` P6-07 Улучшить exit architecture.
+- `[x]` P6-07 Улучшить exit architecture.
   - Рассматривать exchange-side OCO как OCO-like managed bracket для Binance Futures, где native OCO недоступен или недостаточен.
   - Переработать partial TP ladder так, чтобы trailing имел оставшийся size для управления после TP1/TP2, а не активировался, когда позиция уже полностью закрыта.
+  - Готово: дефолтный exit profile стал runner-friendly: TP1 45%, TP2 35%, RUNNER 20%, trailing активируется до финального runner.
+  - Готово: config validation блокирует профили, где trailing включается только после финального target без оставшейся позиции.
+  - Готово: live supervisor отменяет оставшиеся managed orders после protective exit или ACCOUNT_UPDATE с нулевой позицией.
+  - Проверка: regression tests для exit profile validation, live protective cleanup и account-update cleanup.
 - `[ ]` P6-08 Weekly research report.
   - Генерировать недельный ranking, promotion, demotion и anomaly report из scorecard, shadow-paper, order-flow и ML snapshots.
   - ML остается advisory/shadow; enforcement требует положительный walk-forward delta и существенно большую evidence base.

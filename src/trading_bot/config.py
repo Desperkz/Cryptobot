@@ -551,6 +551,7 @@ class AppConfig:
         tp_fraction = sum(target.fraction for target in self.trade_management.partial_take_profits)
         if tp_fraction != Decimal("1"):
             raise ConfigError("trade_management.partial_take_profits fractions must sum to 1.0.")
+        self._validate_exit_profile("trade_management.partial_take_profits", self.trade_management.partial_take_profits)
         for strategy, targets in self.trade_management.strategy_exit_profiles.items():
             profile_fraction = sum(target.fraction for target in targets)
             if profile_fraction != Decimal("1"):
@@ -558,6 +559,7 @@ class AppConfig:
                     "trade_management.strategy_exit_profiles fractions must sum to 1.0 "
                     f"for {strategy}."
                 )
+            self._validate_exit_profile(f"trade_management.strategy_exit_profiles.{strategy}", targets)
         if self.risk.risk_per_trade_pct >= self.risk.aggressive_risk_threshold_pct:
             warnings.append(
                 f"risk_per_trade_pct={self.risk.risk_per_trade_pct:.2%} is aggressive for futures."
@@ -578,6 +580,25 @@ class AppConfig:
         if self.trading.position_mode != "ONE_WAY" and not self.safety.allow_hedge_mode:
             raise ConfigError("Hedge mode is disabled by safety.allow_hedge_mode=false.")
         return warnings
+
+    @staticmethod
+    def _validate_exit_profile(name: str, targets: list[PartialTakeProfitConfig]) -> None:
+        if not targets:
+            raise ConfigError(f"{name} must define at least one take-profit target.")
+        remaining = Decimal("1")
+        has_trailing_with_runner = False
+        for target in targets:
+            if target.fraction <= 0:
+                raise ConfigError(f"{name}.{target.name} fraction must be positive.")
+            if target.reward_risk <= 0:
+                raise ConfigError(f"{name}.{target.name} reward_risk must be positive.")
+            remaining -= target.fraction
+            if target.activate_trailing and remaining > Decimal("0"):
+                has_trailing_with_runner = True
+        if any(target.activate_trailing for target in targets) and not has_trailing_with_runner:
+            raise ConfigError(
+                f"{name} activates trailing only after the final target; leave a runner after the trailing trigger."
+            )
 
     def _validate_production_unlock(self) -> None:
         import json

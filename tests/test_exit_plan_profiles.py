@@ -3,7 +3,9 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from trading_bot.config import PartialTakeProfitConfig, TradeManagementConfig
+import pytest
+
+from trading_bot.config import AppConfig, ConfigError, PartialTakeProfitConfig, TradeManagementConfig
 from trading_bot.config import load_config
 from trading_bot.models import Direction, Signal, SymbolFilters, TradingStyle
 from trading_bot.trade_manager.exit_plan import ExitPlanBuilder
@@ -16,8 +18,9 @@ def trade_management_config() -> TradeManagementConfig:
         user_stream_reconnect_backoff_sec=5,
         rest_reconciliation_when_stale=True,
         partial_take_profits=[
-            PartialTakeProfitConfig("TP1", Decimal("0.6"), Decimal("0.50"), move_stop_to_breakeven=True),
-            PartialTakeProfitConfig("TP2", Decimal("1.1"), Decimal("0.50"), activate_trailing=True),
+            PartialTakeProfitConfig("TP1", Decimal("0.6"), Decimal("0.45"), move_stop_to_breakeven=True),
+            PartialTakeProfitConfig("TP2", Decimal("1.1"), Decimal("0.35"), activate_trailing=True),
+            PartialTakeProfitConfig("RUNNER", Decimal("1.6"), Decimal("0.20"), activate_trailing=True),
         ],
         breakeven_offset_bps=Decimal("2"),
         trailing_enabled=True,
@@ -80,9 +83,9 @@ def test_unknown_strategy_falls_back_to_default_exit_profile() -> None:
 
     targets = builder.build_targets(signal("UNKNOWN"), Decimal("10"), filters())
 
-    assert [target.name for target in targets] == ["TP1", "TP2"]
-    assert [target.quantity for target in targets] == [Decimal("5.000"), Decimal("5.000")]
-    assert [target.reward_risk for target in targets] == [Decimal("0.6"), Decimal("1.1")]
+    assert [target.name for target in targets] == ["TP1", "TP2", "RUNNER"]
+    assert [target.quantity for target in targets] == [Decimal("4.500"), Decimal("3.500"), Decimal("2.000")]
+    assert [target.reward_risk for target in targets] == [Decimal("0.6"), Decimal("1.1"), Decimal("1.6")]
 
 
 def test_profile_targets_are_capped_at_signal_take_profit_rr() -> None:
@@ -112,3 +115,13 @@ def test_runtime_config_profiles_fit_strategy_take_profit_rr() -> None:
             continue
         profile_max = max(target.reward_risk for target in profile)
         assert profile_max <= expected_max, f"{strategy} profile RR {profile_max} exceeds signal RR {expected_max}"
+
+
+def test_exit_profiles_cannot_activate_trailing_only_after_final_target() -> None:
+    targets = [
+        PartialTakeProfitConfig("TP1", Decimal("0.6"), Decimal("0.50"), move_stop_to_breakeven=True),
+        PartialTakeProfitConfig("TP2", Decimal("1.1"), Decimal("0.50"), activate_trailing=True),
+    ]
+
+    with pytest.raises(ConfigError, match="leave a runner after the trailing trigger"):
+        AppConfig._validate_exit_profile("test.profile", targets)

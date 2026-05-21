@@ -259,12 +259,16 @@ trade_management:
   rest_reconciliation_when_stale: true
   partial_take_profits:
     - name: "TP1"
-      reward_risk: 0.6    # 55% от дистанции — быстрый частичный выход
-      fraction: 0.50
+      reward_risk: 0.6
+      fraction: 0.45
       move_stop_to_breakeven: true
     - name: "TP2"
-      reward_risk: 1.1    # финальный выход на целевом RR
-      fraction: 0.50
+      reward_risk: 1.1
+      fraction: 0.35
+      activate_trailing: true
+    - name: "RUNNER"
+      reward_risk: 1.6
+      fraction: 0.20
       activate_trailing: true
   strategy_exit_profiles:
     SQUEEZE_BREAKOUT:
