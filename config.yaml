@@ -189,8 +189,8 @@ risk:
   max_daily_loss_pct: 0.06
   cooldown_after_losses: 2
   cooldown_minutes: 120
-  symbol_cooldown_after_loss_minutes: 120
-  strategy_reentry_cooldown_minutes: 45
+  symbol_cooldown_after_loss_minutes: 180
+  strategy_reentry_cooldown_minutes: 180
   scale_in_enabled: false
   max_scale_ins_per_symbol_strategy: 2
   scale_in_risk_multiplier: 0.50
@@ -244,6 +244,10 @@ risk:
     MOMENTUM_CONTINUATION: 0.016
     RANGE_GRID: 0.006
     TREND_FOLLOWING: 0.012
+  realtime_correlation_enabled: true
+  realtime_correlation_threshold: 0.70
+  realtime_correlation_lookback: 48
+  block_live_when_correlation_unavailable: true
   correlation_groups:
     majors: ["BTCUSDT", "ETHUSDT"]
     l1_beta: ["SOLUSDT", "BNBUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "NEARUSDT"]

@@ -110,7 +110,10 @@ class TradingBot:
             config=config.strategy,
         )
         self.entry_filter = MarketEntryFilter(config.market_filters)
-        self.corr_filter = CorrelationFilter(threshold=0.7, lookback=48)
+        self.corr_filter = CorrelationFilter(
+            threshold=float(config.risk.realtime_correlation_threshold),
+            lookback=config.risk.realtime_correlation_lookback,
+        )
         self.self_learning = SelfLearningEngine(config.analytics)
         self.kelly = KellyRiskSizer(config.risk)
         self.ml_filter = MLSignalFilter(
@@ -381,7 +384,10 @@ class TradingBot:
             filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
             if filter_decision.allowed:
                 active_pos = await self.positions.active_positions()
-                corr_ok, corr_reason = self.corr_filter.allow_entry(signal.symbol, signal.direction, active_pos)
+                corr_reason = await self._refresh_realtime_correlation(signal.symbol, active_pos)
+                corr_ok = not corr_reason
+                if corr_ok:
+                    corr_ok, corr_reason = self.corr_filter.allow_entry(signal.symbol, signal.direction, active_pos)
                 if not corr_ok:
                     from trading_bot.market_filters import FilterDecision
                     filter_decision = FilterDecision(False, corr_reason)
@@ -1028,6 +1034,31 @@ class TradingBot:
             logger.exception("Could not fetch BTCUSDT 4h candles for market filter.")
             return None
         return self.entry_filter.btc_4h_change(candles)
+
+    async def _refresh_realtime_correlation(self, symbol: str, active_positions: list[Position]) -> str | None:
+        if not self.config.risk.realtime_correlation_enabled or not active_positions:
+            return None
+        symbols = sorted({position.symbol for position in active_positions if position.symbol != symbol})
+        if not symbols:
+            return None
+        failures: list[str] = []
+        for active_symbol in symbols:
+            try:
+                candles = await self.market_data.candles(
+                    active_symbol,
+                    "1h",
+                    limit=self.config.risk.realtime_correlation_lookback + 1,
+                )
+                self.corr_filter.update(active_symbol, candles)
+            except Exception:
+                logger.exception("Could not refresh realtime correlation for %s.", active_symbol)
+                failures.append(active_symbol)
+        if failures and self.config.is_live and self.config.risk.block_live_when_correlation_unavailable:
+            return (
+                "Realtime correlation check unavailable for active positions "
+                f"{', '.join(failures)}; live entry blocked."
+            )
+        return None
 
     async def _mark_trade_closed(self, symbol: str, realized_pnl: Decimal) -> None:
         await self.db.mark_latest_trade_closed(symbol, str(realized_pnl))

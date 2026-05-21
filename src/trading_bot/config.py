@@ -315,6 +315,10 @@ class RiskConfig:
             "TREND_FOLLOWING": Decimal("0.012"),
         }
     )
+    realtime_correlation_enabled: bool = True
+    realtime_correlation_threshold: Decimal = Decimal("0.70")
+    realtime_correlation_lookback: int = 48
+    block_live_when_correlation_unavailable: bool = True
     correlation_groups: dict[str, list[str]] = field(default_factory=dict)
 
 
@@ -540,6 +544,10 @@ class AppConfig:
             raise ConfigError("default_leverage cannot exceed max_leverage.")
         if self.risk.max_concurrent_positions < 1:
             raise ConfigError("max_concurrent_positions must be >= 1.")
+        if not (Decimal("0") < self.risk.realtime_correlation_threshold <= Decimal("1")):
+            raise ConfigError("risk.realtime_correlation_threshold must be within (0, 1].")
+        if self.risk.realtime_correlation_lookback < 10:
+            raise ConfigError("risk.realtime_correlation_lookback must be >= 10.")
         tp_fraction = sum(target.fraction for target in self.trade_management.partial_take_profits)
         if tp_fraction != Decimal("1"):
             raise ConfigError("trade_management.partial_take_profits fractions must sum to 1.0.")
@@ -967,6 +975,12 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             or RiskConfig.__dataclass_fields__["dynamic_strategy_risk_multipliers"].default_factory(),
             dynamic_strategy_max_risk_pct=_dec_map(raw["risk"].get("dynamic_strategy_max_risk_pct", {}))
             or RiskConfig.__dataclass_fields__["dynamic_strategy_max_risk_pct"].default_factory(),
+            realtime_correlation_enabled=bool(raw["risk"].get("realtime_correlation_enabled", True)),
+            realtime_correlation_threshold=to_decimal(raw["risk"].get("realtime_correlation_threshold", "0.70")),
+            realtime_correlation_lookback=int(raw["risk"].get("realtime_correlation_lookback", 48)),
+            block_live_when_correlation_unavailable=bool(
+                raw["risk"].get("block_live_when_correlation_unavailable", True)
+            ),
             correlation_groups={k: list(v) for k, v in raw["risk"].get("correlation_groups", {}).items()},
         ),
         trade_management=TradeManagementConfig(

@@ -263,10 +263,14 @@
   - Готово: `_sync_live_positions_from_exchange()` пишет `restart_recovery` в metadata live trade и предупреждает, если после рестарта позиция не имеет verified protective SL/TP.
   - Готово: reconciliation теперь различает не только наличие SL/TP, но и close-position SL плюс reduce-only TP.
   - Проверка: добавлены regression tests для protected/unprotected restart recovery и записи recovery evidence в live sync metadata.
-- `[ ]` P6-04 Улучшить portfolio-level risk controls.
+- `[x]` P6-04 Улучшить portfolio-level risk controls.
   - Добавить real-time correlation checks по открытым позициям, не только static correlation groups.
   - Поднять same symbol+strategy cooldown после stop-loss до 180 минут для testnet/mainnet profiles.
   - Держать scale-in выключенным по умолчанию, пока отдельный evidence gate не докажет его пользу.
+  - Готово: correlation filter теперь конфигурируется через `risk.realtime_correlation_*` и перед новым входом обновляет 1h-корреляции по активным позициям.
+  - Готово: в live/testnet при недоступной correlation refresh проверке новый вход блокируется, чтобы не получить скрытый двойной риск.
+  - Готово: cooldown по символу и стратегии поднят до 180 минут, `scale_in_enabled=false` остается runtime safety default.
+  - Проверка: добавлены regression tests для correlation block, live unavailable-correlation block и runtime safety config.
 - `[ ]` P6-05 Добавить operational watchdogs и incident alerts.
   - Добавить systemd watchdog/health timeout для paper monitor и control API.
   - Добавить alerts по stale user stream, repeated rate limits, rejected protective orders, drawdown и funding pressure.
