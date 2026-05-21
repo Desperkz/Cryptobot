@@ -15,6 +15,7 @@ from trading_bot.config import AppConfig
 from trading_bot.data_provider import BinanceUSDMClient, CoinGeckoClient, MarketDataProvider
 from trading_bot.database import Database
 from trading_bot.execution import ExecutionReconciler
+from trading_bot.execution.reconciler import restart_recovery_evidence
 from trading_bot.analytics import SelfLearningEngine
 from trading_bot.market_regime_detector import MarketRegimeDetector
 from trading_bot.market_universe import MarketUniverseBuilder
@@ -970,7 +971,8 @@ class TradingBot:
             direction = Direction.LONG if amount > 0 else Direction.SHORT
             symbol_orders = orders_by_symbol.get(symbol, [])
             stop_loss, take_profit = _protection_prices(symbol_orders)
-            managed_by_bot = any(str(order.get("clientOrderId", "")).startswith("bot-") for order in symbol_orders)
+            recovery_evidence = restart_recovery_evidence(item, symbol_orders)
+            managed_by_bot = bool(recovery_evidence["managed_by_bot"])
             entry_price = to_decimal(item.get("entryPrice", "0"))
             mark_price = to_decimal(item.get("markPrice", "0"))
             liquidation = item.get("liquidationPrice")
@@ -1001,10 +1003,15 @@ class TradingBot:
                 metadata={
                     "source": "BINANCE_RECONCILIATION",
                     "managed_by_bot": managed_by_bot,
+                    "restart_recovery": recovery_evidence,
                     "raw_position": item,
                     "open_orders": symbol_orders,
                 },
             )
+            if not recovery_evidence["protected"]:
+                await self.telegram.risk_warning(
+                    f"{symbol}: restart recovery found active position without verified protective SL/TP."
+                )
 
         await self.db.close_absent_live_positions(open_symbols, self.config.mode.value)
         for position in self.positions.local_positions():

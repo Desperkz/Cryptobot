@@ -256,9 +256,13 @@
   - Готово: TP ladder масштабируется по фактическому `executedQty`, чтобы partial entry fill не создавал TP на больший размер, чем реальная позиция.
   - Готово: в trade metadata сохраняются `executedQty`, `cumulativeQuoteQty`, `averageFillPrice`, `plannedQty`, `partialFill` и подтвержденные protective order states.
   - Проверка: добавлены regression tests для partial fill scaling и defensive close при failed protection verification.
-- `[ ]` P6-03 Добавить restart recovery evidence для активных live/testnet trades.
+- `[x]` P6-03 Добавить restart recovery evidence для активных live/testnet trades.
   - Восстанавливать managed trade state из DB плюс Binance open orders/positions после рестарта процесса.
   - Добавить testnet proof для entry, SL, TP, cancel, partial fill и restart recovery перед любым mainnet unlock.
+  - Готово: `restart_recovery_evidence` строит структурированный proof по активной позиции, stop orders, TP orders, bot client order ids и флагу `protected`.
+  - Готово: `_sync_live_positions_from_exchange()` пишет `restart_recovery` в metadata live trade и предупреждает, если после рестарта позиция не имеет verified protective SL/TP.
+  - Готово: reconciliation теперь различает не только наличие SL/TP, но и close-position SL плюс reduce-only TP.
+  - Проверка: добавлены regression tests для protected/unprotected restart recovery и записи recovery evidence в live sync metadata.
 - `[ ]` P6-04 Улучшить portfolio-level risk controls.
   - Добавить real-time correlation checks по открытым позициям, не только static correlation groups.
   - Поднять same symbol+strategy cooldown после stop-loss до 180 минут для testnet/mainnet profiles.
