@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import logging
 import time
+from collections import deque
 from typing import Any
 from urllib.parse import urlencode
 
@@ -49,6 +50,7 @@ class BinanceUSDMClient:
         self._client = httpx.AsyncClient(timeout=timeout_sec)
         self._lock = asyncio.Lock()
         self._last_request_at = 0.0
+        self._rate_limit_events: deque[float] = deque(maxlen=100)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -93,12 +95,14 @@ class BinanceUSDMClient:
             try:
                 response = await self._client.request(method, url, params=payload, headers=headers)
                 if response.status_code in {418, 429}:
+                    self._record_rate_limit_event()
                     sleep_for = _retry_delay(attempt, response.headers.get("Retry-After"))
                     logger.warning("Binance rate limit status=%s, backing off %.2fs", response.status_code, sleep_for)
                     await asyncio.sleep(sleep_for)
                     continue
                 data = _safe_json(response)
                 if isinstance(data, dict) and data.get("code") in RETRYABLE_BINANCE_CODES:
+                    self._record_rate_limit_event()
                     sleep_for = _retry_delay(attempt, response.headers.get("Retry-After"))
                     logger.warning(
                         "Binance retryable code=%s status=%s, backing off %.2fs: %s",
@@ -129,6 +133,15 @@ class BinanceUSDMClient:
         if last_error:
             raise BinanceAPIError(f"Binance request failed after retries: {last_error}") from last_error
         raise BinanceAPIError("Binance request failed after retries.")
+
+    def _record_rate_limit_event(self) -> None:
+        self._rate_limit_events.append(time.monotonic())
+
+    def recent_rate_limit_count(self, window_sec: float = 300.0) -> int:
+        threshold = time.monotonic() - window_sec
+        while self._rate_limit_events and self._rate_limit_events[0] < threshold:
+            self._rate_limit_events.popleft()
+        return len(self._rate_limit_events)
 
     async def ping(self) -> Any:
         return await self._request("GET", "/fapi/v1/ping")

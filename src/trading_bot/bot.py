@@ -22,6 +22,7 @@ from trading_bot.market_universe import MarketUniverseBuilder
 from trading_bot.market_filters import MarketEntryFilter
 from trading_bot.ml import MLSignalFilter
 from trading_bot.models import Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
+from trading_bot.operational import IncidentAlerter, SystemdNotifier
 from trading_bot.order_manager import OrderManager
 from trading_bot.position_manager import PositionManager
 from trading_bot.risk_manager import (
@@ -138,6 +139,8 @@ class TradingBot:
             warn_callback=self.telegram.risk_warning,
             emergency_callback=self._handle_emergency,
         )
+        self.incidents = IncidentAlerter(cooldown_sec=300)
+        self.systemd = SystemdNotifier()
         self._emergency_actions_applied = False
         self._strategy_diagnostic_seen: dict[tuple[str, str, str], float] = {}
 
@@ -244,8 +247,10 @@ class TradingBot:
 
     async def run_forever(self) -> None:
         await self.start()
+        self.systemd.ready()
         try:
             while True:
+                self.systemd.watchdog("trading-bot-v2-1 running")
                 if self.emergency_stop_active():
                     logger.critical("Emergency stop is active; no new cycles will run.")
                     if self.config.is_live and not self._emergency_actions_applied:
@@ -262,6 +267,7 @@ class TradingBot:
     async def run_cycle(self) -> None:
         await self._sync_paper_positions()
         await self._sync_live_positions_from_exchange()
+        await self._check_operational_incidents()
 
         # ── Disaster Mode ────────────────────────────────────────────────────
         disaster_level = await self.disaster.check()
@@ -275,7 +281,11 @@ class TradingBot:
         # ── Стандартный цикл ─────────────────────────────────────────────────
         if self.config.is_live:
             if self.config.trade_management.user_stream_required_for_live and not self.supervisor.is_healthy():
-                await self.telegram.risk_warning("User stream is stale/disconnected; new entries are blocked.")
+                await self.incidents.send(
+                    "user_stream_stale",
+                    "User stream is stale/disconnected; new entries are blocked.",
+                    self.telegram.risk_warning,
+                )
                 self.disaster.record_api_failure()
                 await self.supervisor.reconcile_managed_trades()
                 return
@@ -497,7 +507,10 @@ class TradingBot:
                     risk_per_trade_pct=sizing.risk_pct,
                 )
                 for warning in plan.warnings:
-                    await self.telegram.risk_warning(warning)
+                    if "funding" in warning.lower():
+                        await self.incidents.send("funding_pressure", warning, self.telegram.risk_warning)
+                    else:
+                        await self.telegram.risk_warning(warning)
                 result = await self.orders.execute(plan)
                 if self.config.is_live and result.accepted:
                     self.supervisor.register_plan(plan, result)
@@ -578,6 +591,12 @@ class TradingBot:
             except Exception as exc:
                 logger.exception("Execution error for %s", signal.symbol)
                 self.disaster.record_api_failure()
+                if self.config.is_live and "protective" in str(exc).lower():
+                    await self.incidents.send(
+                        "protective_order_rejected",
+                        f"{signal.symbol}: protective order incident: {exc}",
+                        self.telegram.risk_warning,
+                    )
                 await self.telegram.api_error(str(exc))
 
     def _annotate_signal_mode(self, signal: Signal, strategy_mode: str, shadow_only: bool = False) -> Signal:
@@ -1034,6 +1053,22 @@ class TradingBot:
             logger.exception("Could not fetch BTCUSDT 4h candles for market filter.")
             return None
         return self.entry_filter.btc_4h_change(candles)
+
+    async def _check_operational_incidents(self) -> None:
+        if self.binance.recent_rate_limit_count(300) >= 3:
+            await self.incidents.send(
+                "binance_rate_limits",
+                "Repeated Binance rate-limit/backoff events in the last 5 minutes.",
+                self.telegram.risk_warning,
+            )
+        if self.config.account.initial_equity_usdt and self.risk.state.realized_pnl_today < 0:
+            daily_loss_pct = abs(self.risk.state.realized_pnl_today) / self.config.account.initial_equity_usdt
+            if daily_loss_pct >= self.config.risk.max_daily_loss_pct * Decimal("0.5"):
+                await self.incidents.send(
+                    "drawdown_pressure",
+                    f"Daily realized drawdown reached {daily_loss_pct:.2%}; approaching risk limit.",
+                    self.telegram.risk_warning,
+                )
 
     async def _refresh_realtime_correlation(self, symbol: str, active_positions: list[Position]) -> str | None:
         if not self.config.risk.realtime_correlation_enabled or not active_positions:

@@ -19,6 +19,11 @@ from pathlib import Path
 
 import httpx
 
+try:
+    from trading_bot.operational import SystemdNotifier
+except Exception:  # pragma: no cover - standalone fallback
+    SystemdNotifier = None
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [paper_monitor_v2] %(message)s",
@@ -738,10 +743,15 @@ async def check_shadow_positions() -> None:
 async def main() -> None:
     logger.info("Paper Monitor v2 запущен. База: %s", DB_PATH)
     logger.info("Проверка каждые %d сек.", CHECK_INTERVAL_SEC)
+    notifier = SystemdNotifier() if SystemdNotifier else None
+    if notifier:
+        notifier.ready()
     while True:
         try:
             await check_positions()
             await check_shadow_positions()
+            if notifier:
+                notifier.watchdog("paper-monitor-v2-1 running")
         except Exception as e:
             logger.error("Ошибка цикла: %s", e)
         await asyncio.sleep(CHECK_INTERVAL_SEC)

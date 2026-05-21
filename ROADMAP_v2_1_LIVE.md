@@ -271,9 +271,13 @@
   - Готово: в live/testnet при недоступной correlation refresh проверке новый вход блокируется, чтобы не получить скрытый двойной риск.
   - Готово: cooldown по символу и стратегии поднят до 180 минут, `scale_in_enabled=false` остается runtime safety default.
   - Проверка: добавлены regression tests для correlation block, live unavailable-correlation block и runtime safety config.
-- `[ ]` P6-05 Добавить operational watchdogs и incident alerts.
+- `[x]` P6-05 Добавить operational watchdogs и incident alerts.
   - Добавить systemd watchdog/health timeout для paper monitor и control API.
   - Добавить alerts по stale user stream, repeated rate limits, rejected protective orders, drawdown и funding pressure.
+  - Готово: добавлен systemd `sd_notify` heartbeat для trading bot, paper monitor и control API; deploy install script пишет `Type=notify` и `WatchdogSec=90`.
+  - Готово: добавлен throttled `IncidentAlerter`, чтобы повторные аварийные события не спамили Telegram каждый цикл.
+  - Готово: бот алертит stale user stream, repeated Binance rate limits, protective-order incidents, drawdown pressure и adverse funding pressure.
+  - Проверка: добавлены regression tests для alert throttling, disabled systemd notifier и rate-limit counter.
 - `[ ]` P6-06 Дисциплина strategy promotion/demotion.
   - `SQUEEZE_BREAKOUT` остается champion, но ей все равно нужна post-P5 realistic evidence.
   - `MEAN_REVERSION` остается paper-only до минимум 200 закрытых v2.1 сделок и положительного walk-forward.

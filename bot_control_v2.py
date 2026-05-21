@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from trading_bot.operational import start_watchdog_thread
+
 HOST = os.getenv("BOT_CONTROL_HOST", "127.0.0.1")
 PORT = int(os.getenv("BOT_CONTROL_PORT", "8890"))
 CONTROL_TOKEN = os.getenv("BOT_CONTROL_TOKEN", "")
@@ -1920,4 +1922,5 @@ if __name__ == "__main__":
     if public_bind_without_token and not ALLOW_UNSAFE_PUBLIC:
         raise SystemExit("Refusing to bind Bot Control API outside localhost without BOT_CONTROL_TOKEN.")
     print(f"Bot v2 Control API запущен на {HOST}:{PORT}")
+    start_watchdog_thread("bot-control-v2-1 running")
     ControlHTTPServer((HOST, PORT), Handler).serve_forever()
