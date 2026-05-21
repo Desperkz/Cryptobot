@@ -84,7 +84,7 @@ strategy:
     SWING: 2.5
   take_profit_rr:
     SCALPING: 1.4
-    INTRADAY: 1.8
+    INTRADAY: 2.4
     SWING: 2.3
   use_funding_filter: true
   max_abs_funding_rate: 0.0008
@@ -276,29 +276,29 @@ trade_management:
   strategy_exit_profiles:
     SQUEEZE_BREAKOUT:
       - name: "TP1"
-        reward_risk: 0.8
+        reward_risk: 1.0
+        fraction: 0.25
+      - name: "TP2"
+        reward_risk: 1.6
         fraction: 0.35
         move_stop_to_breakeven: true
-      - name: "TP2"
-        reward_risk: 1.4
-        fraction: 0.35
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 1.8
-        fraction: 0.30
+        reward_risk: 2.3
+        fraction: 0.40
         activate_trailing: true
     SQUEEZE_BREAKOUT_DYNAMIC:
       - name: "TP1"
-        reward_risk: 0.8
+        reward_risk: 1.0
+        fraction: 0.25
+      - name: "TP2"
+        reward_risk: 1.7
         fraction: 0.35
         move_stop_to_breakeven: true
-      - name: "TP2"
-        reward_risk: 1.5
-        fraction: 0.35
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 1.8
-        fraction: 0.30
+        reward_risk: 2.4
+        fraction: 0.40
         activate_trailing: true
     TREND_PULLBACK:
       - name: "TP1"
@@ -350,6 +350,10 @@ trade_management:
     INTRADAY: 0.40
     SWING: 1.20
   trailing_client_side: false
+  min_first_target_net_reward_risk: 0.20
+  strategy_min_first_target_net_reward_risk:
+    SQUEEZE_BREAKOUT: 0.55
+    SQUEEZE_BREAKOUT_DYNAMIC: 0.60
 
 edge_filters:
   enabled: true

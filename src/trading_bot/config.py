@@ -347,6 +347,8 @@ class TradeManagementConfig:
     trailing_callback_rate_pct: dict[str, Decimal]
     trailing_client_side: bool = False
     strategy_exit_profiles: dict[str, list[PartialTakeProfitConfig]] = field(default_factory=dict)
+    min_first_target_net_reward_risk: Decimal = Decimal("0.20")
+    strategy_min_first_target_net_reward_risk: dict[str, Decimal] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1036,6 +1038,15 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             trailing_activation_reward_risk=to_decimal(raw["trade_management"]["trailing_activation_reward_risk"]),
             trailing_callback_rate_pct=_dec_map(raw["trade_management"]["trailing_callback_rate_pct"]),
             trailing_client_side=bool(raw["trade_management"].get("trailing_client_side", False)),
+            min_first_target_net_reward_risk=to_decimal(
+                raw["trade_management"].get("min_first_target_net_reward_risk", "0.20")
+            ),
+            strategy_min_first_target_net_reward_risk={
+                _strategy_name(strategy): value
+                for strategy, value in _dec_map(
+                    raw["trade_management"].get("strategy_min_first_target_net_reward_risk", {})
+                ).items()
+            },
             strategy_exit_profiles={
                 _strategy_name(strategy): [
                     PartialTakeProfitConfig(

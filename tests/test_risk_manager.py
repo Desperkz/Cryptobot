@@ -160,6 +160,22 @@ def test_position_size_is_reduced_to_margin_usage_limit_instead_of_rejected() ->
     assert any("max margin usage" in item for item in plan.warnings)
 
 
+def test_first_partial_target_must_have_enough_net_reward_after_costs() -> None:
+    trade_management = replace(
+        trade_management_config(),
+        partial_take_profits=[
+            PartialTakeProfitConfig("TP1", Decimal("0.20"), Decimal("0.40"), move_stop_to_breakeven=True),
+            PartialTakeProfitConfig("TP2", Decimal("1.8"), Decimal("0.35"), activate_trailing=True),
+            PartialTakeProfitConfig("TP3", Decimal("2.8"), Decimal("0.25")),
+        ],
+        min_first_target_net_reward_risk=Decimal("0.30"),
+    )
+    manager = RiskManager(risk_config(), trade_management)
+
+    with pytest.raises(RiskError, match="First partial TP is too small"):
+        manager.calculate_plan(long_signal(), Decimal("1000"), filters(), leverage=3)
+
+
 def test_stop_loss_and_take_profit_are_mandatory() -> None:
     manager = RiskManager(risk_config(), trade_management_config())
 

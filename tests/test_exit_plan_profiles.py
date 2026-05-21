@@ -29,9 +29,9 @@ def trade_management_config() -> TradeManagementConfig:
         trailing_client_side=False,
         strategy_exit_profiles={
             "SQUEEZE_BREAKOUT": [
-                PartialTakeProfitConfig("TP1", Decimal("0.8"), Decimal("0.35"), move_stop_to_breakeven=True),
-                PartialTakeProfitConfig("TP2", Decimal("1.4"), Decimal("0.35"), activate_trailing=True),
-                PartialTakeProfitConfig("RUNNER", Decimal("1.8"), Decimal("0.30"), activate_trailing=True),
+                PartialTakeProfitConfig("TP1", Decimal("1.0"), Decimal("0.25")),
+                PartialTakeProfitConfig("TP2", Decimal("1.6"), Decimal("0.35"), move_stop_to_breakeven=True, activate_trailing=True),
+                PartialTakeProfitConfig("RUNNER", Decimal("2.3"), Decimal("0.40"), activate_trailing=True),
             ],
             "MOMENTUM_CONTINUATION": [
                 PartialTakeProfitConfig("TP1", Decimal("0.9"), Decimal("0.30"), move_stop_to_breakeven=True),
@@ -73,9 +73,9 @@ def test_squeeze_uses_runner_friendly_exit_profile() -> None:
     protection = builder.build_protection(signal("SQUEEZE_BREAKOUT"), TradingStyle.INTRADAY, filters())
 
     assert [target.name for target in targets] == ["TP1", "TP2", "RUNNER"]
-    assert [target.quantity for target in targets] == [Decimal("3.500"), Decimal("3.500"), Decimal("3.000")]
-    assert [target.reward_risk for target in targets] == [Decimal("0.8"), Decimal("1.4"), Decimal("1.8")]
-    assert protection.breakeven_after_target == "TP1"
+    assert [target.quantity for target in targets] == [Decimal("2.500"), Decimal("3.500"), Decimal("4.000")]
+    assert [target.reward_risk for target in targets] == [Decimal("1.0"), Decimal("1.6"), Decimal("1.8")]
+    assert protection.breakeven_after_target == "TP2"
 
 
 def test_unknown_strategy_falls_back_to_default_exit_profile() -> None:

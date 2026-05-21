@@ -152,6 +152,7 @@ class RiskManager:
             partial_take_profits = self.exit_plan_builder.build_targets(rounded_signal, quantity, filters)
             if not partial_take_profits:
                 raise RiskError("Partial take-profit ladder is mandatory but no valid TP targets were built.")
+            self._validate_first_target_net_reward(rounded_signal, partial_take_profits[0], stop_distance, cost_bps)
             protection = self.exit_plan_builder.build_protection(rounded_signal, signal.style, filters)
 
         return RiskPlan(
@@ -198,6 +199,37 @@ class RiskManager:
 
     def emergency_stop(self) -> None:
         self.state.emergency_stop = True
+
+    def _validate_first_target_net_reward(
+        self,
+        signal: Signal,
+        first_target: object,
+        stop_distance: Decimal,
+        cost_bps: Decimal,
+    ) -> None:
+        if not self.exit_plan_builder or not self.exit_plan_builder.config:
+            return
+        if stop_distance <= 0:
+            return
+        metadata = signal.metadata or {}
+        strategy = str(metadata.get("strategy") or "").strip().upper()
+        config = self.exit_plan_builder.config
+        minimum = config.strategy_min_first_target_net_reward_risk.get(
+            strategy,
+            config.min_first_target_net_reward_risk,
+        )
+        if minimum <= 0:
+            return
+        entry = to_decimal(signal.entry_price)
+        target_price = to_decimal(getattr(first_target, "price"))
+        gross_reward = abs(target_price - entry)
+        estimated_cost = entry * cost_bps / Decimal("10000")
+        net_reward_risk = (gross_reward - estimated_cost) / stop_distance
+        if net_reward_risk < minimum:
+            raise RiskError(
+                "First partial TP is too small after estimated costs: "
+                f"net R {net_reward_risk:.2f} below minimum {minimum:.2f}."
+            )
 
     def _validate_signal(self, signal: Signal) -> None:
         if signal.direction not in {Direction.LONG, Direction.SHORT}:
