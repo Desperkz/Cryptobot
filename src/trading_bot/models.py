@@ -272,6 +272,7 @@ class OrderResult:
     take_profit_order: dict[str, Any] | None = None
     take_profit_orders: tuple[dict[str, Any], ...] = ()
     trailing_order: dict[str, Any] | None = None
+    execution_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

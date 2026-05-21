@@ -248,10 +248,14 @@
   - Готово: adverse funding выше `risk.max_funding_impact_bps` блокирует сделку до sizing/execution.
   - Готово: favorable funding не получает фиксированный funding-buffer penalty, а unknown funding остается на старом `funding_buffer_bps` fallback.
   - Готово: `RiskPlan.signal_metadata` сохраняет `risk_funding_impact_bps`, `risk_signed_funding_impact_bps`, `risk_funding_impact_source` и общий `risk_cost_bps` для последующей проверки.
-- `[ ]` P6-02 Усилить post-fill live protection checks.
+- `[x]` P6-02 Усилить post-fill live protection checks.
   - После entry fill проверять, что protective SL и reduce-only TP ladder активны на Binance.
   - Если проверка не прошла, отменить остатки и defensively close position.
   - Сохранять `executedQty`, `cumulativeQuoteQty`, average fill price и partial-fill state в reconciliation metadata.
+  - Готово: live `OrderManager` проверяет close-position SL и reduce-only TP после размещения, а пустая/неактивная защита вызывает defensive cleanup.
+  - Готово: TP ladder масштабируется по фактическому `executedQty`, чтобы partial entry fill не создавал TP на больший размер, чем реальная позиция.
+  - Готово: в trade metadata сохраняются `executedQty`, `cumulativeQuoteQty`, `averageFillPrice`, `plannedQty`, `partialFill` и подтвержденные protective order states.
+  - Проверка: добавлены regression tests для partial fill scaling и defensive close при failed protection verification.
 - `[ ]` P6-03 Добавить restart recovery evidence для активных live/testnet trades.
   - Восстанавливать managed trade state из DB плюс Binance open orders/positions после рестарта процесса.
   - Добавить testnet proof для entry, SL, TP, cancel, partial fill и restart recovery перед любым mainnet unlock.

@@ -510,6 +510,7 @@ class TradingBot:
                         "entry_order": result.entry_order,
                         "stop_order": result.stop_order,
                         "take_profit_orders": list(result.take_profit_orders),
+                        "execution": result.execution_metadata,
                         "dynamic_sizing": sizing.to_metadata(),
                         "signal_metadata": plan.signal_metadata,
                         **_trade_cluster_metadata(
