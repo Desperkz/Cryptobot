@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = Path(os.getenv("PAPER_DB_PATH", "/root/bot_v2_1/data/trading_bot_v2_1.sqlite3"))
 CHECK_INTERVAL_SEC = 15
-BASE_URL = os.getenv("PAPER_PRICE_BASE_URL", "https://fapi.binance.com")
+BASE_URL = os.getenv("PAPER_PRICE_BASE_URL", "https://demo-fapi.binance.com")
 TAKER_FEE_BPS = Decimal(os.getenv("PAPER_TAKER_FEE_BPS", "4.0"))
 SLIPPAGE_BPS = Decimal(os.getenv("PAPER_SLIPPAGE_BPS", "5.0"))
 FUNDING_BPS_PER_8H = Decimal(os.getenv("PAPER_FUNDING_BPS_PER_8H", "1.0"))

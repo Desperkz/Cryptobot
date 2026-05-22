@@ -352,6 +352,12 @@
   - Причина: после быстрых правок статистика смешивала старые и новые TP/exit-режимы, поэтому было непонятно, какая версия ухудшила payoff.
   - Готово: новые сделки сохраняют `exit_profile_signature` и `first_target_net_reward_risk` в metadata.
   - Готово: `/strategy-scorecard` показывает `post_p5_evidence.exit_profile_breakdown`, чтобы сравнивать PnL/Avg R/Winrate по версиям выхода.
+- `[x]` P6-18 Межэтапная адаптация по paper/shadow evidence.
+  - Причина: post-P5 SQZ показал отрицательный Avg R, а runtime order-flow evidence выявил входы против taker/aggressive/book flow.
+  - Готово: paper monitor по умолчанию использует тот же demo-feed, что и paper-входы, чтобы закрытия не смешивали demo и mainnet цены.
+  - Готово: добавлен pre-entry `ORDER_FLOW` gate для SQZ/SQZ-DYN, LSR, VWR/VWR-W и GRID; hostile flow теперь блокирует вход, а не только уменьшает размер.
+  - Готово: SQZ retest стал строже (`tolerance_atr=0.25`, `rejection_body_atr=0.10`), чтобы меньше входить в выдохшийся пробой.
+  - TPB не изменялся: текущая shadow evidence положительная, стратегия продолжает набирать статистику без вмешательства.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

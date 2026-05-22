@@ -165,8 +165,8 @@ strategy:
   squeeze_retest_enabled: true           # late follow-through требует ретест/отбой от диапазона
   squeeze_retest_required_after_release_offset: 2
   squeeze_retest_lookback_bars: 3
-  squeeze_retest_tolerance_atr: 0.35
-  squeeze_retest_min_rejection_body_atr: 0.05
+  squeeze_retest_tolerance_atr: 0.25
+  squeeze_retest_min_rejection_body_atr: 0.10
 
 market_filters:
   use_open_interest_filter: true

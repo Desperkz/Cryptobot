@@ -368,6 +368,23 @@ class TradingBot:
             )
             signal, annotation = self._annotate_order_flow(signal, candles_15m, asset.metrics)
             await self._record_order_flow_annotation(signal, annotation)
+            order_flow_rejection = _order_flow_entry_rejection_reason(signal)
+            if order_flow_rejection:
+                filter_type, reason = order_flow_rejection
+                logger.info("Order-flow gate rejected %s: %s", signal.symbol, reason)
+                try:
+                    await self.db.insert_filter_rejection(
+                        symbol=signal.symbol,
+                        direction=signal.direction.value,
+                        strategy=_signal_strategy(signal),
+                        confidence=str(signal.confidence),
+                        filter_type=filter_type,
+                        reason=reason,
+                    )
+                except Exception:
+                    pass
+                await self._record_ml_feature_snapshot(signal, "REJECTED_ORDER_FLOW_GATE", reason)
+                continue
             mr_context_rejection = _mean_reversion_context_rejection_reason(
                 signal,
                 btc_4h_change,
@@ -1369,6 +1386,65 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
         if alignment == "mixed" and score < Decimal("0.55"):
             return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
+    return None
+
+
+def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None:
+    strategy = _signal_strategy(signal)
+    order_flow = _order_flow_metadata(signal)
+    if not order_flow:
+        return None
+
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = Decimal(str(order_flow.get("score") or "0"))
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+
+    if strategy in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
+        hard_flags = {
+            "taker_flow_against",
+            "aggressive_delta_against",
+            "book_imbalance_against",
+            "liquidation_cascade",
+            "structure_break_against",
+            "adverse_liquidity_nearby",
+        }
+        if alignment == "against":
+            return "ORDER_FLOW", f"{strategy} blocked: order-flow is against breakout."
+        if risk_flags.intersection(hard_flags) and score < Decimal("0.70"):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return "ORDER_FLOW", f"{strategy} blocked: hostile breakout flow ({flags}), score {score:.2f}."
+        if alignment == "mixed" and score < Decimal("0.45"):
+            return "ORDER_FLOW", f"{strategy} blocked: weak mixed order-flow score {score:.2f}."
+
+    if strategy == "LIQUIDITY_SWEEP_REVERSAL":
+        if "adverse_liquidity_nearby" in risk_flags:
+            return "ORDER_FLOW", "LSR blocked: adverse liquidity remains nearby after sweep."
+        if alignment != "aligned" or score < Decimal("0.72"):
+            return "ORDER_FLOW", f"LSR blocked: sweep reclaim lacks clean follow-through, score {score:.2f}."
+
+    if strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
+        hard_flags = {"adverse_liquidity_nearby", "liquidation_cascade", "structure_break_against"}
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return "ORDER_FLOW", f"{strategy} blocked: reversion context is dangerous ({flags})."
+        if alignment == "against" or score < Decimal("0.62"):
+            return "ORDER_FLOW", f"{strategy} blocked: order-flow is not clean enough for reversion, score {score:.2f}."
+
+    if strategy == "RANGE_GRID":
+        hard_flags = {
+            "adverse_liquidity_nearby",
+            "book_imbalance_against",
+            "taker_flow_against",
+            "aggressive_delta_against",
+            "structure_break_against",
+            "liquidation_cascade",
+        }
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return "ORDER_FLOW", f"GRID blocked: unsafe range-flow context ({flags})."
+        if alignment == "against" or score < Decimal("0.55"):
+            return "ORDER_FLOW", f"GRID blocked: range fade flow is too weak, score {score:.2f}."
+
     return None
 
 
