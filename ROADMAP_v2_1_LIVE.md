@@ -358,6 +358,11 @@
   - Готово: добавлен pre-entry `ORDER_FLOW` gate для SQZ/SQZ-DYN, LSR, VWR/VWR-W и GRID; hostile flow теперь блокирует вход, а не только уменьшает размер.
   - Готово: SQZ retest стал строже (`tolerance_atr=0.25`, `rejection_body_atr=0.10`), чтобы меньше входить в выдохшийся пробой.
   - TPB не изменялся: текущая shadow evidence положительная, стратегия продолжает набирать статистику без вмешательства.
+- `[x]` P6-19 Monthly target economics report.
+  - Причина: цель `+10%/мес` должна проверяться математически через Avg R, частоту сделок, риск на сделку и evidence maturity, а не через ощущение по PnL.
+  - Готово: добавлен `/monthly-target-plan`, который считает target R/month, projected monthly return, required Avg R at current frequency и blockers по каждой стратегии.
+  - Готово: добавлен `scripts/monthly_target_report.py`, который сохраняет timestamped JSON и `monthly_target_report_latest.json`.
+  - Готово: regression tests покрывают отрицательный expectancy и расчет required Avg R.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

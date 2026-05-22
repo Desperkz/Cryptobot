@@ -4,6 +4,7 @@ import json
 
 from bot_control_v2 import (
     apply_strategy_promotion_policy,
+    build_monthly_target_report,
     build_production_readiness_report,
     build_strategy_allocator,
     build_strategy_scorecard,
@@ -939,3 +940,72 @@ def test_production_readiness_passes_with_complete_evidence() -> None:
     assert report["status"] == "READY"
     assert report["ready_for_mainnet"] is True
     assert report["summary"]["blocked"] == 0
+
+
+def test_monthly_target_report_blocks_negative_expectancy() -> None:
+    scorecard = {
+        "summary": {},
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "strategy_mode": "paper",
+                "open_trades": 0,
+                "post_p5_evidence": {
+                    "closed_trade_clusters": 8,
+                    "sample_age_days": 3.2,
+                    "cluster_avg_r": -0.4,
+                    "cluster_profit_factor": 0.25,
+                    "cluster_winrate": 50,
+                    "realized_pnl": -40,
+                },
+            }
+        ],
+    }
+
+    report = build_monthly_target_report(
+        scorecard,
+        initial_equity=1000,
+        target_monthly_return_pct=10,
+        base_risk_pct=0.02,
+    )
+
+    assert report["summary"]["status"] == "BELOW_TARGET"
+    row = report["strategies"][0]
+    assert row["status"] == "BLOCKED"
+    assert "non_positive_avg_r" in row["blockers"]
+    assert row["projected_monthly_return_pct"] < 0
+
+
+def test_monthly_target_report_estimates_required_avg_r() -> None:
+    scorecard = {
+        "summary": {},
+        "strategies": [
+            {
+                "strategy": "TREND_PULLBACK",
+                "strategy_mode": "shadow",
+                "shadow_paper": {
+                    "closed_trades": 30,
+                    "open_trades": 0,
+                    "sample_age_days": 10,
+                    "avg_r": 0.25,
+                    "profit_factor": 1.6,
+                    "winrate": 55,
+                    "realized_pnl": 120,
+                },
+            }
+        ],
+    }
+
+    report = build_monthly_target_report(
+        scorecard,
+        initial_equity=1000,
+        target_monthly_return_pct=10,
+        base_risk_pct=0.02,
+    )
+
+    row = report["strategies"][0]
+    assert row["monthly_clusters_estimate"] == 90
+    assert row["projected_monthly_r"] == 22.5
+    assert row["projected_monthly_return_pct"] == 45.0
+    assert row["required_avg_r_at_current_frequency"] == 0.056
+    assert row["status"] == "WATCH_SAMPLE"

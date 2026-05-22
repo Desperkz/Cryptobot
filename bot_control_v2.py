@@ -1789,6 +1789,128 @@ def build_production_readiness_report(
     }
 
 
+def build_monthly_target_report(
+    scorecard: dict[str, Any],
+    *,
+    initial_equity: float = 1000.0,
+    target_monthly_return_pct: float = 10.0,
+    base_risk_pct: float = 0.02,
+) -> dict[str, Any]:
+    """Estimate whether current evidence can mathematically support a monthly return target."""
+    target_monthly_return_pct = max(float(target_monthly_return_pct), 0.0)
+    base_risk_pct = max(float(base_risk_pct), 0.0001)
+    initial_equity = max(float(initial_equity), 0.0001)
+    target_r_month = target_monthly_return_pct / (base_risk_pct * 100.0)
+    rows: list[dict[str, Any]] = []
+    recommendations: list[str] = []
+
+    for row in scorecard.get("strategies", []):
+        strategy = str(row.get("strategy") or "UNKNOWN")
+        mode = str(row.get("strategy_mode") or "unknown").lower()
+        if mode == "shadow":
+            metrics = row.get("shadow_paper") or {}
+            scope = "shadow_paper"
+            closed = int(_to_float(metrics.get("closed_trades"), 0) or 0)
+            avg_r = _to_float(metrics.get("avg_r"), 0.0) or 0.0
+            profit_factor = _to_float(metrics.get("profit_factor"), 0.0) or 0.0
+            winrate = _to_float(metrics.get("winrate"), 0.0) or 0.0
+            pnl = _to_float(metrics.get("realized_pnl"), 0.0) or 0.0
+            sample_age_days = _to_float(metrics.get("sample_age_days"), 0.0) or 0.0
+            open_trades = int(_to_float(metrics.get("open_trades"), 0) or 0)
+        else:
+            metrics = row.get("post_p5_evidence") or {}
+            scope = "post_p5_realistic_execution"
+            closed = int(_to_float(metrics.get("closed_trade_clusters"), metrics.get("closed_trades", 0)) or 0)
+            avg_r = _to_float(metrics.get("cluster_avg_r"), metrics.get("avg_r", 0.0)) or 0.0
+            profit_factor = _to_float(metrics.get("cluster_profit_factor"), metrics.get("profit_factor", 0.0)) or 0.0
+            winrate = _to_float(metrics.get("cluster_winrate"), metrics.get("winrate", 0.0)) or 0.0
+            pnl = _to_float(metrics.get("realized_pnl"), 0.0) or 0.0
+            sample_age_days = _to_float(metrics.get("sample_age_days"), 0.0) or 0.0
+            open_trades = int(_to_float(row.get("open_trades"), 0) or 0)
+
+        evidence_days = max(sample_age_days, 1.0 if closed else 0.0)
+        clusters_per_day = closed / evidence_days if evidence_days else 0.0
+        monthly_clusters = clusters_per_day * 30.0
+        projected_monthly_r = avg_r * monthly_clusters
+        projected_monthly_return_pct = projected_monthly_r * base_risk_pct * 100.0
+        realized_monthly_return_pct = (pnl / initial_equity) * (30.0 / evidence_days) * 100.0 if evidence_days else 0.0
+        required_avg_r = target_r_month / monthly_clusters if monthly_clusters > 0 else None
+        required_clusters_at_current_avg_r = target_r_month / avg_r if avg_r > 0 else None
+
+        blockers: list[str] = []
+        if closed < 20:
+            blockers.append("low_sample")
+        if avg_r <= 0:
+            blockers.append("non_positive_avg_r")
+        if profit_factor and profit_factor < 1.20:
+            blockers.append("low_profit_factor")
+        if projected_monthly_return_pct < target_monthly_return_pct:
+            blockers.append("target_gap")
+
+        if not blockers and closed >= 100 and profit_factor >= 1.30 and avg_r >= 0.25:
+            status = "ON_TRACK"
+        elif projected_monthly_return_pct >= target_monthly_return_pct and avg_r > 0:
+            status = "WATCH_SAMPLE"
+        elif avg_r > 0 and profit_factor >= 1.0:
+            status = "IMPROVE_OR_SCALE"
+        else:
+            status = "BLOCKED"
+
+        rows.append({
+            "strategy": strategy,
+            "mode": mode,
+            "scope": scope,
+            "status": status,
+            "closed_clusters": closed,
+            "open_trades": open_trades,
+            "sample_age_days": round(sample_age_days, 2),
+            "clusters_per_day": round(clusters_per_day, 3),
+            "monthly_clusters_estimate": round(monthly_clusters, 2),
+            "avg_r": round(avg_r, 3),
+            "profit_factor": round(profit_factor, 3),
+            "winrate": round(winrate, 1),
+            "realized_pnl": round(pnl, 4),
+            "projected_monthly_r": round(projected_monthly_r, 3),
+            "projected_monthly_return_pct": round(projected_monthly_return_pct, 2),
+            "realized_monthly_return_pct": round(realized_monthly_return_pct, 2),
+            "required_avg_r_at_current_frequency": round(required_avg_r, 3) if required_avg_r is not None else None,
+            "required_monthly_clusters_at_current_avg_r": (
+                round(required_clusters_at_current_avg_r, 2) if required_clusters_at_current_avg_r is not None else None
+            ),
+            "blockers": blockers,
+        })
+
+    rows.sort(key=lambda item: (item["projected_monthly_return_pct"], item["closed_clusters"]), reverse=True)
+    viable = [row for row in rows if row["status"] in {"ON_TRACK", "WATCH_SAMPLE", "IMPROVE_OR_SCALE"}]
+    combined_projected = sum(row["projected_monthly_return_pct"] for row in viable)
+    if not viable:
+        recommendations.append("No strategy currently has positive enough evidence to support scaling toward the monthly target.")
+    if any(row["strategy"] == "SQUEEZE_BREAKOUT" and row["avg_r"] <= 0 for row in rows):
+        recommendations.append("SQUEEZE_BREAKOUT needs positive post-P5 Avg R before increasing risk or leverage.")
+    if any(row["mode"] == "shadow" and row["status"] == "WATCH_SAMPLE" for row in rows):
+        recommendations.append("Shadow winners need more closed clusters before promotion; do not scale from a spike.")
+    if combined_projected < target_monthly_return_pct:
+        recommendations.append("The current viable strategy mix is below target; improve Avg R first, then consider frequency/risk.")
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "ADVISORY_ONLY",
+        "target_monthly_return_pct": round(target_monthly_return_pct, 2),
+        "base_risk_pct": round(base_risk_pct, 4),
+        "target_r_month": round(target_r_month, 2),
+        "initial_equity": round(initial_equity, 2),
+        "summary": {
+            "strategies": len(rows),
+            "viable_strategies": len(viable),
+            "combined_projected_monthly_return_pct": round(combined_projected, 2),
+            "target_gap_pct": round(target_monthly_return_pct - combined_projected, 2),
+            "status": "ON_TRACK" if combined_projected >= target_monthly_return_pct else "BELOW_TARGET",
+        },
+        "strategies": rows,
+        "recommendations": recommendations,
+    }
+
+
 def _readiness_check(
     check_id: str,
     passed: bool,
@@ -2411,6 +2533,19 @@ def api_production_readiness() -> dict:
     return build_production_readiness_report(scorecard, testnet_evidence, production_unlock)
 
 
+def api_monthly_target_plan() -> dict:
+    scorecard = api_strategy_scorecard()
+    if "error" in scorecard:
+        return scorecard
+    config = api_config()
+    return build_monthly_target_report(
+        scorecard,
+        initial_equity=_to_float(config.get("initial_equity_usdt"), 1000.0) or 1000.0,
+        target_monthly_return_pct=_to_float(os.getenv("BOT_TARGET_MONTHLY_RETURN_PCT"), 10.0) or 10.0,
+        base_risk_pct=_to_float(config.get("risk", {}).get("risk_per_trade_pct"), 0.02) or 0.02,
+    )
+
+
 def _strategy_promotions_from_scorecard(scorecard: dict[str, Any]) -> dict[str, Any]:
     candidates = []
     for row in scorecard.get("strategies", []):
@@ -2511,6 +2646,7 @@ ROUTES = {
     "/strategy-allocator": api_strategy_allocator,
     "/weekly-research-report": api_weekly_research_report,
     "/production-readiness": api_production_readiness,
+    "/monthly-target-plan": api_monthly_target_plan,
     "/order-flow": api_order_flow,
 }
 
