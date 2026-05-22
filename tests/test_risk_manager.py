@@ -98,6 +98,8 @@ def test_position_size_uses_stop_distance_and_caps_risk() -> None:
     assert len(plan.partial_take_profits) == 3
     assert sum(target.quantity for target in plan.partial_take_profits) == plan.quantity
     assert plan.protection is not None
+    assert plan.signal_metadata["exit_profile_signature"] == "TP1:1R@0.4/BE|TP2:1.8R@0.35/TR|TP3:2R@0.25"
+    assert Decimal(plan.signal_metadata["first_target_net_reward_risk"]) > Decimal("0")
 
 
 def test_signed_funding_impact_blocks_expensive_adverse_direction() -> None:

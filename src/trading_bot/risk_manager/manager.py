@@ -147,12 +147,20 @@ class RiskManager:
 
         partial_take_profits = ()
         protection = None
+        first_target_net_reward_risk = None
+        exit_profile_signature = None
         if self.exit_plan_builder:
             rounded_signal = replace(signal, stop_loss=stop, take_profit=take_profit)
             partial_take_profits = self.exit_plan_builder.build_targets(rounded_signal, quantity, filters)
             if not partial_take_profits:
                 raise RiskError("Partial take-profit ladder is mandatory but no valid TP targets were built.")
-            self._validate_first_target_net_reward(rounded_signal, partial_take_profits[0], stop_distance, cost_bps)
+            first_target_net_reward_risk = self._validate_first_target_net_reward(
+                rounded_signal,
+                partial_take_profits[0],
+                stop_distance,
+                cost_bps,
+            )
+            exit_profile_signature = _exit_profile_signature(partial_take_profits)
             protection = self.exit_plan_builder.build_protection(rounded_signal, signal.style, filters)
 
         return RiskPlan(
@@ -182,6 +190,10 @@ class RiskManager:
                 "risk_signed_funding_impact_bps": (
                     str(funding_impact.signed_bps) if funding_impact.signed_bps is not None else None
                 ),
+                "exit_profile_signature": exit_profile_signature,
+                "first_target_net_reward_risk": (
+                    str(first_target_net_reward_risk) if first_target_net_reward_risk is not None else None
+                ),
             },
             warnings=tuple(warnings),
         )
@@ -206,11 +218,11 @@ class RiskManager:
         first_target: object,
         stop_distance: Decimal,
         cost_bps: Decimal,
-    ) -> None:
+    ) -> Decimal | None:
         if not self.exit_plan_builder or not self.exit_plan_builder.config:
-            return
+            return None
         if stop_distance <= 0:
-            return
+            return None
         metadata = signal.metadata or {}
         strategy = str(metadata.get("strategy") or "").strip().upper()
         config = self.exit_plan_builder.config
@@ -219,7 +231,7 @@ class RiskManager:
             config.min_first_target_net_reward_risk,
         )
         if minimum <= 0:
-            return
+            return None
         entry = to_decimal(signal.entry_price)
         target_price = to_decimal(getattr(first_target, "price"))
         gross_reward = abs(target_price - entry)
@@ -230,6 +242,7 @@ class RiskManager:
                 "First partial TP is too small after estimated costs: "
                 f"net R {net_reward_risk:.2f} below minimum {minimum:.2f}."
             )
+        return net_reward_risk
 
     def _validate_signal(self, signal: Signal) -> None:
         if signal.direction not in {Direction.LONG, Direction.SHORT}:
@@ -322,6 +335,21 @@ def _position_risk_estimate(position: Position) -> Decimal:
     if position.stop_loss is not None:
         return abs(position.entry_price - position.stop_loss) * position.quantity
     return position.notional * Decimal("0.05")
+
+
+def _exit_profile_signature(targets: tuple[object, ...]) -> str:
+    parts = []
+    for target in targets:
+        flags = []
+        if getattr(target, "move_stop_to_breakeven", False):
+            flags.append("BE")
+        if getattr(target, "activate_trailing", False):
+            flags.append("TR")
+        suffix = f"/{'+'.join(flags)}" if flags else ""
+        parts.append(
+            f"{getattr(target, 'name')}:{getattr(target, 'reward_risk')}R@{getattr(target, 'fraction')}{suffix}"
+        )
+    return "|".join(parts)
 
 
 def _estimated_liquidation_price(direction: Direction, entry: Decimal, leverage: int) -> Decimal | None:

@@ -288,6 +288,14 @@ def _with_execution_costs(row: Any) -> dict[str, Any]:
     return item
 
 
+def _signal_metadata_from_row(row: Any) -> dict[str, Any]:
+    metadata = _parse_metadata(_row_get(row, "metadata", {}))
+    signal_metadata = metadata.get("signal_metadata")
+    if isinstance(signal_metadata, dict):
+        return signal_metadata
+    return metadata
+
+
 def _truthy_metadata(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -299,24 +307,15 @@ def _increment(mapping: dict[str, int], key: str, amount: int = 1) -> None:
 
 
 def _strategy_from_trade(row: Any) -> str:
-    metadata = _parse_metadata(_row_get(row, "metadata", {}))
-    signal_metadata = metadata.get("signal_metadata")
-    if isinstance(signal_metadata, dict):
-        strategy = signal_metadata.get("strategy")
-        if strategy:
-            return str(strategy)
-    strategy = metadata.get("strategy")
+    signal_metadata = _signal_metadata_from_row(row)
+    strategy = signal_metadata.get("strategy")
     return str(strategy or "UNKNOWN")
 
 
 def _strategy_mode_from_row(row: Any, strategy_modes: dict[str, str] | None = None) -> str:
     strategy_modes = strategy_modes or {}
-    metadata = _parse_metadata(_row_get(row, "metadata", {}))
-    signal_metadata = metadata.get("signal_metadata")
-    mode = None
-    if isinstance(signal_metadata, dict):
-        mode = signal_metadata.get("strategy_mode")
-    mode = mode or metadata.get("strategy_mode")
+    signal_metadata = _signal_metadata_from_row(row)
+    mode = signal_metadata.get("strategy_mode")
     if mode:
         return str(mode).lower()
     return str(strategy_modes.get(_strategy_from_trade(row), "unknown")).lower()
@@ -469,6 +468,53 @@ def _finalize_breakdown(target: dict[str, dict[str, Any]]) -> dict[str, dict[str
             "avg_r": round(item["r_sum"] / closed, 3) if closed else 0,
         }
     return result
+
+
+def _exit_profile_breakdown(closed_trades: list[Any]) -> list[dict[str, Any]]:
+    buckets: dict[str, dict[str, Any]] = {}
+    for trade in closed_trades:
+        signal_metadata = _signal_metadata_from_row(trade)
+        signature = str(signal_metadata.get("exit_profile_signature") or "unknown")
+        item = buckets.setdefault(
+            signature,
+            {
+                "exit_profile_signature": signature,
+                "closed_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "realized_pnl": 0.0,
+                "r_sum": 0.0,
+                "first_target_net_r_sum": 0.0,
+                "first_target_net_r_count": 0,
+            },
+        )
+        pnl = _to_float(_row_get(trade, "realized_pnl"), 0.0) or 0.0
+        r_value = _to_float(_row_get(trade, "r_multiple"), 0.0) or 0.0
+        first_target_net_r = _to_float(signal_metadata.get("first_target_net_reward_risk"), None)
+        item["closed_trades"] += 1
+        item["wins"] += 1 if pnl > 0 else 0
+        item["losses"] += 1 if pnl < 0 else 0
+        item["realized_pnl"] += pnl
+        item["r_sum"] += r_value
+        if first_target_net_r is not None:
+            item["first_target_net_r_sum"] += first_target_net_r
+            item["first_target_net_r_count"] += 1
+
+    breakdown = []
+    for item in buckets.values():
+        closed = item["closed_trades"]
+        first_count = item["first_target_net_r_count"]
+        breakdown.append({
+            "exit_profile_signature": item["exit_profile_signature"],
+            "closed_trades": closed,
+            "wins": item["wins"],
+            "losses": item["losses"],
+            "winrate": round(item["wins"] / closed * 100, 1) if closed else 0,
+            "realized_pnl": round(item["realized_pnl"], 4),
+            "avg_r": round(item["r_sum"] / closed, 3) if closed else 0,
+            "avg_first_target_net_r": round(item["first_target_net_r_sum"] / first_count, 3) if first_count else None,
+        })
+    return sorted(breakdown, key=lambda row: (row["realized_pnl"], row["closed_trades"]), reverse=True)
 
 
 def evaluate_strategy_gate(metrics: dict[str, Any], thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1182,6 +1228,7 @@ def build_strategy_scorecard(
                     "profit_factor": post_p5_clusters["profit_factor"],
                     "avg_r": post_p5_clusters["avg_r"],
                 },
+                "exit_profile_breakdown": _exit_profile_breakdown(post_p5_closed),
             },
             "post_p5_closed_trades": post_p5_closed_count,
             "post_p5_closed_trade_clusters": post_p5_clusters["closed_clusters"],

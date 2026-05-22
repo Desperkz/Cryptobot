@@ -28,8 +28,15 @@ def trade(
     risk_amount: str = "10",
     nested_metadata: bool = True,
     realistic_execution: bool = True,
+    exit_profile_signature: str | None = None,
+    first_target_net_r: str | None = None,
 ) -> dict[str, str | int | None]:
     metadata = {"signal_metadata": {"strategy": strategy}} if nested_metadata else {"strategy": strategy}
+    signal_metadata = metadata["signal_metadata"] if nested_metadata else metadata
+    if exit_profile_signature is not None:
+        signal_metadata["exit_profile_signature"] = exit_profile_signature
+    if first_target_net_r is not None:
+        signal_metadata["first_target_net_reward_risk"] = first_target_net_r
     if realistic_execution:
         metadata["paper_execution_summary"] = {
             "gross_pnl": pnl,
@@ -295,6 +302,51 @@ def test_strategy_gate_ignores_pre_p5_ideal_fills_for_promotion() -> None:
     assert "no_closed_trades" in row["gate"]["failed_checks"]
     assert scorecard["summary"]["post_p5_closed_trades"] == 0
     assert scorecard["summary"]["pre_p5_closed_trades"] == 2
+
+
+def test_scorecard_breaks_down_post_p5_by_exit_profile_signature() -> None:
+    scorecard = build_strategy_scorecard(
+        [
+            trade(
+                trade_id=1,
+                strategy="SQUEEZE_BREAKOUT",
+                pnl="10",
+                r_value="0.5",
+                closed_at="2026-01-01 01:00:00",
+                exit_profile_signature="old_tp",
+                first_target_net_r="0.2",
+            ),
+            trade(
+                trade_id=2,
+                strategy="SQUEEZE_BREAKOUT",
+                pnl="-20",
+                r_value="-1.0",
+                closed_at="2026-01-02 01:00:00",
+                exit_profile_signature="new_runner",
+                first_target_net_r="0.6",
+            ),
+            trade(
+                trade_id=3,
+                strategy="SQUEEZE_BREAKOUT",
+                pnl="30",
+                r_value="1.5",
+                closed_at="2026-01-03 01:00:00",
+                exit_profile_signature="new_runner",
+                first_target_net_r="0.7",
+            ),
+        ],
+        [],
+        initial_equity=1000,
+    )
+
+    row = by_strategy(scorecard, "SQUEEZE_BREAKOUT")
+    breakdown = row["post_p5_evidence"]["exit_profile_breakdown"]
+
+    assert breakdown[0]["exit_profile_signature"] == "new_runner"
+    assert breakdown[0]["closed_trades"] == 2
+    assert breakdown[0]["realized_pnl"] == 10
+    assert breakdown[0]["avg_first_target_net_r"] == 0.65
+    assert breakdown[1]["exit_profile_signature"] == "old_tp"
 
 
 def test_scorecard_includes_configured_shadow_strategies_before_first_signal() -> None:

@@ -348,6 +348,10 @@
   - Готово: `/production-readiness` собирает строгий live-readiness отчет по post-P5 evidence, SQZ metrics, testnet lifecycle evidence, soak, incident counters и production unlock.
   - Готово: report не разблокирует `MAINNET_LIVE` сам по себе, а явно показывает blockers до ручного unlock.
   - Готово: добавлен `scripts/production_readiness_report.py` для сохранения timestamped JSON и latest report.
+- `[x]` P6-17 Добавить attribution по версиям exit/TP профиля.
+  - Причина: после быстрых правок статистика смешивала старые и новые TP/exit-режимы, поэтому было непонятно, какая версия ухудшила payoff.
+  - Готово: новые сделки сохраняют `exit_profile_signature` и `first_target_net_reward_risk` в metadata.
+  - Готово: `/strategy-scorecard` показывает `post_p5_evidence.exit_profile_breakdown`, чтобы сравнивать PnL/Avg R/Winrate по версиям выхода.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 
