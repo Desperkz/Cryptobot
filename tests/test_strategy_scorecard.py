@@ -1042,6 +1042,7 @@ def test_monthly_target_report_blocks_negative_expectancy() -> None:
     row = report["strategies"][0]
     assert row["status"] == "BLOCKED"
     assert "non_positive_avg_r" in row["blockers"]
+    assert row["primary_blocker"] == "sample"
     assert row["projected_monthly_return_pct"] < 0
 
 
@@ -1077,4 +1078,42 @@ def test_monthly_target_report_estimates_required_avg_r() -> None:
     assert row["projected_monthly_r"] == 22.5
     assert row["projected_monthly_return_pct"] == 45.0
     assert row["required_avg_r_at_current_frequency"] == 0.056
+    assert row["required_monthly_clusters_at_current_avg_r"] == 20
+    assert row["monthly_cluster_gap_at_current_avg_r"] == 0
+    assert row["avg_r_gap_at_current_frequency"] == 0
+    assert row["primary_blocker"] == "none"
     assert row["status"] == "WATCH_SAMPLE"
+
+
+def test_monthly_target_report_marks_frequency_gap() -> None:
+    scorecard = {
+        "summary": {},
+        "strategies": [
+            {
+                "strategy": "SQUEEZE_BREAKOUT",
+                "strategy_mode": "paper",
+                "open_trades": 0,
+                "post_p5_evidence": {
+                    "closed_trade_clusters": 40,
+                    "sample_age_days": 60,
+                    "cluster_avg_r": 0.2,
+                    "cluster_profit_factor": 1.4,
+                    "cluster_winrate": 55,
+                    "realized_pnl": 80,
+                },
+            }
+        ],
+    }
+
+    report = build_monthly_target_report(
+        scorecard,
+        initial_equity=1000,
+        target_monthly_return_pct=10,
+        base_risk_pct=0.02,
+    )
+
+    row = report["strategies"][0]
+    assert row["monthly_clusters_estimate"] == 20
+    assert row["required_monthly_clusters_at_current_avg_r"] == 25
+    assert row["monthly_cluster_gap_at_current_avg_r"] == 5
+    assert row["primary_blocker"] == "frequency"

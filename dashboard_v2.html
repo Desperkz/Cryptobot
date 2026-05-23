@@ -147,6 +147,7 @@ header {
     "eq eq eq log log log"
     "tr tr tr tr tr tr"
     "sc sc sc sc sc sc"
+    "mt mt mt mt mt mt"
     "rj rj rj rj rj rj";
 }
 
@@ -386,6 +387,29 @@ canvas { width: 100%; display: block; }
 
 /* ── STRATEGY SCORECARD ── */
 .card.sc-card { grid-area: sc; }
+
+.card.mt-card { grid-area: mt; }
+.mt-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.mt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.mt-badge.good { color: var(--green); border-color: rgba(0,255,157,0.45); }
+.mt-badge.warn { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
+.mt-badge.bad { color: var(--red); border-color: rgba(255,59,92,0.45); }
 
 .sc-tags {
   display: flex;
@@ -766,6 +790,28 @@ canvas { width: 100%; display: block; }
         </thead>
         <tbody id="sc-body">
           <tr><td colspan="19" class="empty">Нет данных по стратегиям</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MONTHLY TARGET PLAN -->
+  <div class="card mt-card">
+    <div class="card-header">
+      <div class="card-title">Цель 10%/мес</div>
+      <div id="mt-total" class="card-badge">расчет</div>
+    </div>
+    <div class="mt-summary" id="mt-summary"></div>
+    <div style="overflow-x:auto">
+      <table class="tr-table">
+        <thead>
+          <tr>
+            <th>Стратегия</th><th>Статус</th><th>Сделок/мес</th><th>Нужно/мес</th>
+            <th>Gap</th><th>Avg R</th><th>Req Avg R</th><th>Прогноз</th><th>Главный блокер</th>
+          </tr>
+        </thead>
+        <tbody id="mt-body">
+          <tr><td colspan="9" class="empty">Нет расчета цели</td></tr>
         </tbody>
       </table>
     </div>
@@ -1223,6 +1269,51 @@ async function loadStrategyScorecard() {
   } catch(e) { console.error('strategy-scorecard', e); }
 }
 
+async function loadMonthlyTargetPlan() {
+  try {
+    const data = await get('/monthly-target-plan');
+    const summary = data.summary || {};
+    const rows = data.strategies || [];
+    const statusGood = summary.status === 'ON_TRACK';
+    document.getElementById('mt-total').textContent =
+      `target ${fmt(data.target_monthly_return_pct || 10, 1)}% · ${summary.status || '—'}`;
+    setHTML('mt-summary', [
+      `<span class="mt-badge ${statusGood ? 'good' : 'warn'}">Прогноз ${fmt(summary.combined_projected_monthly_return_pct || 0, 2)}%</span>`,
+      `<span class="mt-badge ${Number(summary.target_gap_pct || 0) <= 0 ? 'good' : 'bad'}">Gap ${signedFmt(-(summary.target_gap_pct || 0), 2)}%</span>`,
+      `<span class="mt-badge">Нужно ${fmt(data.target_r_month || 0, 2)}R/мес</span>`,
+      `<span class="mt-badge">Risk ${fmt((data.base_risk_pct || 0) * 100, 2)}%</span>`
+    ].join(''));
+    if (!rows.length) {
+      setHTML('mt-body', '<tr><td colspan="9" class="empty">Нет расчета цели</td></tr>');
+      return;
+    }
+    const blockerLabel = b => ({
+      none: 'нет',
+      sample: 'выборка',
+      expectancy: 'мат. ожидание',
+      frequency: 'частота',
+      avg_r: 'Avg R'
+    })[b] || b || '—';
+    setHTML('mt-body', rows.slice(0, 8).map(r => {
+      const projected = Number(r.projected_monthly_return_pct || 0);
+      const blocker = String(r.primary_blocker || 'none');
+      const statusCls = r.status === 'ON_TRACK' ? 'good' : r.status === 'BLOCKED' ? 'bad' : 'warn';
+      const gap = r.monthly_cluster_gap_at_current_avg_r;
+      return `<tr>
+        <td class="sym">${esc(stratName(r.strategy))}<div class="sc-muted">${esc(String(r.mode || '').toUpperCase())}</div></td>
+        <td><span class="mt-badge ${statusCls}">${esc(r.status || '—')}</span></td>
+        <td>${fmt(r.monthly_clusters_estimate || 0, 1)}</td>
+        <td>${r.required_monthly_clusters_at_current_avg_r == null ? '—' : fmt(r.required_monthly_clusters_at_current_avg_r, 1)}</td>
+        <td class="${gap > 0 ? 'pnl-neg' : 'pnl-pos'}">${gap == null ? '—' : fmt(gap, 1)}</td>
+        <td class="${pnlCls(r.avg_r || 0)}">${signedFmt(r.avg_r || 0, 3)}</td>
+        <td>${r.required_avg_r_at_current_frequency == null ? '—' : fmt(r.required_avg_r_at_current_frequency, 3)}</td>
+        <td class="${pnlCls(projected)}">${signedFmt(projected, 2)}%</td>
+        <td><span class="mt-badge ${blocker === 'none' ? 'good' : 'warn'}">${esc(blockerLabel(blocker))}</span></td>
+      </tr>`;
+    }).join(''));
+  } catch(e) { console.error('monthly-target', e); }
+}
+
 // ── СПАРКЛАЙН ──
 function drawSpark(curve) {
   const c = document.getElementById('spark');
@@ -1556,6 +1647,7 @@ async function refreshAll(forceConfig=false) {
       loadSignals(),
       loadTrades(),
       loadStrategyScorecard(),
+      loadMonthlyTargetPlan(),
       loadRejections(),
       logsPromise.then(logs => Promise.all([loadSqueeze(logs), loadLogs(logs)])),
     ]);

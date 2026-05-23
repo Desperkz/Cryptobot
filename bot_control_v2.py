@@ -1912,6 +1912,12 @@ def build_monthly_target_report(
         realized_monthly_return_pct = (pnl / initial_equity) * (30.0 / evidence_days) * 100.0 if evidence_days else 0.0
         required_avg_r = target_r_month / monthly_clusters if monthly_clusters > 0 else None
         required_clusters_at_current_avg_r = target_r_month / avg_r if avg_r > 0 else None
+        monthly_cluster_gap = (
+            max(0.0, required_clusters_at_current_avg_r - monthly_clusters)
+            if required_clusters_at_current_avg_r is not None
+            else None
+        )
+        avg_r_gap = max(0.0, required_avg_r - avg_r) if required_avg_r is not None else None
 
         blockers: list[str] = []
         if closed < 20:
@@ -1931,6 +1937,18 @@ def build_monthly_target_report(
             status = "IMPROVE_OR_SCALE"
         else:
             status = "BLOCKED"
+        if closed < 20:
+            primary_blocker = "sample"
+        elif avg_r <= 0:
+            primary_blocker = "expectancy"
+        elif projected_monthly_return_pct < target_monthly_return_pct and monthly_clusters < (
+            required_clusters_at_current_avg_r or float("inf")
+        ):
+            primary_blocker = "frequency"
+        elif projected_monthly_return_pct < target_monthly_return_pct:
+            primary_blocker = "avg_r"
+        else:
+            primary_blocker = "none"
 
         rows.append({
             "strategy": strategy,
@@ -1953,6 +1971,9 @@ def build_monthly_target_report(
             "required_monthly_clusters_at_current_avg_r": (
                 round(required_clusters_at_current_avg_r, 2) if required_clusters_at_current_avg_r is not None else None
             ),
+            "monthly_cluster_gap_at_current_avg_r": round(monthly_cluster_gap, 2) if monthly_cluster_gap is not None else None,
+            "avg_r_gap_at_current_frequency": round(avg_r_gap, 3) if avg_r_gap is not None else None,
+            "primary_blocker": primary_blocker,
             "blockers": blockers,
         })
 

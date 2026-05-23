@@ -19,6 +19,7 @@ def risk_config(**overrides) -> RiskConfig:
         cooldown_minutes=120,
         symbol_cooldown_after_loss_minutes=120,
         strategy_reentry_cooldown_minutes=45,
+        strategy_reentry_winning_cooldown_minutes=30,
         scale_in_enabled=False,
         max_scale_ins_per_symbol_strategy=2,
         scale_in_risk_multiplier=Decimal("0.50"),

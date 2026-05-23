@@ -408,13 +408,17 @@
   - План: рассматривать `2.5%` только после 60+ закрытых clusters с `profit_factor > 1.4`, `Avg R > 0.20R`, max drawdown лучше -10% и отсутствием strategy-level деградации.
   - Готово: `PAPER_TRADING`/`BACKTEST` теперь отклоняют `risk_per_trade_pct > 2%` без явного `BOT_ALLOW_UNPROVEN_HIGH_RISK=1`.
   - Kelly/dynamic sizing остаются ограничителями, а не способом компенсировать слабый edge.
-- `[ ]` P7-06 Разделить re-entry cooldown после win/loss.
+- `[x]` P7-06 Разделить re-entry cooldown после win/loss.
   - Причина: текущий `strategy_reentry_cooldown_minutes=180` защищает от серий стопов, но может пропускать повторный качественный SQZ после прибыльного закрытия.
   - План: оставить строгий cooldown после stop-loss, но добавить отдельный winning-trade cooldown 60-90 минут для того же symbol+strategy.
+  - Готово: добавлен `risk.strategy_reentry_winning_cooldown_minutes=90`; прибыльные закрытия используют короткий cooldown, а убыточные/неопределенные закрытия остаются на строгом `strategy_reentry_cooldown_minutes=180`.
+  - Готово: тот же win/loss-aware cooldown применяется к shadow-paper, чтобы research-стратегии не раздували серии после стопов.
   - Условие принятия: меньше пропущенных валидных повторных входов без роста duplicate/cluster risk.
-- `[ ]` P7-07 Monthly target frequency dashboard.
+- `[x]` P7-07 Monthly target frequency dashboard.
   - Цель: явно видеть разрыв до 10%/мес через формулу `trades_per_month * Avg R * effective_risk_pct`.
   - План: расширить `/monthly-target-plan`, чтобы он показывал required trades/month при текущем Avg R и отдельно показывал blockers: низкая частота, слабый Avg R или недостаточная выборка.
+  - Готово: `/monthly-target-plan` теперь возвращает required monthly clusters при текущем Avg R, gap по числу сделок, gap по Avg R и главный blocker (`sample`, `expectancy`, `frequency`, `avg_r`, `none`).
+  - Готово: dashboard получил блок `Цель 10%/мес` с прогнозом, target gap, нужным R/month и таблицей top-стратегий по частоте/Avg R.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

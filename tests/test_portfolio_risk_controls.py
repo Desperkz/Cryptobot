@@ -60,6 +60,8 @@ def test_runtime_config_uses_live_portfolio_safety_profile() -> None:
 
     assert config.risk.symbol_cooldown_after_loss_minutes >= 180
     assert config.risk.strategy_reentry_cooldown_minutes >= 180
+    assert 0 < config.risk.strategy_reentry_winning_cooldown_minutes <= 90
+    assert config.risk.strategy_reentry_winning_cooldown_minutes < config.risk.strategy_reentry_cooldown_minutes
     assert config.risk.scale_in_enabled is False
     assert config.risk.realtime_correlation_enabled is True
     assert config.risk.block_live_when_correlation_unavailable is True

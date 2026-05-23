@@ -194,6 +194,7 @@ risk:
   cooldown_minutes: 120
   symbol_cooldown_after_loss_minutes: 180
   strategy_reentry_cooldown_minutes: 180
+  strategy_reentry_winning_cooldown_minutes: 90
   scale_in_enabled: false
   max_scale_ins_per_symbol_strategy: 2
   scale_in_risk_multiplier: 0.50

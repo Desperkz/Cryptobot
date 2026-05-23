@@ -259,6 +259,7 @@ class RiskConfig:
     cooldown_minutes: int
     symbol_cooldown_after_loss_minutes: int
     strategy_reentry_cooldown_minutes: int
+    strategy_reentry_winning_cooldown_minutes: int
     scale_in_enabled: bool
     max_scale_ins_per_symbol_strategy: int
     scale_in_risk_multiplier: Decimal
@@ -977,6 +978,9 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             cooldown_minutes=int(raw["risk"]["cooldown_minutes"]),
             symbol_cooldown_after_loss_minutes=int(raw["risk"].get("symbol_cooldown_after_loss_minutes", 120)),
             strategy_reentry_cooldown_minutes=int(raw["risk"].get("strategy_reentry_cooldown_minutes", 45)),
+            strategy_reentry_winning_cooldown_minutes=int(
+                raw["risk"].get("strategy_reentry_winning_cooldown_minutes", 90)
+            ),
             scale_in_enabled=bool(raw["risk"].get("scale_in_enabled", False)),
             max_scale_ins_per_symbol_strategy=int(raw["risk"].get("max_scale_ins_per_symbol_strategy", 2)),
             scale_in_risk_multiplier=to_decimal(raw["risk"].get("scale_in_risk_multiplier", "0.50")),

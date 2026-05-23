@@ -28,6 +28,9 @@ def trade_row(
     created_at: datetime | None = None,
     closed_at: datetime | None = None,
     trade_id: int = 1,
+    realized_pnl: str = "0",
+    r_multiple: str = "0",
+    close_reason: str | None = None,
 ) -> dict[str, object]:
     created_at = created_at or datetime.now(timezone.utc)
     metadata = {"signal_metadata": {"strategy": strategy}}
@@ -38,6 +41,9 @@ def trade_row(
         "status": status,
         "created_at": created_at.isoformat(),
         "closed_at": closed_at.isoformat() if closed_at else None,
+        "realized_pnl": realized_pnl,
+        "r_multiple": r_multiple,
+        "close_reason": close_reason,
         "metadata": metadata,
     }
 
@@ -47,6 +53,7 @@ def test_reentry_policy_blocks_active_same_symbol_strategy() -> None:
         signal(),
         [trade_row(status="ACCEPTED", trade_id=7)],
         cooldown_minutes=45,
+        winning_cooldown_minutes=30,
         scale_in_enabled=False,
         max_scale_ins_per_symbol_strategy=2,
     )
@@ -61,6 +68,7 @@ def test_reentry_policy_blocks_recent_closed_same_symbol_strategy() -> None:
         signal(),
         [trade_row(status="CLOSED", closed_at=closed_at)],
         cooldown_minutes=45,
+        winning_cooldown_minutes=30,
         scale_in_enabled=False,
         max_scale_ins_per_symbol_strategy=2,
     )
@@ -78,6 +86,7 @@ def test_reentry_policy_blocks_recent_closed_shadow_strategy_from_json_metadata(
         signal("VWAP_REVERSION_WATCH"),
         [row],
         cooldown_minutes=45,
+        winning_cooldown_minutes=30,
         scale_in_enabled=False,
         max_scale_ins_per_symbol_strategy=0,
     )
@@ -95,11 +104,41 @@ def test_reentry_policy_allows_after_cooldown_or_different_strategy() -> None:
             trade_row(status="ACCEPTED", strategy="SQUEEZE_BREAKOUT", trade_id=9),
         ],
         cooldown_minutes=45,
+        winning_cooldown_minutes=30,
         scale_in_enabled=False,
         max_scale_ins_per_symbol_strategy=2,
     )
 
     assert reason is None
+
+
+def test_reentry_policy_uses_shorter_cooldown_after_winning_trade() -> None:
+    closed_at = datetime.now(timezone.utc) - timedelta(minutes=60)
+    reason = _strategy_reentry_policy_reason(
+        signal(),
+        [trade_row(status="CLOSED", closed_at=closed_at, realized_pnl="12", r_multiple="0.5")],
+        cooldown_minutes=180,
+        winning_cooldown_minutes=45,
+        scale_in_enabled=False,
+        max_scale_ins_per_symbol_strategy=2,
+    )
+
+    assert reason is None
+
+
+def test_reentry_policy_keeps_strict_cooldown_after_losing_trade() -> None:
+    closed_at = datetime.now(timezone.utc) - timedelta(minutes=60)
+    reason = _strategy_reentry_policy_reason(
+        signal(),
+        [trade_row(status="CLOSED", closed_at=closed_at, realized_pnl="-12", r_multiple="-1")],
+        cooldown_minutes=180,
+        winning_cooldown_minutes=45,
+        scale_in_enabled=False,
+        max_scale_ins_per_symbol_strategy=2,
+    )
+
+    assert reason is not None
+    assert "re-entry cooldown" in reason
 
 
 def test_trade_cluster_metadata_reuses_recent_same_symbol_strategy_direction_cluster() -> None:

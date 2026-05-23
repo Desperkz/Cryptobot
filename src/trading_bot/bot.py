@@ -511,6 +511,7 @@ class TradingBot:
                 signal,
                 recent_trades,
                 self.config.risk.strategy_reentry_cooldown_minutes,
+                self.config.risk.strategy_reentry_winning_cooldown_minutes,
                 self.config.risk.scale_in_enabled,
                 self.config.risk.max_scale_ins_per_symbol_strategy,
             )
@@ -735,6 +736,7 @@ class TradingBot:
                 signal=signal,
                 trades=shadow_history,
                 cooldown_minutes=self.config.risk.strategy_reentry_cooldown_minutes,
+                winning_cooldown_minutes=self.config.risk.strategy_reentry_winning_cooldown_minutes,
                 scale_in_enabled=False,
                 max_scale_ins_per_symbol_strategy=0,
             )
@@ -1599,6 +1601,7 @@ def _strategy_reentry_policy_reason(
     signal: Signal,
     trades: list[dict[str, Any]],
     cooldown_minutes: int,
+    winning_cooldown_minutes: int | None,
     scale_in_enabled: bool,
     max_scale_ins_per_symbol_strategy: int,
 ) -> str | None:
@@ -1629,15 +1632,39 @@ def _strategy_reentry_policy_reason(
         closed_at = _parse_datetime_utc(trade.get("closed_at") or trade.get("created_at"))
         if closed_at is None:
             continue
+        effective_cooldown = _strategy_reentry_cooldown_for_trade(
+            trade,
+            default_cooldown_minutes=cooldown_minutes,
+            winning_cooldown_minutes=winning_cooldown_minutes,
+        )
+        if effective_cooldown <= 0:
+            return None
         elapsed_min = (now - closed_at).total_seconds() / 60
-        if elapsed_min < cooldown_minutes:
-            remaining = max(1, int(cooldown_minutes - elapsed_min))
+        if elapsed_min < effective_cooldown:
+            remaining = max(1, int(effective_cooldown - elapsed_min))
             return (
                 f"{signal.symbol} {strategy} re-entry cooldown is active "
                 f"for ~{remaining} more minutes."
             )
         return None
     return None
+
+
+def _strategy_reentry_cooldown_for_trade(
+    trade: dict[str, Any],
+    *,
+    default_cooldown_minutes: int,
+    winning_cooldown_minutes: int | None,
+) -> int:
+    if winning_cooldown_minutes is None:
+        return default_cooldown_minutes
+    close_reason = str(trade.get("close_reason") or "").lower()
+    r_multiple = _decimal_or_zero(trade.get("r_multiple"))
+    pnl = _decimal_or_zero(trade.get("realized_pnl"))
+    is_win = close_reason in {"take_profit", "tp", "partial_take_profit", "trailing_take_profit"} or r_multiple > 0 or pnl > 0
+    if is_win:
+        return max(0, winning_cooldown_minutes)
+    return default_cooldown_minutes
 
 
 def _trade_cluster_metadata(
