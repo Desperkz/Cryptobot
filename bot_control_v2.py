@@ -99,7 +99,17 @@ STRATEGY_PROMOTION_POLICIES = {
         "paper_promotion": "HUMAN_REVIEW_AFTER_SHADOW_GATE",
         "live_promotion": "BLOCKED_UNTIL_PAPER_PROVEN",
         "min_shadow_trades": SHADOW_GATE_DEFAULTS["min_closed_trades"],
-        "notes": ["Can be considered for paper only after shadow gate plus human review."],
+        "paper_trial": {
+            "duration_days": 30,
+            "max_allocation_pct": 5,
+            "max_strategy_risk_pct": 0.016,
+            "requires_human_review": True,
+            "requires_shadow_gate": True,
+        },
+        "notes": [
+            "Can be considered for limited paper only after shadow gate plus human review.",
+            "Paper trial is capped and does not grant live permission.",
+        ],
     },
     "LIQUIDITY_SWEEP_REVERSAL": {
         "tier": "RESEARCH",
@@ -811,7 +821,14 @@ def apply_strategy_promotion_policy(row: dict[str, Any]) -> dict[str, Any]:
         if shadow_promotable:
             action = "HUMAN_REVIEW_FOR_PAPER"
             paper_review_allowed = True
-            reasons.append("shadow gate passed; paper promotion still requires human review")
+            trial = policy.get("paper_trial") or {}
+            if trial:
+                reasons.append(
+                    f"shadow gate passed; review limited paper trial "
+                    f"({trial.get('duration_days')}d, max {trial.get('max_allocation_pct')}% allocation)"
+                )
+            else:
+                reasons.append("shadow gate passed; paper promotion still requires human review")
         elif shadow_closed <= 0:
             action = "COLLECT_SHADOW_EVIDENCE"
             reasons.append("no closed shadow-paper trades yet")

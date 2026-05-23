@@ -819,6 +819,9 @@ def test_promotion_policy_requires_human_review_for_trend_pullback_shadow_promot
     assert policy["paper_review_allowed"] is True
     assert policy["live_review_allowed"] is False
     assert policy["human_review_required"] is True
+    assert policy["paper_trial"]["duration_days"] == 30
+    assert policy["paper_trial"]["max_allocation_pct"] == 5
+    assert any("limited paper trial" in reason for reason in policy["reasons"])
 
 
 def test_promotion_policy_blocks_research_strategy_even_when_shadow_gate_promotes() -> None:

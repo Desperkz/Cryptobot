@@ -398,9 +398,10 @@
   - План: после 30 закрытых v2.1 paper clusters сделать human review MR: оставить paper, ограничить allocation или демотировать.
   - Готово: promotion policy для `MEAN_REVERSION` теперь включает `review_milestone_clusters=30`; после этого порога появляется `PAPER_ALLOCATION_REVIEW_REQUIRED`, но live-review остается заблокированным.
   - Live-условие остается строже: положительный walk-forward, post-cost Avg R, PF, drawdown и минимум 100+ свежих v2.1 clusters перед обсуждением live.
-- `[ ]` P7-04 Trend Pullback paper-candidate review.
+- `[x]` P7-04 Trend Pullback paper-candidate review.
   - Принято частично: TPB выглядит самой готовой shadow-стратегией, но переводить в paper без shadow gate рискованно.
   - План: после прохождения shadow gate и human review разрешить limited paper allocation для `TREND_PULLBACK` на 30 дней.
+  - Готово: promotion policy для `TREND_PULLBACK` теперь содержит `paper_trial` на 30 дней с max allocation 5% и max strategy risk 1.6%; dashboard tooltip показывает trial-plan.
   - Условие принятия: positive post-cost shadow expectancy, достаточная частота, OF/retest evidence и отсутствие серии одинаковых стопов по одному символу.
 - `[ ]` P7-05 Не повышать базовый risk_per_trade ради цели 10%.
   - Принято: `risk_per_trade_pct=2%` не повышать до 3-4% на малой выборке.

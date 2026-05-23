@@ -1083,14 +1083,19 @@ async function loadStrategyScorecard() {
       const policy = s.promotion_policy || {};
       const policyAction = policy.action || 'KEEP_COLLECTING_EVIDENCE';
       const policyTier = policy.tier || 'UNKNOWN';
+      const trial = policy.paper_trial || {};
+      const trialLine = trial.duration_days
+        ? `paper trial: ${trial.duration_days}d · max ${trial.max_allocation_pct ?? '-'}% alloc`
+        : '';
       const policyTitle = [
         `tier: ${policyTier}`,
         `action: ${policyAction}`,
         `paper review: ${policy.paper_review_allowed ? 'yes' : 'no'}`,
         `live review: ${policy.live_review_allowed ? 'yes' : 'no'}`,
+        trialLine,
         ...(policy.reasons || []),
         ...(policy.notes || []),
-      ].join('\n');
+      ].filter(Boolean).join('\n');
       const policyCls =
         policy.live_review_allowed ? 'sc-alloc-core' :
         policy.paper_review_allowed ? 'sc-alloc-watch' :
