@@ -75,7 +75,7 @@ def test_sqz_champion_can_reduce_but_not_exceed_champion_cap() -> None:
     assert decision.cap_risk_pct == Decimal("0.020")
 
 
-def test_sqz_dynamic_challenger_can_size_above_champion_in_shadow() -> None:
+def test_sqz_dynamic_challenger_uses_research_risk_until_proven() -> None:
     decision = dynamic_position_sizing(
         signal=signal(
             "SQUEEZE_BREAKOUT_DYNAMIC",
@@ -87,9 +87,9 @@ def test_sqz_dynamic_challenger_can_size_above_champion_in_shadow() -> None:
         strategy_mode="shadow",
     )
 
-    assert decision.risk_pct == Decimal("0.025")
-    assert decision.leverage == 5
-    assert decision.cap_risk_pct == Decimal("0.025")
+    assert decision.risk_pct == Decimal("0.012")
+    assert decision.leverage == 2
+    assert decision.cap_risk_pct == Decimal("0.012")
 
 
 def test_hostile_order_flow_cuts_risk_and_leverage() -> None:

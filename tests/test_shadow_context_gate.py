@@ -85,5 +85,29 @@ def test_grid_shadow_context_blocks_dangerous_range_edge_flags() -> None:
     assert "dangerous range-edge flow" in reason
 
 
+def test_sqz_dynamic_shadow_blocks_order_flow_against_breakout() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="against", score="0.18", flags=["taker_flow_against"]))
+    )
+
+    assert reason is not None
+    assert "against breakout" in reason
+
+
+def test_sqz_dynamic_shadow_requires_retest_for_mixed_flow() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="mixed", score="0.58"))
+    )
+
+    assert reason is not None
+    assert "retest confirmation" in reason
+
+
+def test_sqz_dynamic_shadow_allows_clean_aligned_flow() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="aligned", score="0.70"))
+    ) is None
+
+
 def test_shadow_context_gate_ignores_non_candidate_strategy() -> None:
     assert _shadow_candidate_context_rejection_reason(signal("SQUEEZE_BREAKOUT", order_flow(alignment="against"))) is None

@@ -227,7 +227,7 @@ risk:
   dynamic_leverage_max: 5
   dynamic_strategy_risk_multipliers:
     SQUEEZE_BREAKOUT: 1.00          # champion: can reduce weak entries, but cannot over-risk current paper line
-    SQUEEZE_BREAKOUT_DYNAMIC: 1.15  # challenger: separate shadow evidence for stronger sizing
+    SQUEEZE_BREAKOUT_DYNAMIC: 0.65  # challenger: research sizing until clean OF/retest edge is proven
     MEAN_REVERSION: 0.65
     TREND_PULLBACK: 0.75
     LIQUIDITY_SWEEP_REVERSAL: 0.60
@@ -238,7 +238,7 @@ risk:
     TREND_FOLLOWING: 0.60
   dynamic_strategy_max_risk_pct:
     SQUEEZE_BREAKOUT: 0.020
-    SQUEEZE_BREAKOUT_DYNAMIC: 0.030
+    SQUEEZE_BREAKOUT_DYNAMIC: 0.012
     MEAN_REVERSION: 0.014
     TREND_PULLBACK: 0.016
     LIQUIDITY_SWEEP_REVERSAL: 0.012

@@ -293,7 +293,7 @@ class RiskConfig:
     dynamic_strategy_risk_multipliers: dict[str, Decimal] = field(
         default_factory=lambda: {
             "SQUEEZE_BREAKOUT": Decimal("1.00"),
-            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("1.15"),
+            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("0.65"),
             "MEAN_REVERSION": Decimal("0.65"),
             "TREND_PULLBACK": Decimal("0.75"),
             "LIQUIDITY_SWEEP_REVERSAL": Decimal("0.60"),
@@ -307,7 +307,7 @@ class RiskConfig:
     dynamic_strategy_max_risk_pct: dict[str, Decimal] = field(
         default_factory=lambda: {
             "SQUEEZE_BREAKOUT": Decimal("0.020"),
-            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("0.030"),
+            "SQUEEZE_BREAKOUT_DYNAMIC": Decimal("0.012"),
             "MEAN_REVERSION": Decimal("0.014"),
             "TREND_PULLBACK": Decimal("0.016"),
             "LIQUIDITY_SWEEP_REVERSAL": Decimal("0.012"),

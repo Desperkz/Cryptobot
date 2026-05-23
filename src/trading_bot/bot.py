@@ -1342,7 +1342,13 @@ def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
 
 def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     strategy = _signal_strategy(signal)
-    if strategy not in {"LIQUIDITY_SWEEP_REVERSAL", "VWAP_REVERSION", "VWAP_REVERSION_WATCH", "RANGE_GRID"}:
+    if strategy not in {
+        "SQUEEZE_BREAKOUT_DYNAMIC",
+        "LIQUIDITY_SWEEP_REVERSAL",
+        "VWAP_REVERSION",
+        "VWAP_REVERSION_WATCH",
+        "RANGE_GRID",
+    }:
         return None
 
     order_flow = _order_flow_metadata(signal)
@@ -1352,7 +1358,26 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     alignment = str(order_flow.get("alignment") or "mixed")
     score = Decimal(str(order_flow.get("score") or "0"))
     risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
-    if strategy == "LIQUIDITY_SWEEP_REVERSAL":
+    if strategy == "SQUEEZE_BREAKOUT_DYNAMIC":
+        hard_flags = {
+            "taker_flow_against",
+            "aggressive_delta_against",
+            "book_imbalance_against",
+            "liquidation_cascade",
+            "structure_break_against",
+            "adverse_liquidity_nearby",
+        }
+        retest_confirmed = bool((signal.metadata or {}).get("squeeze_retest_confirmed"))
+        if alignment == "against":
+            return "SQZ-DYN shadow blocked: order-flow is against breakout."
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
+        if alignment == "mixed" and (score < Decimal("0.55") or not retest_confirmed):
+            return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
+        if alignment == "aligned" and score < Decimal("0.62"):
+            return f"SQZ-DYN shadow blocked: aligned flow is too weak, score {score:.2f}."
+    elif strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:
             return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
         if alignment == "against" or score < Decimal("0.70"):
