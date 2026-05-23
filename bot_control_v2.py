@@ -85,9 +85,11 @@ STRATEGY_PROMOTION_POLICIES = {
         "allowed_modes": ["paper", "shadow"],
         "paper_promotion": "COLLECT_200_CLOSED_TRADES_AND_WALK_FORWARD",
         "live_promotion": "BLOCKED_UNTIL_WALK_FORWARD",
+        "review_milestone_clusters": 30,
         "min_post_p5_clusters": 200,
         "notes": [
             "MR can die against liquidation cascades and squeeze trends.",
+            "At 30 post-P5 clusters, review MR allocation; do not promote to live from that sample.",
             "Require positive walk-forward before any live discussion.",
         ],
     },
@@ -786,14 +788,24 @@ def apply_strategy_promotion_policy(row: dict[str, Any]) -> dict[str, Any]:
             reasons.append("challenger is not ready to challenge the SQZ champion")
     elif tier == "PAPER_ONLY":
         required = int(policy.get("min_post_p5_clusters", 200))
-        if post_p5_clusters < required:
+        milestone = int(policy.get("review_milestone_clusters", required))
+        if post_p5_clusters < milestone:
             action = "COLLECT_PAPER_EVIDENCE"
-            reasons.append(f"paper-only strategy needs {required} post-P5 clusters before review")
+            reasons.append(f"paper-only strategy needs {milestone} post-P5 clusters before allocation review")
+        elif post_p5_clusters < required:
+            action = "PAPER_ALLOCATION_REVIEW_REQUIRED"
+            paper_review_allowed = True
+            reasons.append(
+                f"paper-only strategy reached {milestone} cluster review milestone; "
+                f"{required} clusters and walk-forward are still required before live review"
+            )
         elif gate_promotable:
             action = "WALK_FORWARD_REVIEW_REQUIRED"
+            paper_review_allowed = True
             reasons.append("paper gate passed, but walk-forward proof is still required")
         else:
             action = "KEEP_LIMITED_PAPER_OR_DEMOTE_REVIEW"
+            paper_review_allowed = True
             reasons.append("paper-only strategy gate has not passed")
     elif tier == "SHADOW_REVIEW":
         if shadow_promotable:

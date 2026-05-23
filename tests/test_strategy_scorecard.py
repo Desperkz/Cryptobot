@@ -736,11 +736,12 @@ def test_strategy_allocator_is_advisory_and_ranks_positive_evidence() -> None:
     assert by_name["RANGE_GRID"]["suggested_risk_weight_pct"] == 0
 
 
-def test_promotion_policy_keeps_mean_reversion_paper_only_until_large_walk_forward_sample() -> None:
+def test_promotion_policy_flags_mean_reversion_for_review_at_30_clusters_not_live() -> None:
     trades = [
         trade(
             trade_id=i,
             strategy="MEAN_REVERSION",
+            symbol=f"MR{i}USDT",
             pnl="10",
             r_value="0.5",
             created_at=f"2026-01-{(i % 28) + 1:02d} 00:00:00",
@@ -768,10 +769,37 @@ def test_promotion_policy_keeps_mean_reversion_paper_only_until_large_walk_forwa
 
     assert row["gate"]["status"] == "PROMOTABLE"
     assert row["promotion_policy"]["tier"] == "PAPER_ONLY"
+    assert row["promotion_policy"]["action"] == "PAPER_ALLOCATION_REVIEW_REQUIRED"
+    assert row["promotion_policy"]["paper_review_allowed"] is True
+    assert row["promotion_policy"]["live_review_allowed"] is False
+    assert row["promotion_policy"]["post_p5_clusters"] < 200
+
+
+def test_promotion_policy_keeps_mean_reversion_collecting_before_30_clusters() -> None:
+    trades = [
+        trade(
+            trade_id=i,
+            strategy="MEAN_REVERSION",
+            symbol=f"MR{i}USDT",
+            pnl="10",
+            r_value="0.5",
+            created_at=f"2026-01-{(i % 28) + 1:02d} 00:00:00",
+            closed_at=f"2026-01-{(i % 28) + 1:02d} 01:00:00",
+        )
+        for i in range(1, 21)
+    ]
+    scorecard = build_strategy_scorecard(
+        trades,
+        [],
+        initial_equity=1000,
+        strategy_modes={"MEAN_REVERSION": "paper"},
+    )
+
+    row = by_strategy(scorecard, "MEAN_REVERSION")
+
     assert row["promotion_policy"]["action"] == "COLLECT_PAPER_EVIDENCE"
     assert row["promotion_policy"]["paper_review_allowed"] is False
     assert row["promotion_policy"]["live_review_allowed"] is False
-    assert row["promotion_policy"]["post_p5_clusters"] < 200
 
 
 def test_promotion_policy_requires_human_review_for_trend_pullback_shadow_promotion() -> None:

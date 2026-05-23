@@ -393,9 +393,10 @@
   - Готово: UTC-фильтр сужен до `[2,3,4,5,6]`; high-confidence SQZ override расширен до `[0,1,2]`.
   - Условие принятия: новые часы дают положительный post-cost Avg R и не ухудшают SQZ drawdown.
   - Не делать: полностью выключать UTC-фильтр, пока нет evidence по часам.
-- `[ ]` P7-03 MR promotion gate: не live после 30 кластеров, а review milestone.
+- `[x]` P7-03 MR promotion gate: не live после 30 кластеров, а review milestone.
   - Принято частично: MR и SQZ действительно дополняют друг друга, но `30` кластеров недостаточно для live.
   - План: после 30 закрытых v2.1 paper clusters сделать human review MR: оставить paper, ограничить allocation или демотировать.
+  - Готово: promotion policy для `MEAN_REVERSION` теперь включает `review_milestone_clusters=30`; после этого порога появляется `PAPER_ALLOCATION_REVIEW_REQUIRED`, но live-review остается заблокированным.
   - Live-условие остается строже: положительный walk-forward, post-cost Avg R, PF, drawdown и минимум 100+ свежих v2.1 clusters перед обсуждением live.
 - `[ ]` P7-04 Trend Pullback paper-candidate review.
   - Принято частично: TPB выглядит самой готовой shadow-стратегией, но переводить в paper без shadow gate рискованно.
