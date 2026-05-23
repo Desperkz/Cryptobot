@@ -484,6 +484,7 @@ class AppConfig:
 
     def validate(self) -> list[str]:
         warnings: list[str] = []
+        allow_unproven_high_risk = os.getenv("BOT_ALLOW_UNPROVEN_HIGH_RISK", "0") == "1"
         strategy_modes = self.strategy.mode_summary()
         invalid_strategy_modes = {
             name: mode
@@ -549,6 +550,15 @@ class AppConfig:
             raise ConfigError("default_leverage cannot exceed max_leverage.")
         if self.risk.max_concurrent_positions < 1:
             raise ConfigError("max_concurrent_positions must be >= 1.")
+        if (
+            self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
+            and self.risk.risk_per_trade_pct > Decimal("0.02")
+            and not allow_unproven_high_risk
+        ):
+            raise ConfigError(
+                "risk_per_trade_pct above 2% is blocked until sufficient post-cost evidence exists; "
+                "set BOT_ALLOW_UNPROVEN_HIGH_RISK=1 only for an explicit reviewed experiment."
+            )
         if not (Decimal("0") < self.risk.realtime_correlation_threshold <= Decimal("1")):
             raise ConfigError("risk.realtime_correlation_threshold must be within (0, 1].")
         if self.risk.realtime_correlation_lookback < 10:

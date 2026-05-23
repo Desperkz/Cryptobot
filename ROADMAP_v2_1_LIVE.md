@@ -403,9 +403,10 @@
   - План: после прохождения shadow gate и human review разрешить limited paper allocation для `TREND_PULLBACK` на 30 дней.
   - Готово: promotion policy для `TREND_PULLBACK` теперь содержит `paper_trial` на 30 дней с max allocation 5% и max strategy risk 1.6%; dashboard tooltip показывает trial-plan.
   - Условие принятия: positive post-cost shadow expectancy, достаточная частота, OF/retest evidence и отсутствие серии одинаковых стопов по одному символу.
-- `[ ]` P7-05 Не повышать базовый risk_per_trade ради цели 10%.
+- `[x]` P7-05 Не повышать базовый risk_per_trade ради цели 10%.
   - Принято: `risk_per_trade_pct=2%` не повышать до 3-4% на малой выборке.
   - План: рассматривать `2.5%` только после 60+ закрытых clusters с `profit_factor > 1.4`, `Avg R > 0.20R`, max drawdown лучше -10% и отсутствием strategy-level деградации.
+  - Готово: `PAPER_TRADING`/`BACKTEST` теперь отклоняют `risk_per_trade_pct > 2%` без явного `BOT_ALLOW_UNPROVEN_HIGH_RISK=1`.
   - Kelly/dynamic sizing остаются ограничителями, а не способом компенсировать слабый edge.
 - `[ ]` P7-06 Разделить re-entry cooldown после win/loss.
   - Причина: текущий `strategy_reentry_cooldown_minutes=180` защищает от серий стопов, но может пропускать повторный качественный SQZ после прибыльного закрытия.

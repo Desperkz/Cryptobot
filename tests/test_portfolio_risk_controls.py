@@ -74,6 +74,23 @@ def test_invalid_realtime_correlation_threshold_is_rejected() -> None:
         config.validate()
 
 
+def test_paper_risk_above_two_percent_requires_explicit_override(monkeypatch) -> None:
+    monkeypatch.delenv("BOT_ALLOW_UNPROVEN_HIGH_RISK", raising=False)
+    config = replace(load_config(), risk=replace(load_config().risk, risk_per_trade_pct=Decimal("0.025")))
+
+    with pytest.raises(ConfigError, match="above 2%"):
+        config.validate()
+
+
+def test_paper_risk_above_two_percent_override_is_explicit(monkeypatch) -> None:
+    monkeypatch.setenv("BOT_ALLOW_UNPROVEN_HIGH_RISK", "1")
+    config = replace(load_config(), risk=replace(load_config().risk, risk_per_trade_pct=Decimal("0.025")))
+
+    warnings = config.validate()
+
+    assert isinstance(warnings, list)
+
+
 class FailingMarketData:
     async def candles(self, symbol: str, timeframe: str, limit: int = 500) -> list[Candle]:
         raise RuntimeError("network down")
