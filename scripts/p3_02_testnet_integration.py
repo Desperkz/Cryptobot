@@ -52,6 +52,7 @@ async def run() -> dict[str, Any]:
 
     if not config.secrets.binance_testnet_api_key or not config.secrets.binance_testnet_api_secret:
         report["error"] = "Missing BINANCE_TESTNET_API_KEY or BINANCE_TESTNET_API_SECRET in .env"
+        _write_reports(report)
         return report
 
     base_url = os.getenv("P3_TESTNET_BASE_URL", config.exchange.testnet_base_url)
@@ -305,9 +306,7 @@ async def run() -> dict[str, Any]:
         except Exception as cleanup_exc:
             report.setdefault("cleanup_errors", []).append(str(cleanup_exc))
         report["finished_at"] = datetime.now(timezone.utc).isoformat()
-        report_path = PROJECT_ROOT / "data" / "p3_02_testnet_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        _write_reports(report)
         await client.close()
 
 
@@ -320,6 +319,87 @@ def _load_env(path: Path) -> None:
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def _write_reports(report: dict[str, Any]) -> None:
+    data_dir = PROJECT_ROOT / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "p3_02_testnet_report.json").write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    (data_dir / "testnet_lifecycle_evidence.json").write_text(
+        json.dumps(_lifecycle_evidence_from_report(report), indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+
+
+def _lifecycle_evidence_from_report(report: dict[str, Any]) -> dict[str, Any]:
+    steps = _steps_by_name(report)
+    protective = steps.get("protective_orders") or {}
+    cancel = steps.get("cancel_limit_order") or {}
+    recovery = steps.get("restart_recovery") or {}
+    final_clean = steps.get("final_clean_check") or {}
+    cleanup = steps.get("cleanup") or {}
+
+    entry = _step_status(steps.get("entry_market")) in {"FILLED", "PARTIALLY_FILLED"}
+    stop_loss = bool((protective.get("stop") or {}).get("client_order_id"))
+    take_profit = bool((protective.get("take_profit") or {}).get("client_order_id"))
+    cancel_ok = cancel.get("queried_status") == "CANCELED"
+    restart_ok = bool(recovery) and not recovery.get("missing_protection") and to_decimal(
+        recovery.get("position_amt", "0")
+    ) > 0
+    final_position = to_decimal(final_clean.get("position_amt", "0")) if final_clean else Decimal("0")
+    remaining_test_orders = int(final_clean.get("remaining_test_orders", 0) or 0) if final_clean else 999
+
+    lifecycle = {
+        "entry": entry,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
+        "cancel": cancel_ok and bool(cleanup),
+        "partial_fill": bool(steps.get("partial_fill")),
+        "restart_recovery": restart_ok,
+    }
+    blocked_reasons = []
+    if not report.get("execute"):
+        blocked_reasons.append("P3_TESTNET_EXECUTE is not enabled; lifecycle orders were not placed.")
+    if report.get("error"):
+        blocked_reasons.append(str(report["error"]))
+    if not lifecycle["partial_fill"]:
+        blocked_reasons.append("partial_fill lifecycle evidence is not collected by this runner yet.")
+
+    return {
+        "ok": bool(report.get("ok")) and all(lifecycle.values()),
+        "source": "scripts/p3_02_testnet_integration.py",
+        "generated_at": report.get("finished_at") or datetime.now(timezone.utc).isoformat(),
+        "base_url": report.get("base_url"),
+        "symbol": report.get("symbol"),
+        "execute": bool(report.get("execute")),
+        "report_file": "data/p3_02_testnet_report.json",
+        "lifecycle": lifecycle,
+        "duplicate_orders": 0 if remaining_test_orders == 0 else remaining_test_orders,
+        "unprotected_positions": 0 if final_position == 0 and remaining_test_orders == 0 else 1,
+        "critical_incidents": 0 if not report.get("cleanup_errors") else len(report.get("cleanup_errors") or []),
+        "soak_days": 0,
+        "blocked_reasons": blocked_reasons,
+        "raw_error": report.get("error"),
+    }
+
+
+def _steps_by_name(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    steps: dict[str, dict[str, Any]] = {}
+    for step in report.get("steps") or []:
+        if isinstance(step, dict) and step.get("name"):
+            steps[str(step["name"])] = step
+    return steps
+
+
+def _step_status(step: dict[str, Any] | None) -> str:
+    if not isinstance(step, dict):
+        return ""
+    result = step.get("result")
+    result_status = result.get("status") if isinstance(result, dict) else None
+    return str(step.get("status") or result_status or "").upper()
 
 
 def _symbol_info(exchange_info: dict[str, Any], symbol: str) -> dict[str, Any]:

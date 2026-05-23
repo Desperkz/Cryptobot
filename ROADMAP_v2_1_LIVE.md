@@ -109,7 +109,10 @@
   - Data restore исправлен: историческая закрытая v2.1 HBAR-сделка восстановлена из `/root/bot_v2_1_prev_20260512_113908`.
   - Ожидает: задеплоить paper-monitor fix, который сохраняет исходное quantity на полностью закрытых partial trades, затем починить восстановленную строку `quantity=0`.
   - VPS verification script подготовлен в `verify_bot_v2_1.cmd`; ожидается remote pytest result.
-- `[ ]` P3-02 Integration tests на Binance demo/testnet: entry, SL, TP, cancel и restart recovery.
+- `[~]` P3-02 Integration tests на Binance demo/testnet: entry, SL, TP, cancel и restart recovery.
+  - Готово: `scripts/p3_02_testnet_integration.py` теперь сохраняет не только сырой `data/p3_02_testnet_report.json`, но и readiness-файл `data/testnet_lifecycle_evidence.json`.
+  - Готово: readiness evidence явно размечает `entry`, `stop_loss`, `take_profit`, `cancel`, `partial_fill`, `restart_recovery`, duplicate orders, unprotected positions и blockers.
+  - Ожидает: валидные Binance USD-M demo/testnet ключи и отдельный partial-fill сценарий, без которого live-readiness остается заблокированным.
 - `[ ]` P3-03 Chaos tests: reboot VPS, timeout Binance, потеря сети, stale user stream.
 - `[ ]` P3-04 14-дневный paper/testnet soak без технических инцидентов.
 - `[~]` P3-05 A/B benchmark против bot v2.0 перед live-промоушеном.
