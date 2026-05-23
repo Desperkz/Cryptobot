@@ -43,7 +43,7 @@ account:
 trading:
   timeframes: ["15m", "1h", "4h"]  # обязательные TF: 15m для входа, 1h/4h для режима и контекста
   poll_interval_sec: 60
-  max_symbols: 10
+  max_symbols: 20
   margin_type: "ISOLATED"
   position_mode: "ONE_WAY"
   order_working_type: "MARK_PRICE"

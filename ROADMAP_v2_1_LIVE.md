@@ -381,9 +381,10 @@
 - Отклонено как преждевременное: повышение базового `risk_per_trade_pct` ради доходности до доказанного edge.
 - Формула цели: при `35` сделках/мес, `Avg R = +0.15R` и эффективном риске `2%` ожидаемая месячная доходность около `10.5%`, но это требует стабильной частоты и post-cost evidence.
 
-- `[ ]` P7-01 Расширить universe без ослабления quality gates.
+- `[x]` P7-01 Расширить universe без ослабления quality gates.
   - Причина: текущий `trading.max_symbols=10` ограничивает частоту SQZ/MR/TPB сигналов сильнее, чем сама стратегия.
   - План: провести paper A/B `max_symbols=10` vs `20` с теми же `min_symbol_quality_score=60`, min volume, spread и order-book liquidity filters.
+  - Готово: `trading.max_symbols` повышен до `20`; `min_symbol_quality_score=60`, spread, volume и order-book liquidity filters оставлены без ослабления.
   - Условие принятия: частота сигналов/сделок растет без ухудшения post-cost Avg R, PF и drawdown.
   - Не делать: снижать `min_symbol_quality_score` ниже 60 без отдельного evidence, потому что это приведет к шумным и дорогим входам.
 - `[ ]` P7-02 Пересмотреть UTC session filter как controlled experiment.
