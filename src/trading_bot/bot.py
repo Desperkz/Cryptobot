@@ -638,10 +638,14 @@ class TradingBot:
                 await self.telegram.api_error(str(exc))
 
     def _annotate_signal_mode(self, signal: Signal, strategy_mode: str, shadow_only: bool = False) -> Signal:
+        strategy = _signal_strategy(signal)
         metadata = {
             **dict(signal.metadata),
             "strategy_mode": strategy_mode,
         }
+        strategy_logic_version = _strategy_logic_version(strategy)
+        if strategy_logic_version:
+            metadata["strategy_logic_version"] = strategy_logic_version
         if shadow_only:
             metadata["shadow_only"] = True
         return replace(signal, metadata=metadata)
@@ -1332,6 +1336,14 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
     "liquidation_cascade",
     "adverse_liquidity_nearby",
 }
+
+STRATEGY_LOGIC_VERSIONS = {
+    "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
+}
+
+
+def _strategy_logic_version(strategy: str) -> str | None:
+    return STRATEGY_LOGIC_VERSIONS.get(str(strategy or "").upper())
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:

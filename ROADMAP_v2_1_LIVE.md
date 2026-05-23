@@ -363,6 +363,11 @@
   - Готово: добавлен `/monthly-target-plan`, который считает target R/month, projected monthly return, required Avg R at current frequency и blockers по каждой стратегии.
   - Готово: добавлен `scripts/monthly_target_report.py`, который сохраняет timestamped JSON и `monthly_target_report_latest.json`.
   - Готово: regression tests покрывают отрицательный expectancy и расчет required Avg R.
+- `[x]` P6-20 Attribution по версиям логики стратегии.
+  - Причина: после исправления SQZ-DYN старая shadow-статистика с hostile order-flow не должна смешиваться с новой логикой и создавать ложное впечатление, что фикс не работает.
+  - Готово: новые SQZ-DYN сигналы/сделки получают `strategy_logic_version=sqz_dyn_of_retest_v2`.
+  - Готово: `/strategy-scorecard` показывает `strategy_logic_version_breakdown` для shadow и post-P5 evidence.
+  - Готово: regression test проверяет разделение legacy и новой SQZ-DYN evidence.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

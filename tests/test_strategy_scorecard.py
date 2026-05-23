@@ -143,7 +143,9 @@ def shadow_trade(
     direction: str = "LONG",
     created_at: str = "2026-01-01 00:10:00",
     closed_at: str | None = None,
+    metadata: dict | None = None,
 ) -> dict[str, str | None]:
+    payload = {"strategy": strategy, "shadow_paper": True, **(metadata or {})}
     return {
         "id": "1",
         "created_at": created_at,
@@ -161,7 +163,7 @@ def shadow_trade(
         "r_multiple": r_value,
         "realized_pnl": pnl,
         "close_reason": "take_profit" if status == "CLOSED" else None,
-        "metadata": json.dumps({"strategy": strategy, "shadow_paper": True}),
+        "metadata": json.dumps(payload),
     }
 
 
@@ -507,6 +509,42 @@ def test_scorecard_summarizes_shadow_paper_without_polluting_real_pnl() -> None:
     assert scorecard["summary"]["total_pnl"] == 0
     assert scorecard["summary"]["shadow_total_pnl"] == 18
     assert row["shadow_gate"]["status"] == "TESTING"
+
+
+def test_scorecard_breaks_down_shadow_evidence_by_strategy_logic_version() -> None:
+    scorecard = build_strategy_scorecard(
+        [],
+        [],
+        [signal_row("SQUEEZE_BREAKOUT_DYNAMIC", "shadow")],
+        [
+            shadow_trade(
+                strategy="SQUEEZE_BREAKOUT_DYNAMIC",
+                status="CLOSED",
+                pnl="-8",
+                r_value="-1",
+            ),
+            shadow_trade(
+                strategy="SQUEEZE_BREAKOUT_DYNAMIC",
+                status="CLOSED",
+                pnl="14",
+                r_value="0.7",
+                metadata={"strategy_logic_version": "sqz_dyn_of_retest_v2"},
+            ),
+        ],
+        initial_equity=1000,
+        strategy_modes={"SQUEEZE_BREAKOUT_DYNAMIC": "shadow"},
+    )
+
+    row = by_strategy(scorecard, "SQUEEZE_BREAKOUT_DYNAMIC")
+    breakdown = {
+        item["strategy_logic_version"]: item
+        for item in row["shadow_paper"]["strategy_logic_version_breakdown"]
+    }
+
+    assert breakdown["legacy"]["closed_trades"] == 1
+    assert breakdown["legacy"]["realized_pnl"] == -8
+    assert breakdown["sqz_dyn_of_retest_v2"]["closed_trades"] == 1
+    assert breakdown["sqz_dyn_of_retest_v2"]["realized_pnl"] == 14
 
 
 def test_shadow_gate_promotes_when_shadow_paper_thresholds_pass() -> None:

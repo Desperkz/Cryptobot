@@ -517,6 +517,45 @@ def _exit_profile_breakdown(closed_trades: list[Any]) -> list[dict[str, Any]]:
     return sorted(breakdown, key=lambda row: (row["realized_pnl"], row["closed_trades"]), reverse=True)
 
 
+def _strategy_logic_version_breakdown(closed_trades: list[Any]) -> list[dict[str, Any]]:
+    buckets: dict[str, dict[str, Any]] = {}
+    for trade in closed_trades:
+        signal_metadata = _signal_metadata_from_row(trade)
+        version = str(signal_metadata.get("strategy_logic_version") or "legacy")
+        item = buckets.setdefault(
+            version,
+            {
+                "strategy_logic_version": version,
+                "closed_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "realized_pnl": 0.0,
+                "r_sum": 0.0,
+            },
+        )
+        pnl = _to_float(_row_get(trade, "realized_pnl"), 0.0) or 0.0
+        r_value = _to_float(_row_get(trade, "r_multiple"), 0.0) or 0.0
+        item["closed_trades"] += 1
+        item["wins"] += 1 if pnl > 0 else 0
+        item["losses"] += 1 if pnl < 0 else 0
+        item["realized_pnl"] += pnl
+        item["r_sum"] += r_value
+
+    breakdown = []
+    for item in buckets.values():
+        closed = item["closed_trades"]
+        breakdown.append({
+            "strategy_logic_version": item["strategy_logic_version"],
+            "closed_trades": closed,
+            "wins": item["wins"],
+            "losses": item["losses"],
+            "winrate": round(item["wins"] / closed * 100, 1) if closed else 0,
+            "realized_pnl": round(item["realized_pnl"], 4),
+            "avg_r": round(item["r_sum"] / closed, 3) if closed else 0,
+        })
+    return sorted(breakdown, key=lambda row: (row["realized_pnl"], row["closed_trades"]), reverse=True)
+
+
 def evaluate_strategy_gate(metrics: dict[str, Any], thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
     limits = {**STRATEGY_GATE_DEFAULTS, **(thresholds or {})}
     checks: list[dict[str, Any]] = []
@@ -1130,6 +1169,7 @@ def build_strategy_scorecard(
             "last_trade_at": _fmt_dt(shadow_last_dt),
             "open_risk": round(shadow_open_risk, 4),
             "open_positions": shadow_open_positions,
+            "strategy_logic_version_breakdown": _strategy_logic_version_breakdown(shadow_closed),
         }
         shadow_gate = evaluate_shadow_gate(shadow_metrics)
 
@@ -1229,6 +1269,7 @@ def build_strategy_scorecard(
                     "avg_r": post_p5_clusters["avg_r"],
                 },
                 "exit_profile_breakdown": _exit_profile_breakdown(post_p5_closed),
+                "strategy_logic_version_breakdown": _strategy_logic_version_breakdown(post_p5_closed),
             },
             "post_p5_closed_trades": post_p5_closed_count,
             "post_p5_closed_trade_clusters": post_p5_clusters["closed_clusters"],
