@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import socketserver
+import subprocess
 
 import bot_control_v2
 
@@ -15,6 +16,42 @@ def test_control_api_uses_threaded_server() -> None:
 
 def test_control_api_has_request_timeout() -> None:
     assert bot_control_v2.CONTROL_REQUEST_TIMEOUT_SECONDS > 0
+
+
+def test_service_status_uses_timeout_and_cache(monkeypatch) -> None:
+    bot_control_v2._SERVICE_STATUS_CACHE.clear()
+    calls = []
+
+    def fake_run(cmd, capture_output, text, timeout):
+        calls.append((cmd, capture_output, text, timeout))
+
+        class Result:
+            stdout = "active\n"
+
+        return Result()
+
+    monkeypatch.setattr(bot_control_v2.subprocess, "run", fake_run)
+    monkeypatch.setattr(bot_control_v2, "SERVICE_STATUS_CACHE_SECONDS", 10)
+    monkeypatch.setattr(bot_control_v2, "SERVICE_STATUS_TIMEOUT_SECONDS", 0.25)
+
+    assert bot_control_v2.service_status("trading-bot-v2-1") == "active"
+    assert bot_control_v2.service_status("trading-bot-v2-1") == "active"
+    assert len(calls) == 1
+    assert calls[0][0] == ["systemctl", "is-active", "trading-bot-v2-1"]
+    assert calls[0][3] == 0.25
+
+
+def test_service_status_timeout_returns_cached_value(monkeypatch) -> None:
+    bot_control_v2._SERVICE_STATUS_CACHE.clear()
+    bot_control_v2._SERVICE_STATUS_CACHE["trading-bot-v2-1"] = (0.0, "active")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["systemctl"], timeout=0.1)
+
+    monkeypatch.setattr(bot_control_v2.subprocess, "run", fake_run)
+    monkeypatch.setattr(bot_control_v2, "time", type("FakeTime", (), {"monotonic": staticmethod(lambda: 100.0)}))
+
+    assert bot_control_v2.service_status("trading-bot-v2-1") == "active"
 
 
 def test_rejections_include_shadow_paper_risk_and_cooldown(tmp_path, monkeypatch) -> None:

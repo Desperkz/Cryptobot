@@ -11,6 +11,7 @@ import secrets
 import socketserver
 import sqlite3
 import subprocess
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -34,6 +35,8 @@ PAPER_MONITOR_SERVICE_NAME = os.getenv("PAPER_MONITOR_SERVICE_NAME", "paper-moni
 BINANCE_URL = "https://fapi.binance.com/fapi/v1/ticker/price?symbol="
 OPEN_TRADE_STATUSES = {"ACCEPTED", "OPEN", "ACTIVE"}
 CONTROL_REQUEST_TIMEOUT_SECONDS = float(os.getenv("BOT_CONTROL_REQUEST_TIMEOUT_SECONDS", "5"))
+SERVICE_STATUS_TIMEOUT_SECONDS = float(os.getenv("BOT_SERVICE_STATUS_TIMEOUT_SECONDS", "1.5"))
+SERVICE_STATUS_CACHE_SECONDS = float(os.getenv("BOT_SERVICE_STATUS_CACHE_SECONDS", "2.0"))
 PRICE_REQUEST_TIMEOUT_SECONDS = float(os.getenv("BOT_PRICE_REQUEST_TIMEOUT_SECONDS", "0.8"))
 STRATEGY_GATE_DEFAULTS = {
     "min_closed_trades": int(os.getenv("STRATEGY_GATE_MIN_CLOSED_TRADES", "100")),
@@ -165,6 +168,9 @@ STRATEGY_PROMOTION_POLICIES = {
 class ControlHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+
+_SERVICE_STATUS_CACHE: dict[str, tuple[float, str]] = {}
 
 
 def get_price(symbol: str) -> float | None:
@@ -2045,8 +2051,24 @@ def _weekly_report_recommendations(
 
 
 def service_status(name: str) -> str:
-    result = subprocess.run(["systemctl", "is-active", name], capture_output=True, text=True)
-    return result.stdout.strip() or "unknown"
+    now = time.monotonic()
+    cached = _SERVICE_STATUS_CACHE.get(name)
+    if cached and now - cached[0] <= SERVICE_STATUS_CACHE_SECONDS:
+        return cached[1]
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", name],
+            capture_output=True,
+            text=True,
+            timeout=SERVICE_STATUS_TIMEOUT_SECONDS,
+        )
+        status = result.stdout.strip() or "unknown"
+    except subprocess.TimeoutExpired:
+        status = cached[1] if cached else "unknown"
+    except Exception:
+        status = "unknown"
+    _SERVICE_STATUS_CACHE[name] = (now, status)
+    return status
 
 
 def api_status() -> dict:

@@ -113,6 +113,8 @@ header {
 
 [data-theme="dark"] .dot { box-shadow: 0 0 8px var(--green); }
 .dot.red { background: var(--red); animation: none; }
+.dot.yellow { background: var(--yellow); animation: blink 2s infinite; }
+[data-theme="dark"] .dot.yellow { box-shadow: 0 0 8px var(--yellow); }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
@@ -944,6 +946,8 @@ const stratName = s => ({
 
 let lastCurve = [250];
 let startEquity = 250;
+let statusMisses = 0;
+let lastHealthyStatusAt = 0;
 
 async function loadConfig(force=false) {
   if (configLoaded && !force) return;
@@ -960,13 +964,33 @@ async function loadConfig(force=false) {
 async function loadStatus() {
   try {
     const d = await get('/status');
-    const ok = d.bot === 'active';
-    document.getElementById('status-dot').className = 'dot' + (ok ? '' : ' red');
-    document.getElementById('status-text').textContent =
-      ok ? `БОТ АКТИВЕН · ПМ ${d.paper_monitor === 'active' ? 'АКТИВЕН' : 'СТОП'}` : 'ОФЛАЙН';
+    const botStatus = String(d.bot || '').toLowerCase();
+    const paperStatus = String(d.paper_monitor || '').toLowerCase();
+    const botOk = botStatus === 'active';
+    const botStarting = ['activating', 'reloading'].includes(botStatus);
+    const paperOk = paperStatus === 'active';
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (botOk) {
+      statusMisses = 0;
+      lastHealthyStatusAt = Date.now();
+      dot.className = 'dot';
+      text.textContent = `БОТ АКТИВЕН · ПМ ${paperOk ? 'АКТИВЕН' : 'СТОП'}`;
+    } else if (botStarting) {
+      statusMisses = 0;
+      dot.className = 'dot yellow';
+      text.textContent = `БОТ ЗАПУСКАЕТСЯ · ПМ ${paperOk ? 'АКТИВЕН' : 'СТОП'}`;
+    } else {
+      statusMisses++;
+      dot.className = statusMisses >= 2 ? 'dot red' : 'dot yellow';
+      text.textContent = statusMisses >= 2 ? `ОФЛАЙН · ${botStatus || 'unknown'}` : `ПРОВЕРКА · ${botStatus || 'unknown'}`;
+    }
   } catch {
-    document.getElementById('status-dot').className = 'dot red';
-    document.getElementById('status-text').textContent = 'НЕТ СВЯЗИ';
+    statusMisses++;
+    const staleMs = lastHealthyStatusAt ? Date.now() - lastHealthyStatusAt : Infinity;
+    const hardOffline = statusMisses >= 3 || staleMs > 30000;
+    document.getElementById('status-dot').className = hardOffline ? 'dot red' : 'dot yellow';
+    document.getElementById('status-text').textContent = hardOffline ? 'НЕТ СВЯЗИ' : 'ПРОВЕРКА СВЯЗИ';
   }
 }
 
