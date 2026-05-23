@@ -177,10 +177,10 @@ market_filters:
   block_longs_when_btc_weak: true
   block_all_when_btc_weak: false
   utc_session_filter_enabled: true
-  avoid_utc_hours: [0, 1, 2, 3, 4, 5, 6, 7]
+  avoid_utc_hours: [2, 3, 4, 5, 6]
   high_confidence_squeeze_session_override: true
   high_confidence_squeeze_min_confidence: 0.80
-  high_confidence_squeeze_allowed_hours: [0, 1]
+  high_confidence_squeeze_allowed_hours: [0, 1, 2]
   use_self_learning_filters: true
 
 risk:

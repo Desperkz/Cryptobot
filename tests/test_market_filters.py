@@ -14,7 +14,7 @@ def filter_config() -> MarketFilterConfig:
         block_longs_when_btc_weak=True,
         block_all_when_btc_weak=False,
         utc_session_filter_enabled=True,
-        avoid_utc_hours={0, 1, 2, 3, 4, 5, 6, 7},
+        avoid_utc_hours={2, 3, 4, 5, 6},
         use_self_learning_filters=True,
     )
 
@@ -66,7 +66,8 @@ def test_btc_drop_blocks_longs_but_not_shorts() -> None:
 def test_utc_session_filter_blocks_avoid_hours() -> None:
     entry_filter = MarketEntryFilter(filter_config())
 
-    assert entry_filter.allow_signal(signal(Direction.LONG, hour="2"), Decimal("0.01")).allowed is False
+    assert entry_filter.allow_signal(signal(Direction.LONG, hour="3"), Decimal("0.01")).allowed is False
+    assert entry_filter.allow_signal(signal(Direction.LONG, hour="0"), Decimal("0.01")).allowed is True
     assert entry_filter.allow_signal(signal(Direction.LONG, hour="12"), Decimal("0.01")).allowed is True
 
 
@@ -77,12 +78,13 @@ def test_high_confidence_squeeze_release_can_override_early_session_filter() -> 
             **config.__dict__,
             "high_confidence_squeeze_session_override": True,
             "high_confidence_squeeze_min_confidence": Decimal("0.80"),
-            "high_confidence_squeeze_allowed_hours": {0, 1},
+            "high_confidence_squeeze_allowed_hours": {0, 1, 2},
         }
     )
     entry_filter = MarketEntryFilter(config)
 
     assert entry_filter.allow_signal(squeeze_signal(), Decimal("0.01")).allowed is True
+    assert entry_filter.allow_signal(squeeze_signal(hour="2"), Decimal("0.01")).allowed is True
 
 
 def test_squeeze_session_override_keeps_blocking_weak_or_non_release_signals() -> None:
@@ -92,14 +94,17 @@ def test_squeeze_session_override_keeps_blocking_weak_or_non_release_signals() -
             **config.__dict__,
             "high_confidence_squeeze_session_override": True,
             "high_confidence_squeeze_min_confidence": Decimal("0.80"),
-            "high_confidence_squeeze_allowed_hours": {0, 1},
+            "high_confidence_squeeze_allowed_hours": {0, 1, 2},
         }
     )
     entry_filter = MarketEntryFilter(config)
 
-    assert entry_filter.allow_signal(squeeze_signal(confidence=Decimal("0.79")), Decimal("0.01")).allowed is False
-    assert entry_filter.allow_signal(squeeze_signal(state="build"), Decimal("0.01")).allowed is False
-    assert entry_filter.allow_signal(squeeze_signal(hour="2"), Decimal("0.01")).allowed is False
+    assert (
+        entry_filter.allow_signal(squeeze_signal(confidence=Decimal("0.79"), hour="2"), Decimal("0.01")).allowed
+        is False
+    )
+    assert entry_filter.allow_signal(squeeze_signal(state="build", hour="2"), Decimal("0.01")).allowed is False
+    assert entry_filter.allow_signal(squeeze_signal(hour="3"), Decimal("0.01")).allowed is False
 
 
 def test_self_learning_blocks_bad_segment() -> None:

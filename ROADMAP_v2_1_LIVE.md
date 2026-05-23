@@ -387,9 +387,10 @@
   - Готово: `trading.max_symbols` повышен до `20`; `min_symbol_quality_score=60`, spread, volume и order-book liquidity filters оставлены без ослабления.
   - Условие принятия: частота сигналов/сделок растет без ухудшения post-cost Avg R, PF и drawdown.
   - Не делать: снижать `min_symbol_quality_score` ниже 60 без отдельного evidence, потому что это приведет к шумным и дорогим входам.
-- `[ ]` P7-02 Пересмотреть UTC session filter как controlled experiment.
+- `[x]` P7-02 Пересмотреть UTC session filter как controlled experiment.
   - Причина: текущий `avoid_utc_hours=[0..7]` режет треть суток; для crypto часть squeeze-паттернов может формироваться в ранней азиатской/предевропейской сессии.
   - План: сравнить текущий фильтр с вариантом `avoid_utc_hours=[2,3,4,5,6]` и `high_confidence_squeeze_allowed_hours=[0,1,2]`.
+  - Готово: UTC-фильтр сужен до `[2,3,4,5,6]`; high-confidence SQZ override расширен до `[0,1,2]`.
   - Условие принятия: новые часы дают положительный post-cost Avg R и не ухудшают SQZ drawdown.
   - Не делать: полностью выключать UTC-фильтр, пока нет evidence по часам.
 - `[ ]` P7-03 MR promotion gate: не live после 30 кластеров, а review milestone.

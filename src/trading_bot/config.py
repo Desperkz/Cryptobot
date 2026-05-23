@@ -244,7 +244,7 @@ class MarketFilterConfig:
     oi_rise_longs_blocked_pct: Decimal = Decimal("3.0")
     high_confidence_squeeze_session_override: bool = False
     high_confidence_squeeze_min_confidence: Decimal = Decimal("0.80")
-    high_confidence_squeeze_allowed_hours: set[int] = field(default_factory=lambda: {0, 1})
+    high_confidence_squeeze_allowed_hours: set[int] = field(default_factory=lambda: {0, 1, 2})
 
 
 @dataclass(frozen=True)
