@@ -1,6 +1,6 @@
 # Дорожная карта готовности Bot v2.1 к live
 
-Обновлено: 2026-05-19
+Обновлено: 2026-05-23
 
 Легенда статусов:
 - `[x]` выполнено и проверено локально
@@ -371,6 +371,45 @@
   - Готово: новые SQZ-DYN сигналы/сделки получают `strategy_logic_version=sqz_dyn_of_retest_v2`.
   - Готово: `/strategy-scorecard` показывает `strategy_logic_version_breakdown` для shadow и post-P5 evidence.
   - Готово: regression test проверяет разделение legacy и новой SQZ-DYN evidence.
+
+## P7 Частота сделок и экономика цели 10%/мес
+
+Оценка замечаний по росту частоты:
+- Принято: главная текущая проблема для цели `10%/мес` - не только качество, но и низкая частота сделок при строгих фильтрах.
+- Принято как controlled experiment: расширять universe и сужать UTC-фильтр можно, но только с сохранением quality/cost gates и сравнением post-cost Avg R/PF/DD.
+- Принято частично: MR и TPB могут повысить частоту портфеля, но их нельзя промотировать в live только по малой выборке или по истории v2.0.
+- Отклонено как преждевременное: повышение базового `risk_per_trade_pct` ради доходности до доказанного edge.
+- Формула цели: при `35` сделках/мес, `Avg R = +0.15R` и эффективном риске `2%` ожидаемая месячная доходность около `10.5%`, но это требует стабильной частоты и post-cost evidence.
+
+- `[ ]` P7-01 Расширить universe без ослабления quality gates.
+  - Причина: текущий `trading.max_symbols=10` ограничивает частоту SQZ/MR/TPB сигналов сильнее, чем сама стратегия.
+  - План: провести paper A/B `max_symbols=10` vs `20` с теми же `min_symbol_quality_score=60`, min volume, spread и order-book liquidity filters.
+  - Условие принятия: частота сигналов/сделок растет без ухудшения post-cost Avg R, PF и drawdown.
+  - Не делать: снижать `min_symbol_quality_score` ниже 60 без отдельного evidence, потому что это приведет к шумным и дорогим входам.
+- `[ ]` P7-02 Пересмотреть UTC session filter как controlled experiment.
+  - Причина: текущий `avoid_utc_hours=[0..7]` режет треть суток; для crypto часть squeeze-паттернов может формироваться в ранней азиатской/предевропейской сессии.
+  - План: сравнить текущий фильтр с вариантом `avoid_utc_hours=[2,3,4,5,6]` и `high_confidence_squeeze_allowed_hours=[0,1,2]`.
+  - Условие принятия: новые часы дают положительный post-cost Avg R и не ухудшают SQZ drawdown.
+  - Не делать: полностью выключать UTC-фильтр, пока нет evidence по часам.
+- `[ ]` P7-03 MR promotion gate: не live после 30 кластеров, а review milestone.
+  - Принято частично: MR и SQZ действительно дополняют друг друга, но `30` кластеров недостаточно для live.
+  - План: после 30 закрытых v2.1 paper clusters сделать human review MR: оставить paper, ограничить allocation или демотировать.
+  - Live-условие остается строже: положительный walk-forward, post-cost Avg R, PF, drawdown и минимум 100+ свежих v2.1 clusters перед обсуждением live.
+- `[ ]` P7-04 Trend Pullback paper-candidate review.
+  - Принято частично: TPB выглядит самой готовой shadow-стратегией, но переводить в paper без shadow gate рискованно.
+  - План: после прохождения shadow gate и human review разрешить limited paper allocation для `TREND_PULLBACK` на 30 дней.
+  - Условие принятия: positive post-cost shadow expectancy, достаточная частота, OF/retest evidence и отсутствие серии одинаковых стопов по одному символу.
+- `[ ]` P7-05 Не повышать базовый risk_per_trade ради цели 10%.
+  - Принято: `risk_per_trade_pct=2%` не повышать до 3-4% на малой выборке.
+  - План: рассматривать `2.5%` только после 60+ закрытых clusters с `profit_factor > 1.4`, `Avg R > 0.20R`, max drawdown лучше -10% и отсутствием strategy-level деградации.
+  - Kelly/dynamic sizing остаются ограничителями, а не способом компенсировать слабый edge.
+- `[ ]` P7-06 Разделить re-entry cooldown после win/loss.
+  - Причина: текущий `strategy_reentry_cooldown_minutes=180` защищает от серий стопов, но может пропускать повторный качественный SQZ после прибыльного закрытия.
+  - План: оставить строгий cooldown после stop-loss, но добавить отдельный winning-trade cooldown 60-90 минут для того же symbol+strategy.
+  - Условие принятия: меньше пропущенных валидных повторных входов без роста duplicate/cluster risk.
+- `[ ]` P7-07 Monthly target frequency dashboard.
+  - Цель: явно видеть разрыв до 10%/мес через формулу `trades_per_month * Avg R * effective_risk_pct`.
+  - План: расширить `/monthly-target-plan`, чтобы он показывал required trades/month при текущем Avg R и отдельно показывал blockers: низкая частота, слабый Avg R или недостаточная выборка.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 
