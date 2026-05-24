@@ -134,6 +134,35 @@ def order_flow_row(
     }
 
 
+def relative_strength_row(
+    strategy: str,
+    *,
+    symbol: str = "BTCUSDT",
+    alignment: str = "aligned",
+    score: float = 0.76,
+) -> dict[str, str]:
+    payload = {
+        "alignment": alignment,
+        "score": score,
+        "symbol_change_4h": "0.018",
+        "btc_change_4h": "0.004",
+        "relative_change_4h": "0.014",
+        "symbol_change_24h": "0.052",
+        "reasons": ["long_relative_strength"],
+    }
+    return {
+        "symbol": symbol,
+        "direction": "LONG",
+        "strategy": strategy,
+        "confidence": "0.7",
+        "decision": "RELATIVE_STRENGTH_ANNOTATION",
+        "reason": f"alignment={alignment}; score={score}",
+        "features": json.dumps(payload),
+        "metadata": json.dumps({"strategy": strategy, "relative_strength": payload}),
+        "created_at": "2026-01-01 00:08:00",
+    }
+
+
 def shadow_trade(
     *,
     strategy: str,
@@ -474,6 +503,29 @@ def test_scorecard_summarizes_order_flow_annotations() -> None:
     assert order_flow["risk_flags"]["liquidation_cascade"] == 1
     assert order_flow["risk_flags"]["taker_flow_against"] == 1
     assert order_flow["top_symbols"] == {"BTCUSDT": 1, "ETHUSDT": 1}
+
+
+def test_scorecard_summarizes_relative_strength_annotations() -> None:
+    scorecard = build_strategy_scorecard(
+        [],
+        [],
+        [],
+        [],
+        [
+            relative_strength_row("TREND_PULLBACK", alignment="aligned", score=0.8),
+            relative_strength_row("TREND_PULLBACK", symbol="ETHUSDT", alignment="against", score=0.3),
+        ],
+        initial_equity=1000,
+        strategy_modes={"TREND_PULLBACK": "shadow"},
+    )
+
+    row = by_strategy(scorecard, "TREND_PULLBACK")
+    relative_strength = row["candidate_evidence"]["relative_strength"]
+
+    assert relative_strength["total"] == 2
+    assert relative_strength["avg_score"] == 0.55
+    assert relative_strength["by_alignment"] == {"aligned": 1, "against": 1}
+    assert relative_strength["top_symbols"] == {"BTCUSDT": 1, "ETHUSDT": 1}
 
 
 def test_scorecard_summarizes_shadow_paper_without_polluting_real_pnl() -> None:

@@ -427,6 +427,11 @@
   - План: расширить `/monthly-target-plan`, чтобы он показывал required trades/month при текущем Avg R и отдельно показывал blockers: низкая частота, слабый Avg R или недостаточная выборка.
   - Готово: `/monthly-target-plan` теперь возвращает required monthly clusters при текущем Avg R, gap по числу сделок, gap по Avg R и главный blocker (`sample`, `expectancy`, `frequency`, `avg_r`, `none`).
   - Готово: dashboard получил блок `Цель 10%/мес` с прогнозом, target gap, нужным R/month и таблицей top-стратегий по частоте/Avg R.
+- `[x]` P7-08 Relative Strength / Weakness research layer.
+  - Причина: сильные монеты в сильном рынке и слабые монеты в слабом рынке часто дают лучший continuation edge, чем одиночный сигнал стратегии.
+  - Готово: добавлен research-only `RELATIVE_STRENGTH_ANNOTATION` для paper/shadow signals; слой сравнивает 4h momentum символа с BTC и размечает `aligned`, `neutral`, `against` без блокировки сделок.
+  - Готово: `/strategy-scorecard` агрегирует relative-strength evidence по стратегиям: total, average score, alignment breakdown, top symbols и last timestamp.
+  - Gate: использовать relative strength как entry filter или allocation booster можно только после post-P5 evidence, что aligned subset имеет лучший Avg R/PF, чем against/neutral subset.
 
 ## Отложено до условия
 

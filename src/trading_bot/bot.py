@@ -21,7 +21,7 @@ from trading_bot.market_regime_detector import MarketRegimeDetector
 from trading_bot.market_universe import MarketUniverseBuilder
 from trading_bot.market_filters import MarketEntryFilter
 from trading_bot.ml import MLSignalFilter
-from trading_bot.models import Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
+from trading_bot.models import Candle, Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
 from trading_bot.operational import IncidentAlerter, SystemdNotifier
 from trading_bot.order_manager import OrderManager
 from trading_bot.position_manager import PositionManager
@@ -35,6 +35,7 @@ from trading_bot.risk_manager import (
 )
 from trading_bot.strategy_engine.edge import EdgeAnalyzer
 from trading_bot.strategy_engine.order_flow import OrderFlowAnnotation, OrderFlowAnnotator
+from trading_bot.strategy_engine.relative_strength import RelativeStrengthAnnotation, annotate_relative_strength
 from trading_bot.strategy_engine.candidate_strategies import (
     LiquiditySweepReversalStrategy,
     MomentumContinuationStrategy,
@@ -357,6 +358,12 @@ class TradingBot:
                 shadow_signal = self._annotate_signal_mode(shadow_signal, "shadow", shadow_only=True)
                 shadow_signal, annotation = self._annotate_order_flow(shadow_signal, candles_15m, asset.metrics)
                 await self._record_order_flow_annotation(shadow_signal, annotation)
+                shadow_signal, relative_strength = self._annotate_relative_strength(
+                    shadow_signal,
+                    candles_4h,
+                    btc_4h_change,
+                )
+                await self._record_relative_strength_annotation(shadow_signal, relative_strength)
                 await self._record_shadow_signal(shadow_signal, asset.filters)
             signal = self.strategy.generate(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
             await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
@@ -368,6 +375,8 @@ class TradingBot:
             )
             signal, annotation = self._annotate_order_flow(signal, candles_15m, asset.metrics)
             await self._record_order_flow_annotation(signal, annotation)
+            signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
+            await self._record_relative_strength_annotation(signal, relative_strength)
             order_flow_rejection = _order_flow_entry_rejection_reason(signal)
             if order_flow_rejection:
                 filter_type, reason = order_flow_rejection
@@ -888,6 +897,44 @@ class TradingBot:
             )
         except Exception as exc:
             logger.debug("Order-flow annotation snapshot failed for %s: %s", signal.symbol, exc)
+
+    def _annotate_relative_strength(
+        self,
+        signal: Signal,
+        candles_4h: list[Candle],
+        btc_4h_change: Decimal | None,
+    ) -> tuple[Signal, RelativeStrengthAnnotation]:
+        annotation = annotate_relative_strength(candles_4h, signal.direction, btc_4h_change)
+        metadata = {
+            **dict(signal.metadata or {}),
+            "relative_strength": annotation.to_metadata(),
+            "relative_strength_research_only": True,
+        }
+        return replace(signal, metadata=metadata), annotation
+
+    async def _record_relative_strength_annotation(
+        self,
+        signal: Signal,
+        annotation: RelativeStrengthAnnotation,
+    ) -> None:
+        payload = annotation.to_metadata()
+        try:
+            await self.db.insert_ml_feature_snapshot(
+                symbol=signal.symbol,
+                direction=signal.direction.value,
+                strategy=_signal_strategy(signal),
+                confidence=str(signal.confidence),
+                decision="RELATIVE_STRENGTH_ANNOTATION",
+                reason=f"alignment={annotation.alignment}; score={payload['score']}",
+                features=payload,
+                metadata={
+                    **dict(signal.metadata or {}),
+                    "relative_strength": payload,
+                    "relative_strength_research_only": True,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Relative-strength annotation snapshot failed for %s: %s", signal.symbol, exc)
 
     async def _record_strategy_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         now = time.monotonic()

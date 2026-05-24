@@ -912,6 +912,11 @@ def build_strategy_scorecard(
             "order_flow_risk_flags": {},
             "order_flow_symbols": {},
             "last_order_flow_at": None,
+            "relative_strength_total": 0,
+            "relative_strength_score_sum": 0.0,
+            "relative_strength_by_alignment": {},
+            "relative_strength_symbols": {},
+            "last_relative_strength_at": None,
             "rejections_total": 0,
             "rejections_by_type": {},
         })
@@ -997,6 +1002,22 @@ def build_strategy_scorecard(
             order_flow_dt = _parse_datetime(_row_get(diagnostic, "created_at"))
             if order_flow_dt and (item["last_order_flow_at"] is None or order_flow_dt > item["last_order_flow_at"]):
                 item["last_order_flow_at"] = order_flow_dt
+            continue
+        if decision == "RELATIVE_STRENGTH_ANNOTATION":
+            payload = _relative_strength_payload(diagnostic)
+            alignment = str(payload.get("alignment") or "unknown")
+            score = _to_float(payload.get("score"), 0.0) or 0.0
+            symbol = str(_row_get(diagnostic, "symbol", "") or metadata.get("symbol") or "UNKNOWN")
+            item["relative_strength_total"] += 1
+            item["relative_strength_score_sum"] += score
+            _increment(item["relative_strength_by_alignment"], alignment)
+            _increment(item["relative_strength_symbols"], symbol)
+            relative_strength_dt = _parse_datetime(_row_get(diagnostic, "created_at"))
+            if relative_strength_dt and (
+                item["last_relative_strength_at"] is None
+                or relative_strength_dt > item["last_relative_strength_at"]
+            ):
+                item["last_relative_strength_at"] = relative_strength_dt
             continue
         if decision != "STRATEGY_DIAGNOSTIC":
             continue
@@ -1255,6 +1276,19 @@ def build_strategy_scorecard(
                         sorted(item["order_flow_symbols"].items(), key=lambda kv: kv[1], reverse=True)[:5]
                     ),
                     "last_at": _fmt_dt(item["last_order_flow_at"]),
+                },
+                "relative_strength": {
+                    "total": item["relative_strength_total"],
+                    "avg_score": round(item["relative_strength_score_sum"] / item["relative_strength_total"], 3)
+                    if item["relative_strength_total"]
+                    else 0,
+                    "by_alignment": dict(
+                        sorted(item["relative_strength_by_alignment"].items(), key=lambda kv: kv[1], reverse=True)
+                    ),
+                    "top_symbols": dict(
+                        sorted(item["relative_strength_symbols"].items(), key=lambda kv: kv[1], reverse=True)[:5]
+                    ),
+                    "last_at": _fmt_dt(item["last_relative_strength_at"]),
                 },
             },
             "shadow_paper": shadow_metrics,
@@ -2574,6 +2608,15 @@ def _order_flow_payload(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _relative_strength_payload(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    features = _parse_metadata(_row_get(row, "features", {}))
+    if features:
+        return features
+    metadata = _parse_metadata(_row_get(row, "metadata", {}))
+    payload = metadata.get("relative_strength")
+    return payload if isinstance(payload, dict) else {}
+
+
 def _order_flow_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     payload = _order_flow_payload(row)
     return {
@@ -2658,7 +2701,7 @@ def api_strategy_scorecard() -> dict:
         diagnostics = conn.execute("""
             SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata
             FROM ml_feature_snapshots
-            WHERE decision IN ('STRATEGY_DIAGNOSTIC', 'ORDER_FLOW_ANNOTATION')
+            WHERE decision IN ('STRATEGY_DIAGNOSTIC', 'ORDER_FLOW_ANNOTATION', 'RELATIVE_STRENGTH_ANNOTATION')
             ORDER BY id ASC
         """).fetchall()
         conn.close()
