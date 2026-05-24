@@ -91,10 +91,15 @@ class MultiTimeframeStrategy:
                 )
                 return None, diagnostic
 
-        direction = self._direction(candles_1h, candles_4h, regime.regime)
+        direction, direction_reason, direction_details = self._direction_with_diagnostic(
+            candles_1h,
+            candles_4h,
+            regime.regime,
+        )
         diagnostic["direction"] = direction.value
+        diagnostic.update(direction_details)
         if direction == Direction.NONE:
-            diagnostic["block_reason"] = "no_trend_structure"
+            diagnostic["block_reason"] = direction_reason
             return None, diagnostic
 
         edge_snapshot = self.edge_analyzer.analyze(candles_15m, direction, metrics) if self.edge_analyzer else None
@@ -269,20 +274,67 @@ class MultiTimeframeStrategy:
         return True
 
     def _direction(self, candles_1h: list[Candle], candles_4h: list[Candle], regime: MarketRegime) -> Direction:
+        direction, _reason, _details = self._direction_with_diagnostic(candles_1h, candles_4h, regime)
+        return direction
+
+    def _direction_with_diagnostic(
+        self,
+        candles_1h: list[Candle],
+        candles_4h: list[Candle],
+        regime: MarketRegime,
+    ) -> tuple[Direction, str, dict[str, Any]]:
         closes_1h = closes(candles_1h)
         closes_4h = closes(candles_4h)
-        ema_fast_1h = ema(closes_1h, self.config.ema_fast)[-1]
-        ema_mid_1h = ema(closes_1h, self.config.ema_mid)[-1]
-        ema_slow_4h = ema(closes_4h, self.config.ema_slow)[-1]
-        close_4h = closes_4h[-1]
+        ema_fast_1h = to_decimal(ema(closes_1h, self.config.ema_fast)[-1])
+        ema_mid_1h = to_decimal(ema(closes_1h, self.config.ema_mid)[-1])
+        ema_slow_4h = to_decimal(ema(closes_4h, self.config.ema_slow)[-1])
+        close_4h = to_decimal(closes_4h[-1])
+        hh_hl = higher_high_higher_low(candles_1h)
+        lh_ll = lower_high_lower_low(candles_1h)
+        details: dict[str, Any] = {
+            "trend_regime": regime.value,
+            "close_4h": str(close_4h),
+            "ema_slow_4h": str(ema_slow_4h),
+            "ema_fast_1h": str(ema_fast_1h),
+            "ema_mid_1h": str(ema_mid_1h),
+            "hh_hl": bool(hh_hl),
+            "lh_ll": bool(lh_ll),
+        }
 
-        bullish = regime in {MarketRegime.TREND_UP, MarketRegime.MOMENTUM} and close_4h > ema_slow_4h
-        bearish = regime in {MarketRegime.TREND_DOWN, MarketRegime.MOMENTUM} and close_4h < ema_slow_4h
-        if bullish and ema_fast_1h > ema_mid_1h and higher_high_higher_low(candles_1h):
-            return Direction.LONG
-        if bearish and ema_fast_1h < ema_mid_1h and lower_high_lower_low(candles_1h):
-            return Direction.SHORT
-        return Direction.NONE
+        if regime not in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN, MarketRegime.MOMENTUM}:
+            return Direction.NONE, "no_trend_regime", details
+
+        bullish_regime = regime in {MarketRegime.TREND_UP, MarketRegime.MOMENTUM}
+        bearish_regime = regime in {MarketRegime.TREND_DOWN, MarketRegime.MOMENTUM}
+        bullish_4h = bullish_regime and close_4h > ema_slow_4h
+        bearish_4h = bearish_regime and close_4h < ema_slow_4h
+        details.update(
+            {
+                "bullish_4h_alignment": bool(bullish_4h),
+                "bearish_4h_alignment": bool(bearish_4h),
+                "bullish_1h_ema_stack": bool(ema_fast_1h > ema_mid_1h),
+                "bearish_1h_ema_stack": bool(ema_fast_1h < ema_mid_1h),
+            }
+        )
+
+        if bullish_4h and ema_fast_1h > ema_mid_1h and hh_hl:
+            return Direction.LONG, "passed", details
+        if bearish_4h and ema_fast_1h < ema_mid_1h and lh_ll:
+            return Direction.SHORT, "passed", details
+
+        if bullish_regime and not bullish_4h:
+            return Direction.NONE, "no_4h_bullish_alignment", details
+        if bearish_regime and not bearish_4h:
+            return Direction.NONE, "no_4h_bearish_alignment", details
+        if bullish_4h and not ema_fast_1h > ema_mid_1h:
+            return Direction.NONE, "no_1h_bullish_ema_stack", details
+        if bearish_4h and not ema_fast_1h < ema_mid_1h:
+            return Direction.NONE, "no_1h_bearish_ema_stack", details
+        if bullish_4h and not hh_hl:
+            return Direction.NONE, "no_1h_higher_high_higher_low", details
+        if bearish_4h and not lh_ll:
+            return Direction.NONE, "no_1h_lower_high_lower_low", details
+        return Direction.NONE, "no_trend_structure", details
 
     def _entry_confirmed(self, direction: Direction, candles_15m: list[Candle], volume_ratio: Decimal) -> bool:
         values = closes(candles_15m)
