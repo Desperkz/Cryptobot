@@ -7,6 +7,7 @@ from bot_control_v2 import (
     build_chaos_readiness_report,
     build_monthly_target_report,
     build_production_readiness_report,
+    build_soak_readiness_report,
     build_strategy_allocator,
     build_strategy_scorecard,
     build_weekly_research_report,
@@ -1064,6 +1065,40 @@ def test_chaos_readiness_passes_complete_evidence() -> None:
     assert report["status"] == "PASS"
     assert report["passed"] is True
     assert report["summary"]["blocked"] == 0
+
+
+def test_soak_readiness_blocks_missing_or_partial_evidence() -> None:
+    missing = build_soak_readiness_report({})
+    assert missing["status"] == "BLOCKED"
+    assert "soak_evidence_file" in {item["id"] for item in missing["blockers"]}
+
+    partial = build_soak_readiness_report({
+        "source": "unit-test",
+        "soak_days": 3.5,
+        "critical_incidents": 0,
+        "duplicate_orders": 0,
+        "unprotected_positions": 0,
+    })
+    blocker_ids = {item["id"] for item in partial["blockers"]}
+    assert partial["status"] == "BLOCKED"
+    assert blocker_ids == {"soak_days"}
+
+
+def test_soak_readiness_passes_complete_14_day_evidence() -> None:
+    report = build_soak_readiness_report({
+        "source": "unit-test",
+        "started_at": "2026-05-01T00:00:00Z",
+        "last_checked_at": "2026-05-15T00:00:00Z",
+        "soak_days": 14,
+        "critical_incidents": 0,
+        "duplicate_orders": 0,
+        "unprotected_positions": 0,
+    })
+
+    assert report["status"] == "PASS"
+    assert report["passed"] is True
+    assert report["summary"]["blocked"] == 0
+    assert report["summary"]["soak_days"] == 14
 
 
 def test_production_readiness_passes_with_complete_evidence() -> None:

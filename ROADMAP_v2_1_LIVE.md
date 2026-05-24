@@ -118,7 +118,11 @@
   - Готово: production-readiness теперь блокируется, пока chaos evidence не показывает PASS по control API timeout, dashboard debounce, service restart recovery, Binance timeout/backoff, network loss recovery, stale user stream REST fallback и VPS reboot recovery.
   - Готово: добавлен `scripts/chaos_readiness_report.py` для сохранения timestamped JSON и `chaos_readiness_report_latest.json`.
   - Ожидает: ручной/операторский прогон destructive сценариев на VPS и заполнение `data/chaos_evidence.json`; автоматический reboot/network break пока не запускаем из кода.
-- `[ ]` P3-04 14-дневный paper/testnet soak без технических инцидентов.
+- `[~]` P3-04 14-дневный paper/testnet soak без технических инцидентов.
+  - Готово: добавлен `/soak-readiness`, который проверяет `data/soak_evidence.json` или `data/testnet_lifecycle_evidence.json`.
+  - Готово: soak gate требует минимум 14 непрерывных paper/testnet дней, 0 critical incidents, 0 duplicate orders и 0 unprotected positions.
+  - Готово: добавлен `scripts/soak_readiness_report.py` для сохранения timestamped JSON и `soak_readiness_report_latest.json`.
+  - Ожидает: фактические 14 дней непрерывного наблюдения и evidence-файл с runtime counters.
 - `[~]` P3-05 A/B benchmark против bot v2.0 перед live-промоушеном.
   - Подготовлено: `D:\Codex\compare_bot_v2_vs_v2_1.cmd`.
   - Подготовлено: `D:\Codex\vps_downloads\compare_bot_v2_vs_v2_1.sh`.

@@ -254,6 +254,11 @@ def _to_float(value: Any, default: float | None = 0.0) -> float | None:
         return default
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    parsed = _to_float(value, None)
+    return default if parsed is None else int(parsed)
+
+
 def _parse_metadata(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
@@ -2009,6 +2014,83 @@ def build_chaos_readiness_report(evidence: dict[str, Any] | None = None) -> dict
     }
 
 
+def build_soak_readiness_report(evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build an advisory P3-04 14-day paper/testnet soak readiness report."""
+    evidence = evidence or {}
+    soak_days = _to_float(evidence.get("soak_days"), 0.0) or 0.0
+    critical_incidents = _to_int(evidence.get("critical_incidents"), 999)
+    duplicate_orders = _to_int(evidence.get("duplicate_orders"), 999)
+    unprotected_positions = _to_int(evidence.get("unprotected_positions"), 999)
+    started_at = evidence.get("started_at") or evidence.get("first_seen_at")
+    last_checked_at = evidence.get("last_checked_at") or evidence.get("finished_at") or evidence.get("generated_at")
+
+    checks = [
+        _readiness_check(
+            "soak_evidence_file",
+            bool(evidence),
+            "Soak evidence file data/soak_evidence.json or data/testnet_lifecycle_evidence.json is missing.",
+            actual="present" if evidence else "missing",
+            required="present",
+        ),
+        _readiness_check(
+            "soak_days",
+            soak_days >= 14.0,
+            "At least 14 continuous paper/testnet soak days.",
+            actual=round(soak_days, 2),
+            required=14.0,
+        ),
+        _readiness_check(
+            "critical_incidents",
+            critical_incidents == 0,
+            "Soak window must have zero unresolved critical technical incidents.",
+            actual=critical_incidents,
+            required=0,
+        ),
+        _readiness_check(
+            "duplicate_orders",
+            duplicate_orders == 0,
+            "Soak window must have zero duplicate orders.",
+            actual=duplicate_orders,
+            required=0,
+        ),
+        _readiness_check(
+            "unprotected_positions",
+            unprotected_positions == 0,
+            "Soak window must have zero unprotected positions.",
+            actual=unprotected_positions,
+            required=0,
+        ),
+    ]
+    blocked = [check for check in checks if check["status"] == "BLOCKED"]
+    warnings = [check for check in checks if check["status"] == "WARN"]
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "ADVISORY_ONLY",
+        "source": evidence.get("source") or "data/soak_evidence.json",
+        "started_at": started_at,
+        "last_checked_at": last_checked_at,
+        "passed": not blocked,
+        "status": "PASS" if not blocked else "BLOCKED",
+        "summary": {
+            "soak_days": round(soak_days, 2),
+            "critical_incidents": critical_incidents,
+            "duplicate_orders": duplicate_orders,
+            "unprotected_positions": unprotected_positions,
+            "checks": len(checks),
+            "passed": sum(1 for check in checks if check["status"] == "PASS"),
+            "blocked": len(blocked),
+            "warnings": len(warnings),
+        },
+        "checks": checks,
+        "blockers": blocked,
+        "warnings": warnings,
+        "notes": [
+            "This report does not create soak evidence automatically; it verifies operator/runtime evidence.",
+            "P3-04 is complete only after 14 continuous days with zero critical incidents.",
+        ],
+    }
+
+
 def build_monthly_target_report(
     scorecard: dict[str, Any],
     *,
@@ -2805,6 +2887,13 @@ def api_chaos_readiness() -> dict:
     return build_chaos_readiness_report(evidence)
 
 
+def api_soak_readiness() -> dict:
+    evidence = _load_optional_json("data/soak_evidence.json")
+    if not evidence:
+        evidence = _load_optional_json("data/testnet_lifecycle_evidence.json")
+    return build_soak_readiness_report(evidence)
+
+
 def api_monthly_target_plan() -> dict:
     scorecard = api_strategy_scorecard()
     if "error" in scorecard:
@@ -2918,6 +3007,7 @@ ROUTES = {
     "/strategy-allocator": api_strategy_allocator,
     "/weekly-research-report": api_weekly_research_report,
     "/chaos-readiness": api_chaos_readiness,
+    "/soak-readiness": api_soak_readiness,
     "/production-readiness": api_production_readiness,
     "/monthly-target-plan": api_monthly_target_plan,
     "/order-flow": api_order_flow,
