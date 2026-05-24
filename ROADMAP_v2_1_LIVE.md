@@ -113,7 +113,11 @@
   - Готово: `scripts/p3_02_testnet_integration.py` теперь сохраняет не только сырой `data/p3_02_testnet_report.json`, но и readiness-файл `data/testnet_lifecycle_evidence.json`.
   - Готово: readiness evidence явно размечает `entry`, `stop_loss`, `take_profit`, `cancel`, `partial_fill`, `restart_recovery`, duplicate orders, unprotected positions и blockers.
   - Ожидает: валидные Binance USD-M demo/testnet ключи и отдельный partial-fill сценарий, без которого live-readiness остается заблокированным.
-- `[ ]` P3-03 Chaos tests: reboot VPS, timeout Binance, потеря сети, stale user stream.
+- `[~]` P3-03 Chaos tests: reboot VPS, timeout Binance, потеря сети, stale user stream.
+  - Готово: добавлен `/chaos-readiness`, который читает `data/chaos_evidence.json` и строго проверяет обязательные сценарии P3-03.
+  - Готово: production-readiness теперь блокируется, пока chaos evidence не показывает PASS по control API timeout, dashboard debounce, service restart recovery, Binance timeout/backoff, network loss recovery, stale user stream REST fallback и VPS reboot recovery.
+  - Готово: добавлен `scripts/chaos_readiness_report.py` для сохранения timestamped JSON и `chaos_readiness_report_latest.json`.
+  - Ожидает: ручной/операторский прогон destructive сценариев на VPS и заполнение `data/chaos_evidence.json`; автоматический reboot/network break пока не запускаем из кода.
 - `[ ]` P3-04 14-дневный paper/testnet soak без технических инцидентов.
 - `[~]` P3-05 A/B benchmark против bot v2.0 перед live-промоушеном.
   - Подготовлено: `D:\Codex\compare_bot_v2_vs_v2_1.cmd`.

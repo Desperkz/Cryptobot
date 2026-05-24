@@ -1704,11 +1704,15 @@ def build_weekly_research_report(
 def build_production_readiness_report(
     scorecard: dict[str, Any],
     testnet_evidence: dict[str, Any] | None = None,
+    chaos_evidence: dict[str, Any] | None = None,
     production_unlock: dict[str, Any] | None = None,
     live_strategies: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a strict, advisory-only live readiness report from current evidence."""
     testnet_evidence = testnet_evidence or {}
+    chaos_evidence = chaos_evidence or {}
+    if "passed" not in chaos_evidence and "scenarios" in chaos_evidence:
+        chaos_evidence = build_chaos_readiness_report(chaos_evidence)
     production_unlock = production_unlock or {}
     live_strategies = live_strategies or ["SQUEEZE_BREAKOUT"]
     rows = {str(row.get("strategy") or ""): row for row in scorecard.get("strategies", [])}
@@ -1827,6 +1831,17 @@ def build_production_readiness_report(
             required=14,
         ),
         _readiness_check(
+            "chaos_scenarios",
+            bool(chaos_evidence.get("passed")),
+            "P3-03 chaos evidence must pass reboot, API timeout, network loss and stale-stream scenarios.",
+            actual={
+                "passed": bool(chaos_evidence.get("passed")),
+                "blocked": chaos_evidence.get("summary", {}).get("blocked"),
+                "source": chaos_evidence.get("source"),
+            },
+            required="all P3-03 required scenarios PASS",
+        ),
+        _readiness_check(
             "production_unlock",
             bool(production_unlock.get("human_approved_by"))
             and bool(production_unlock.get("backtest_approved"))
@@ -1861,6 +1876,101 @@ def build_production_readiness_report(
         "notes": [
             "This report is advisory and cannot unlock MAINNET_LIVE by itself.",
             "Production unlock remains a separate human-reviewed file.",
+        ],
+    }
+
+
+CHAOS_REQUIRED_SCENARIOS = {
+    "control_api_timeout": "Control API remains responsive when a status/systemctl probe is slow or times out.",
+    "dashboard_status_debounce": "Dashboard does not show hard offline after one transient status miss.",
+    "service_restart_recovery": "Trading bot, paper monitor and control API recover after service restart.",
+    "binance_timeout_backoff": "Binance timeout/rate-limit path backs off without duplicate orders.",
+    "network_loss_recovery": "Temporary network loss blocks new risky entries and resumes cleanly.",
+    "stale_user_stream_rest_fallback": "Stale user stream triggers REST reconciliation fallback before live entries.",
+    "vps_reboot_recovery": "VPS reboot restores services and leaves no duplicate or unprotected positions.",
+}
+
+
+def build_chaos_readiness_report(evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build an advisory P3-03 chaos-test readiness report from an evidence JSON file."""
+    evidence = evidence or {}
+    scenarios = evidence.get("scenarios") or {}
+    checks: list[dict[str, Any]] = []
+
+    if not evidence:
+        checks.append(_readiness_check(
+            "chaos_evidence_file",
+            False,
+            "Chaos evidence file data/chaos_evidence.json is missing.",
+            actual="missing",
+            required="present",
+        ))
+
+    for scenario_id, description in CHAOS_REQUIRED_SCENARIOS.items():
+        value = scenarios.get(scenario_id)
+        if isinstance(value, dict):
+            passed = bool(value.get("passed")) or str(value.get("status") or "").upper() == "PASS"
+            actual: Any = {
+                "passed": passed,
+                "status": value.get("status"),
+                "observed_at": value.get("observed_at"),
+                "notes": value.get("notes"),
+            }
+        else:
+            passed = bool(value)
+            actual = value
+        checks.append(_readiness_check(
+            scenario_id,
+            passed,
+            description,
+            actual=actual,
+            required=True,
+        ))
+
+    checks.extend([
+        _readiness_check(
+            "duplicate_orders_after_chaos",
+            int(_to_float(evidence.get("duplicate_orders_after_chaos"), 999)) == 0,
+            "Chaos tests must leave zero duplicate orders/positions.",
+            actual=evidence.get("duplicate_orders_after_chaos"),
+            required=0,
+        ),
+        _readiness_check(
+            "unprotected_positions_after_chaos",
+            int(_to_float(evidence.get("unprotected_positions_after_chaos"), 999)) == 0,
+            "Chaos tests must leave zero positions without verified SL/TP protection.",
+            actual=evidence.get("unprotected_positions_after_chaos"),
+            required=0,
+        ),
+        _readiness_check(
+            "critical_incidents_after_chaos",
+            int(_to_float(evidence.get("critical_incidents_after_chaos"), 999)) == 0,
+            "Chaos tests must produce zero unresolved critical technical incidents.",
+            actual=evidence.get("critical_incidents_after_chaos"),
+            required=0,
+        ),
+    ])
+
+    blocked = [check for check in checks if check["status"] == "BLOCKED"]
+    warnings = [check for check in checks if check["status"] == "WARN"]
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "ADVISORY_ONLY",
+        "source": evidence.get("source") or "data/chaos_evidence.json",
+        "passed": not blocked,
+        "status": "PASS" if not blocked else "BLOCKED",
+        "summary": {
+            "checks": len(checks),
+            "passed": sum(1 for check in checks if check["status"] == "PASS"),
+            "blocked": len(blocked),
+            "warnings": len(warnings),
+        },
+        "checks": checks,
+        "blockers": blocked,
+        "warnings": warnings,
+        "notes": [
+            "This report is evidence-gated; destructive scenarios remain manual/operator-controlled.",
+            "Do not mark MAINNET_LIVE ready until all required P3-03 scenarios pass.",
         ],
     }
 
@@ -2642,8 +2752,14 @@ def api_production_readiness() -> dict:
     if "error" in scorecard:
         return scorecard
     testnet_evidence = _load_optional_json("data/testnet_lifecycle_evidence.json")
+    chaos_evidence = api_chaos_readiness()
     production_unlock = _load_optional_json(_production_unlock_path())
-    return build_production_readiness_report(scorecard, testnet_evidence, production_unlock)
+    return build_production_readiness_report(scorecard, testnet_evidence, chaos_evidence, production_unlock)
+
+
+def api_chaos_readiness() -> dict:
+    evidence = _load_optional_json("data/chaos_evidence.json")
+    return build_chaos_readiness_report(evidence)
 
 
 def api_monthly_target_plan() -> dict:
@@ -2758,6 +2874,7 @@ ROUTES = {
     "/strategy-policy": api_strategy_policy,
     "/strategy-allocator": api_strategy_allocator,
     "/weekly-research-report": api_weekly_research_report,
+    "/chaos-readiness": api_chaos_readiness,
     "/production-readiness": api_production_readiness,
     "/monthly-target-plan": api_monthly_target_plan,
     "/order-flow": api_order_flow,

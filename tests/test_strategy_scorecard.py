@@ -4,6 +4,7 @@ import json
 
 from bot_control_v2 import (
     apply_strategy_promotion_policy,
+    build_chaos_readiness_report,
     build_monthly_target_report,
     build_production_readiness_report,
     build_strategy_allocator,
@@ -965,7 +966,52 @@ def test_production_readiness_blocks_until_evidence_is_complete() -> None:
     assert "squeeze_breakout_closed_clusters" in blocker_ids
     assert "squeeze_breakout_avg_r" in blocker_ids
     assert "testnet_restart_recovery" in blocker_ids
+    assert "chaos_scenarios" in blocker_ids
     assert "production_unlock" in blocker_ids
+
+
+def complete_chaos_evidence() -> dict:
+    return {
+        "source": "unit-test",
+        "scenarios": {
+            "control_api_timeout": {"status": "PASS"},
+            "dashboard_status_debounce": {"status": "PASS"},
+            "service_restart_recovery": {"status": "PASS"},
+            "binance_timeout_backoff": {"status": "PASS"},
+            "network_loss_recovery": {"status": "PASS"},
+            "stale_user_stream_rest_fallback": {"status": "PASS"},
+            "vps_reboot_recovery": {"status": "PASS"},
+        },
+        "duplicate_orders_after_chaos": 0,
+        "unprotected_positions_after_chaos": 0,
+        "critical_incidents_after_chaos": 0,
+    }
+
+
+def test_chaos_readiness_blocks_missing_or_partial_evidence() -> None:
+    report = build_chaos_readiness_report({
+        "source": "unit-test",
+        "scenarios": {
+            "control_api_timeout": {"status": "PASS"},
+            "dashboard_status_debounce": {"status": "PASS"},
+        },
+        "duplicate_orders_after_chaos": 0,
+        "unprotected_positions_after_chaos": 0,
+        "critical_incidents_after_chaos": 0,
+    })
+
+    assert report["status"] == "BLOCKED"
+    blocker_ids = {item["id"] for item in report["blockers"]}
+    assert "service_restart_recovery" in blocker_ids
+    assert "vps_reboot_recovery" in blocker_ids
+
+
+def test_chaos_readiness_passes_complete_evidence() -> None:
+    report = build_chaos_readiness_report(complete_chaos_evidence())
+
+    assert report["status"] == "PASS"
+    assert report["passed"] is True
+    assert report["summary"]["blocked"] == 0
 
 
 def test_production_readiness_passes_with_complete_evidence() -> None:
@@ -1004,7 +1050,7 @@ def test_production_readiness_passes_with_complete_evidence() -> None:
         "paper_trading_approved": True,
     }
 
-    report = build_production_readiness_report(scorecard, testnet_evidence, production_unlock)
+    report = build_production_readiness_report(scorecard, testnet_evidence, complete_chaos_evidence(), production_unlock)
 
     assert report["status"] == "READY"
     assert report["ready_for_mainnet"] is True
