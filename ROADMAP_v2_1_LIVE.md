@@ -219,6 +219,10 @@
   - Готово: `/rejection-stats` считает `SHADOW_RISK` и `SHADOW_COOLDOWN`, поэтому журнал больше не выглядит пустым, пока shadow strategies фильтруются.
   - Готово: dashboard badges/styles отдельно отображают shadow rejection types.
   - Готово: `/rejections` также показывает свежие `STRATEGY_DIAGNOSTIC` snapshots как `DIAGNOSTIC`, чтобы журнал отражал текущие причины отсутствия входов, а не только hard risk rejects.
+- `[~]` P4-13 Диагностика молчащего `TREND_FOLLOWING` перед ослаблением фильтров.
+  - Цель: не повышать частоту вслепую, а сначала понять, какой именно фильтр режет стратегию: regime/structure, edge, order-flow, volume, entry-confirmation, ATR или funding.
+  - Готово: `TREND_FOLLOWING` получил диагностический `evaluate()` и пишет `STRATEGY_DIAGNOSTIC` snapshots через общий router, когда сигнал не проходит.
+  - Gate: ослаблять условия `TREND_FOLLOWING` можно только после 24-48 часов свежей статистики причин отказов в `/rejections` и `/strategy-scorecard`.
 
 ## P5 Реалистичное paper-исполнение
 

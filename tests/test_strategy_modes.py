@@ -54,6 +54,16 @@ class StubStrategy:
         return self.item
 
 
+class DiagnosticStubStrategy(StubStrategy):
+    def evaluate(self, *_args, **_kwargs) -> tuple[Signal | None, dict[str, str]]:
+        return self.item, {
+            "strategy": "TREND_FOLLOWING",
+            "symbol": "BTCUSDT",
+            "decision": "NO_SIGNAL",
+            "block_reason": "weak_volume",
+        }
+
+
 def test_strategy_modes_split_execution_shadow_and_live_promotion() -> None:
     cfg = strategy_config(
         enabled=["SQUEEZE_BREAKOUT", "MEAN_REVERSION"],
@@ -142,3 +152,24 @@ def test_router_can_emit_sqz_dynamic_as_separate_shadow_challenger() -> None:
     assert len(shadow) == 1
     assert shadow[0].metadata["strategy"] == "SQUEEZE_BREAKOUT_DYNAMIC"
     assert shadow[0].metadata["parent_strategy"] == "SQUEEZE_BREAKOUT"
+
+
+def test_router_records_trend_following_diagnostics_when_no_signal() -> None:
+    router = StrategyRouter(
+        trend=DiagnosticStubStrategy(None),
+        mean_reversion=StubStrategy(None),
+        enabled_strategies=[],
+        shadow_strategies=["TREND_FOLLOWING"],
+    )
+
+    assert router.generate_shadow("BTCUSDT", [], [], [], None) == []
+
+    diagnostics = router.drain_diagnostics()
+    assert diagnostics == [
+        {
+            "strategy": "TREND_FOLLOWING",
+            "symbol": "BTCUSDT",
+            "decision": "NO_SIGNAL",
+            "block_reason": "weak_volume",
+        }
+    ]

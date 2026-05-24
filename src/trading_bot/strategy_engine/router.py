@@ -69,7 +69,11 @@ class StrategyRouter:
                 candidates.append(signal)
 
         if "TREND_FOLLOWING" in enabled:
-            signal = self.trend.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
+            if hasattr(self.trend, "evaluate"):
+                signal, diagnostic = self.trend.evaluate(symbol, candles_15m, candles_1h, candles_4h, metrics)
+                self._diagnostics.append(diagnostic)
+            else:
+                signal = self.trend.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
             if signal:
                 candidates.append(signal)
 
