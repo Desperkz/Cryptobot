@@ -245,6 +245,7 @@ header {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 4px;
+  min-width: 0;
   overflow: hidden;
   box-shadow: var(--shadow);
 }
@@ -490,7 +491,16 @@ canvas { width: 100%; display: block; }
 .rj-badge.diag { border-color: rgba(77,159,255,0.35); color: var(--blue); }
 .rj-badge.shadow { border-color: rgba(255,215,0,0.35); color: var(--yellow); }
 
-.rj-table { width: 100%; border-collapse: collapse; }
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.rj-table { width: 100%; min-width: 720px; border-collapse: collapse; }
 .rj-table th {
   font-size: 10px; letter-spacing: 0.1em;
   color: var(--text-muted); text-transform: uppercase;
@@ -519,6 +529,9 @@ canvas { width: 100%; display: block; }
 .ftype-OTHER { background: var(--bg3); color: var(--text-muted); }
 
 .tr-table { width: 100%; border-collapse: collapse; }
+.trade-table { min-width: 980px; }
+.sc-table { min-width: 1540px; }
+.mt-table { min-width: 900px; }
 
 .tr-table th {
   font-size: 10px; letter-spacing: 0.1em;
@@ -601,6 +614,7 @@ canvas { width: 100%; display: block; }
       "log log log"
       "tr tr tr"
       "sc sc sc"
+      "mt mt mt"
       "rj rj rj";
   }
   .sq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -620,7 +634,7 @@ canvas { width: 100%; display: block; }
     grid-template-columns: 1fr;
     grid-template-areas:
       "m1" "m2" "m3" "m4" "m5" "m6"
-      "pos" "sig" "sq" "eq" "log" "tr" "sc" "rj";
+      "pos" "sig" "sq" "eq" "log" "tr" "sc" "mt" "rj";
   }
   .metric-card { padding: 14px 16px; }
   .metric-value { font-size: 24px; }
@@ -633,6 +647,31 @@ canvas { width: 100%; display: block; }
   }
   .sig-row { grid-template-columns: 58px 72px 46px minmax(0, 1fr); }
   .sig-reason, .ll, td { overflow-wrap: anywhere; }
+  .table-scroll table { width: max-content; }
+  .tr-table th, .tr-table td, .rj-table th, .rj-table td {
+    padding: 7px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .sc-table th:first-child,
+  .sc-table td:first-child,
+  .mt-table th:first-child,
+  .mt-table td:first-child,
+  .trade-table th:first-child,
+  .trade-table td:first-child,
+  .rj-table th:first-child,
+  .rj-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg2);
+  }
+  .sc-table th:first-child,
+  .mt-table th:first-child,
+  .trade-table th:first-child,
+  .rj-table th:first-child {
+    background: var(--bg3);
+  }
   .sq-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
   .footer {
     flex-wrap: wrap;
@@ -757,8 +796,8 @@ canvas { width: 100%; display: block; }
       <div class="card-title">История сделок</div>
       <div class="card-badge">последние 30</div>
     </div>
-    <div style="overflow-x:auto">
-      <table class="tr-table">
+    <div class="table-scroll">
+      <table class="tr-table trade-table">
         <thead>
           <tr>
             <th>#</th><th>Символ</th><th>Напр.</th><th>Стратегия</th>
@@ -779,7 +818,7 @@ canvas { width: 100%; display: block; }
       <div class="card-title">Strategy scorecard</div>
       <div id="sc-total" class="card-badge">0 стратегий</div>
     </div>
-    <div style="overflow-x:auto">
+    <div class="table-scroll">
       <table class="tr-table sc-table">
         <thead>
           <tr>
@@ -802,8 +841,8 @@ canvas { width: 100%; display: block; }
       <div id="mt-total" class="card-badge">расчет</div>
     </div>
     <div class="mt-summary" id="mt-summary"></div>
-    <div style="overflow-x:auto">
-      <table class="tr-table">
+    <div class="table-scroll">
+      <table class="tr-table mt-table">
         <thead>
           <tr>
             <th>Стратегия</th><th>Статус</th><th>Сделок/мес</th><th>Нужно/мес</th>
@@ -824,7 +863,7 @@ canvas { width: 100%; display: block; }
       <div id="rj-total" class="card-badge">0 отказов</div>
     </div>
     <div class="rj-stats" id="rj-stats"></div>
-    <div style="overflow-x:auto">
+    <div class="table-scroll">
       <table class="rj-table">
         <thead>
           <tr>
