@@ -1333,7 +1333,7 @@ async function loadMonthlyTargetPlan() {
       frequency: 'частота',
       avg_r: 'Avg R'
     })[b] || b || '—';
-    setHTML('mt-body', rows.slice(0, 8).map(r => {
+    setHTML('mt-body', rows.map(r => {
       const projected = Number(r.projected_monthly_return_pct || 0);
       const blocker = String(r.primary_blocker || 'none');
       const statusCls = r.status === 'ON_TRACK' ? 'good' : r.status === 'BLOCKED' ? 'bad' : 'warn';
