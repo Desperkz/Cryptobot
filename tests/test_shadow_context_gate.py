@@ -6,17 +6,27 @@ from trading_bot.bot import _shadow_candidate_context_rejection_reason
 from trading_bot.models import Direction, Signal, TradingStyle
 
 
-def signal(strategy: str, order_flow: dict) -> Signal:
+def signal(
+    strategy: str,
+    order_flow: dict,
+    *,
+    symbol: str = "ADAUSDT",
+    direction: Direction = Direction.SHORT,
+    relative_strength: dict | None = None,
+) -> Signal:
+    metadata = {"strategy": strategy, "order_flow": order_flow}
+    if relative_strength is not None:
+        metadata["relative_strength"] = relative_strength
     return Signal(
-        symbol="ADAUSDT",
-        direction=Direction.SHORT,
+        symbol=symbol,
+        direction=direction,
         style=TradingStyle.INTRADAY,
         entry_price=Decimal("1.0"),
         stop_loss=Decimal("1.1"),
         take_profit=Decimal("0.9"),
         confidence=Decimal("0.55"),
         reason="test",
-        metadata={"strategy": strategy, "order_flow": order_flow},
+        metadata=metadata,
     )
 
 
@@ -106,6 +116,48 @@ def test_sqz_dynamic_shadow_requires_retest_for_mixed_flow() -> None:
 def test_sqz_dynamic_shadow_allows_clean_aligned_flow() -> None:
     assert _shadow_candidate_context_rejection_reason(
         signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="aligned", score="0.70"))
+    ) is None
+
+
+def test_tpb_shadow_blocks_toxic_symbol_from_retest_quarantine() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal("TREND_PULLBACK", order_flow(alignment="aligned", score="0.70"), symbol="LTCUSDT")
+    )
+
+    assert reason is not None
+    assert "retest quarantine" in reason
+
+
+def test_tpb_shadow_blocks_mixed_order_flow() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.70"))
+    )
+
+    assert reason is not None
+    assert "needs aligned order-flow" in reason
+
+
+def test_tpb_shadow_blocks_short_without_relative_weakness_confirmation() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "unknown"},
+        )
+    )
+
+    assert reason is not None
+    assert "relative-weakness confirmation" in reason
+
+
+def test_tpb_shadow_allows_clean_long_continuation() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.62"),
+            direction=Direction.LONG,
+            relative_strength={"alignment": "unknown"},
+        )
     ) is None
 
 

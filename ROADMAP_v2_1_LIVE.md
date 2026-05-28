@@ -373,7 +373,8 @@
   - Готово: paper monitor по умолчанию использует тот же demo-feed, что и paper-входы, чтобы закрытия не смешивали demo и mainnet цены.
   - Готово: добавлен pre-entry `ORDER_FLOW` gate для SQZ/SQZ-DYN, LSR, VWR/VWR-W и GRID; hostile flow теперь блокирует вход, а не только уменьшает размер.
   - Готово: SQZ retest стал строже (`tolerance_atr=0.25`, `rejection_body_atr=0.10`), чтобы меньше входить в выдохшийся пробой.
-  - TPB не изменялся: текущая shadow evidence положительная, стратегия продолжает набирать статистику без вмешательства.
+  - Готово: после деградации TPB (`27` shadow trades, PF `0.80`, Avg R `-0.12`) добавлен `tpb_cost_guard_v2`: quarantine для токсичных TPB symbols `DOGEUSDT/LTCUSDT`, запрет `mixed` OF, запрет hostile continuation flags, более строгий OF score для short и требование relative-weakness confirmation для short-входов.
+  - Gate: новая TPB-статистика должна оцениваться отдельно по `strategy_logic_version=tpb_cost_guard_v2`; старый legacy TPB не использовать для paper promotion.
 - `[x]` P6-19 Monthly target economics report.
   - Причина: цель `+10%/мес` должна проверяться математически через Avg R, частоту сделок, риск на сделку и evidence maturity, а не через ощущение по PnL.
   - Готово: добавлен `/monthly-target-plan`, который считает target R/month, projected monthly return, required Avg R at current frequency и blockers по каждой стратегии.

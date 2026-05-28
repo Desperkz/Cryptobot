@@ -1388,6 +1388,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
+    "TREND_PULLBACK": "tpb_cost_guard_v2",
 }
 
 
@@ -1406,6 +1407,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     if strategy not in {
         "SQUEEZE_BREAKOUT_DYNAMIC",
         "LIQUIDITY_SWEEP_REVERSAL",
+        "TREND_PULLBACK",
         "VWAP_REVERSION",
         "VWAP_REVERSION_WATCH",
         "RANGE_GRID",
@@ -1443,6 +1445,32 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
         if alignment == "against" or score < Decimal("0.70"):
             return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
+    elif strategy == "TREND_PULLBACK":
+        toxic_symbols = {"DOGEUSDT", "LTCUSDT"}
+        if signal.symbol in toxic_symbols:
+            return f"TPB shadow blocked: {signal.symbol} is in the TPB retest quarantine list."
+        hard_flags = {
+            "adverse_liquidity_nearby",
+            "taker_flow_against",
+            "book_imbalance_against",
+            "aggressive_delta_against",
+            "structure_break_against",
+            "liquidation_cascade",
+        }
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return f"TPB shadow blocked: hostile continuation flow ({flags})."
+        if alignment != "aligned":
+            return f"TPB shadow blocked: continuation needs aligned order-flow, got {alignment}."
+        min_score = Decimal("0.62") if signal.direction == Direction.SHORT else Decimal("0.55")
+        if score < min_score:
+            return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
+        relative_strength = (signal.metadata or {}).get("relative_strength")
+        rs_alignment = ""
+        if isinstance(relative_strength, dict):
+            rs_alignment = str(relative_strength.get("alignment") or "")
+        if signal.direction == Direction.SHORT and rs_alignment in {"against", "unknown"}:
+            return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment}."
     elif strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
         dangerous_flags = {
             "adverse_liquidity_nearby",
