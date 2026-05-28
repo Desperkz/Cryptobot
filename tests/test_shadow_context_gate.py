@@ -59,6 +59,12 @@ def test_lsr_shadow_context_blocks_weak_order_flow() -> None:
     assert "not strong enough" in reason
 
 
+def test_lsr_shadow_context_allows_research_follow_through_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal("LIQUIDITY_SWEEP_REVERSAL", order_flow(score="0.68"))
+    ) is None
+
+
 def test_vwr_watch_shadow_context_blocks_dangerous_liquidity_flags() -> None:
     reason = _shadow_candidate_context_rejection_reason(
         signal("VWAP_REVERSION_WATCH", order_flow(score="0.80", flags=["liquidation_cascade"]))
@@ -70,11 +76,17 @@ def test_vwr_watch_shadow_context_blocks_dangerous_liquidity_flags() -> None:
 
 def test_vwap_shadow_context_requires_clean_reversion_flow() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("VWAP_REVERSION", order_flow(score="0.58"))
+        signal("VWAP_REVERSION", order_flow(score="0.38"))
     )
 
     assert reason is not None
     assert "not clean enough" in reason
+
+
+def test_vwap_watch_shadow_allows_research_sample_with_nearby_liquidity() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal("VWAP_REVERSION_WATCH", order_flow(score="0.46", flags=["adverse_liquidity_nearby"]))
+    ) is None
 
 
 def test_grid_shadow_context_blocks_against_order_flow() -> None:
@@ -88,11 +100,17 @@ def test_grid_shadow_context_blocks_against_order_flow() -> None:
 
 def test_grid_shadow_context_blocks_dangerous_range_edge_flags() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("RANGE_GRID", order_flow(alignment="aligned", score="0.68", flags=["adverse_liquidity_nearby"]))
+        signal("RANGE_GRID", order_flow(alignment="aligned", score="0.68", flags=["structure_break_against"]))
     )
 
     assert reason is not None
     assert "dangerous range-edge flow" in reason
+
+
+def test_grid_shadow_context_allows_research_sample_with_minor_flow_flags() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal("RANGE_GRID", order_flow(alignment="aligned", score="0.34", flags=["adverse_liquidity_nearby"]))
+    ) is None
 
 
 def test_sqz_dynamic_shadow_blocks_order_flow_against_breakout() -> None:

@@ -374,6 +374,8 @@
   - Готово: добавлен pre-entry `ORDER_FLOW` gate для SQZ/SQZ-DYN, LSR, VWR/VWR-W и GRID; hostile flow теперь блокирует вход, а не только уменьшает размер.
   - Готово: SQZ retest стал строже (`tolerance_atr=0.25`, `rejection_body_atr=0.10`), чтобы меньше входить в выдохшийся пробой.
   - Готово: после деградации TPB (`27` shadow trades, PF `0.80`, Avg R `-0.12`) добавлен `tpb_cost_guard_v2`: quarantine для токсичных TPB symbols `DOGEUSDT/LTCUSDT`, запрет `mixed` OF, запрет hostile continuation flags, более строгий OF score для short и требование relative-weakness confirmation для short-входов.
+  - Готово: после проверки молчащих shadow-стратегий research-гейты разделены на `paper/live safety` и `shadow evidence collection`: `LSR`, `VWR/VWR-W` и `GRID` снова могут открывать shadow-paper сделки при умеренном OF, но hard toxic flags остаются блокирующими.
+  - Готово: `TREND_FOLLOWING` получил shadow-only research relaxation: ниже edge/volume/ATR пороги и разрешение неполного 1h trend confirmation, чтобы набрать первичную выборку без включения в paper/live.
   - Gate: новая TPB-статистика должна оцениваться отдельно по `strategy_logic_version=tpb_cost_guard_v2`; старый legacy TPB не использовать для paper promotion.
 - `[x]` P6-19 Monthly target economics report.
   - Причина: цель `+10%/мес` должна проверяться математически через Avg R, частоту сделок, риск на сделку и evidence maturity, а не через ощущение по PnL.
@@ -445,10 +447,10 @@
   - Почему отложено: TPB выглядит перспективно, но выборка еще недостаточна для перевода в paper без риска переобучиться на коротком удачном отрезке.
   - Вернуться к задаче, когда: `TREND_PULLBACK` наберет минимум 30 закрытых post-P5 shadow-paper clusters, PF >= 1.30, Avg R >= +0.15, max drawdown лучше -10%, без серии одинаковых стопов по одному symbol.
   - Действие при выполнении условия: включить limited paper-trial на 30 дней с отдельным allocation/risk cap, не переводить в live.
-- `[ ]` D-02 Ослаблять или перенастраивать `TREND_FOLLOWING`.
-  - Почему отложено: стратегия теперь пишет детальную диагностику, но нужно накопить свежую статистику по конкретным подпричинам структуры вместо старого общего `no_trend_structure`.
-  - Вернуться к задаче, когда: накопится минимум сутки свежих `STRATEGY_DIAGNOSTIC` по текущему universe после деплоя детальной P4-13 диагностики.
-  - Действие при выполнении условия: менять только самый частый доказанный blocker, а не ослаблять все фильтры сразу.
+- `[x]` D-02 Ослаблять или перенастраивать `TREND_FOLLOWING`.
+  - Причина: после суток диагностики стратегия имела `0` signals; основные blockers были `edge_below_min`, неполный 1h EMA/structure confirmation и слишком высокий shadow volume/ATR threshold.
+  - Готово: ослабление применено только для `shadow` режима; paper/live не получают relaxed trend-following entries.
+  - Следующий контроль: если новая shadow-выборка покажет отрицательный post-cost Avg R/PF, вернуть `TREND_FOLLOWING` в disabled/research-only quarantine.
 - `[ ]` D-03 Destructive chaos scenarios для P3-03.
   - Почему отложено: reboot VPS, network break и принудительные stale stream сценарии могут временно нарушить работу paper-ботов.
   - Вернуться к задаче, когда: пользователь явно разрешит окно технических работ или появится отдельная testnet/staging VPS.

@@ -1389,6 +1389,11 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
     "TREND_PULLBACK": "tpb_cost_guard_v2",
+    "LIQUIDITY_SWEEP_REVERSAL": "lsr_research_gate_v2",
+    "VWAP_REVERSION": "vwr_research_gate_v2",
+    "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
+    "RANGE_GRID": "grid_research_gate_v2",
+    "TREND_FOLLOWING": "trend_following_research_v2",
 }
 
 
@@ -1443,7 +1448,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     elif strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:
             return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
-        if alignment == "against" or score < Decimal("0.70"):
+        if alignment == "against" or score < Decimal("0.65"):
             return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
     elif strategy == "TREND_PULLBACK":
         toxic_symbols = {"DOGEUSDT", "LTCUSDT"}
@@ -1473,7 +1478,6 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment}."
     elif strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
         dangerous_flags = {
-            "adverse_liquidity_nearby",
             "liquidation_cascade",
             "structure_break_against",
             "aggressive_delta_against",
@@ -1481,14 +1485,11 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(dangerous_flags):
             flags = ",".join(sorted(risk_flags))
             return f"{strategy} shadow blocked: dangerous liquidity context ({flags})."
-        if alignment == "against" or score < Decimal("0.62"):
+        min_score = Decimal("0.45") if strategy == "VWAP_REVERSION" else Decimal("0.40")
+        if alignment == "against" or score < min_score:
             return f"{strategy} shadow blocked: order-flow is not clean enough for reversion, score {score:.2f}."
     elif strategy == "RANGE_GRID":
         dangerous_flags = {
-            "adverse_liquidity_nearby",
-            "book_imbalance_against",
-            "taker_flow_against",
-            "aggressive_delta_against",
             "structure_break_against",
             "absorption_against",
             "liquidation_cascade",
@@ -1498,8 +1499,10 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"GRID shadow blocked: dangerous range-edge flow ({flags})."
         if alignment == "against":
             return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
-        if alignment == "mixed" and score < Decimal("0.55"):
+        if alignment == "mixed" and score < Decimal("0.42"):
             return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
+        if alignment == "aligned" and score < Decimal("0.30"):
+            return f"GRID shadow blocked: aligned order-flow is too weak for range fade, score {score:.2f}."
     return None
 
 
