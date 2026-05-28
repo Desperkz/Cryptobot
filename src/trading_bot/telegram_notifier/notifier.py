@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import time
 from typing import Any
 
@@ -30,9 +31,15 @@ class TelegramNotifier:
         self._consecutive_failures = 0
         self._next_attempt_at = 0.0
         self._last_failure_log_at = 0.0
+        self._pending_tasks: set[asyncio.Task] = set()
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout_sec))
 
     async def close(self) -> None:
+        if self._pending_tasks:
+            pending = list(self._pending_tasks)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
         await self._client.aclose()
 
     async def send(self, text: str, **metadata: Any) -> None:
@@ -41,6 +48,12 @@ class TelegramNotifier:
         now = time.monotonic()
         if now < self._next_attempt_at:
             return
+        task = asyncio.create_task(self._send_now(text, metadata))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _send_now(self, text: str, metadata: dict[str, Any]) -> None:
+        now = time.monotonic()
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
@@ -62,8 +75,10 @@ class TelegramNotifier:
             self._next_attempt_at = now + backoff
             if now - self._last_failure_log_at >= self.failure_log_cooldown_sec:
                 self._last_failure_log_at = now
+                label = str(metadata.get("label") or text[:80]).replace("\n", " ")
                 logger.warning(
-                    "Telegram send failed; backing off %.0fs after %s consecutive failures: %r",
+                    "Telegram send failed for %s; backing off %.0fs after %s consecutive failures: %r",
+                    label,
                     backoff,
                     self._consecutive_failures,
                     exc,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -47,6 +49,7 @@ async def test_telegram_failure_enters_backoff_and_skips_immediate_retry() -> No
     notifier._client = client
 
     await notifier.send("first")
+    await asyncio.sleep(0)
     await notifier.send("second")
 
     assert client.posts == 1
@@ -63,8 +66,8 @@ async def test_telegram_success_resets_failure_backoff() -> None:
     notifier._next_attempt_at = 0
 
     await notifier.send("ok")
+    await asyncio.sleep(0)
 
     assert client.posts == 1
     assert notifier._consecutive_failures == 0
     assert notifier._next_attempt_at == 0
-
