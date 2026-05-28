@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -9,17 +10,36 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
-    def __init__(self, token: str | None, chat_id: str | None, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        token: str | None,
+        chat_id: str | None,
+        enabled: bool = True,
+        *,
+        timeout_sec: float = 3.0,
+        failure_backoff_base_sec: float = 60.0,
+        failure_backoff_max_sec: float = 600.0,
+        failure_log_cooldown_sec: float = 300.0,
+    ) -> None:
         self.token = token
         self.chat_id = chat_id
         self.enabled = enabled and bool(token and chat_id)
-        self._client = httpx.AsyncClient(timeout=10)
+        self.failure_backoff_base_sec = failure_backoff_base_sec
+        self.failure_backoff_max_sec = failure_backoff_max_sec
+        self.failure_log_cooldown_sec = failure_log_cooldown_sec
+        self._consecutive_failures = 0
+        self._next_attempt_at = 0.0
+        self._last_failure_log_at = 0.0
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout_sec))
 
     async def close(self) -> None:
         await self._client.aclose()
 
     async def send(self, text: str, **metadata: Any) -> None:
         if not self.enabled:
+            return
+        now = time.monotonic()
+        if now < self._next_attempt_at:
             return
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         payload = {
@@ -31,8 +51,23 @@ class TelegramNotifier:
         try:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
+            self._consecutive_failures = 0
+            self._next_attempt_at = 0.0
         except Exception as exc:
-            logger.warning("Telegram send failed: %s", exc)
+            self._consecutive_failures += 1
+            backoff = min(
+                self.failure_backoff_max_sec,
+                self.failure_backoff_base_sec * self._consecutive_failures,
+            )
+            self._next_attempt_at = now + backoff
+            if now - self._last_failure_log_at >= self.failure_log_cooldown_sec:
+                self._last_failure_log_at = now
+                logger.warning(
+                    "Telegram send failed; backing off %.0fs after %s consecutive failures: %r",
+                    backoff,
+                    self._consecutive_failures,
+                    exc,
+                )
 
     async def startup(self, mode: str) -> None:
         mode_ru = {
