@@ -376,6 +376,8 @@
   - Готово: после деградации TPB (`27` shadow trades, PF `0.80`, Avg R `-0.12`) добавлен `tpb_cost_guard_v2`: quarantine для токсичных TPB symbols `DOGEUSDT/LTCUSDT`, запрет `mixed` OF, запрет hostile continuation flags, более строгий OF score для short и требование relative-weakness confirmation для short-входов.
   - Готово: после проверки молчащих shadow-стратегий research-гейты разделены на `paper/live safety` и `shadow evidence collection`: `LSR`, `VWR/VWR-W` и `GRID` снова могут открывать shadow-paper сделки при умеренном OF, но hard toxic flags остаются блокирующими.
   - Готово: `TREND_FOLLOWING` получил shadow-only research relaxation: ниже edge/volume/ATR пороги и разрешение неполного 1h trend confirmation, чтобы набрать первичную выборку без включения в paper/live.
+  - Готово: после 3/3 TF shadow stop-loss (`-36.26 USDT`, Avg R `-1.007`) добавлен `trend_following_research_v3`: TF shadow теперь требует relative strength/weakness confirmation, strong aligned OF, minimum ATR `0.35%`, и не входит, если целевая ликвидность уже ближе `12 bps`.
+  - Готово: TF shadow risk cap снижен с `1.2%` до `0.6%`, пока стратегия не докажет post-cost edge.
   - Gate: новая TPB-статистика должна оцениваться отдельно по `strategy_logic_version=tpb_cost_guard_v2`; старый legacy TPB не использовать для paper promotion.
 - `[x]` P6-19 Monthly target economics report.
   - Причина: цель `+10%/мес` должна проверяться математически через Avg R, частоту сделок, риск на сделку и evidence maturity, а не через ощущение по PnL.
@@ -450,7 +452,9 @@
 - `[x]` D-02 Ослаблять или перенастраивать `TREND_FOLLOWING`.
   - Причина: после суток диагностики стратегия имела `0` signals; основные blockers были `edge_below_min`, неполный 1h EMA/structure confirmation и слишком высокий shadow volume/ATR threshold.
   - Готово: ослабление применено только для `shadow` режима; paper/live не получают relaxed trend-following entries.
-  - Следующий контроль: если новая shadow-выборка покажет отрицательный post-cost Avg R/PF, вернуть `TREND_FOLLOWING` в disabled/research-only quarantine.
+  - Готово: первый post-relaxation TF срез показал 3 закрытых SHORT shadow-сделки и 3 стопа; причина - вход в хвост downside-импульса без BTC/relative-weakness benchmark и слишком близко к downside liquidity.
+  - Готово: `trend_following_research_v3` ужесточил TF shadow gate по RS/OF/ATR/target-liquidity и снизил max risk cap до `0.6%`.
+  - Следующий контроль: оценивать только новую `strategy_logic_version=trend_following_research_v3`; если она снова даст отрицательный post-cost Avg R/PF на 10+ закрытых clusters, перевести `TREND_FOLLOWING` в disabled/research-only quarantine.
 - `[ ]` D-03 Destructive chaos scenarios для P3-03.
   - Почему отложено: reboot VPS, network break и принудительные stale stream сценарии могут временно нарушить работу paper-ботов.
   - Вернуться к задаче, когда: пользователь явно разрешит окно технических работ или появится отдельная testnet/staging VPS.

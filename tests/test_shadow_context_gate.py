@@ -179,5 +179,66 @@ def test_tpb_shadow_allows_clean_long_continuation() -> None:
     ) is None
 
 
+def test_trend_following_shadow_blocks_short_without_relative_weakness() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_FOLLOWING",
+            order_flow(alignment="aligned", score="0.86"),
+            relative_strength={"alignment": "unknown"},
+        )
+    )
+
+    assert reason is not None
+    assert "relative-weakness confirmation" in reason
+
+
+def test_trend_following_shadow_blocks_too_close_target_liquidity() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.86"),
+        "liquidity_side": "downside",
+        "distance_to_lower_liquidity_bps": "5.4",
+    }
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_FOLLOWING",
+            flow,
+            relative_strength={"alignment": "aligned"},
+        )
+    )
+
+    assert reason is not None
+    assert "liquidity is already too close" in reason
+
+
+def test_trend_following_shadow_blocks_low_atr_continuation() -> None:
+    trend_signal = signal(
+        "TREND_FOLLOWING",
+        order_flow(alignment="aligned", score="0.86"),
+        relative_strength={"alignment": "aligned"},
+    )
+    trend_signal.metadata["atr_pct"] = "0.31"
+
+    reason = _shadow_candidate_context_rejection_reason(trend_signal)
+
+    assert reason is not None
+    assert "ATR" in reason
+
+
+def test_trend_following_shadow_allows_clean_continuation_sample() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.86"),
+        "liquidity_side": "downside",
+        "distance_to_lower_liquidity_bps": "25",
+    }
+    trend_signal = signal(
+        "TREND_FOLLOWING",
+        flow,
+        relative_strength={"alignment": "aligned"},
+    )
+    trend_signal.metadata["atr_pct"] = "0.48"
+
+    assert _shadow_candidate_context_rejection_reason(trend_signal) is None
+
+
 def test_shadow_context_gate_ignores_non_candidate_strategy() -> None:
     assert _shadow_candidate_context_rejection_reason(signal("SQUEEZE_BREAKOUT", order_flow(alignment="against"))) is None

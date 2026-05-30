@@ -316,7 +316,7 @@ class RiskConfig:
             "VWAP_REVERSION_WATCH": Decimal("0.012"),
             "MOMENTUM_CONTINUATION": Decimal("0.016"),
             "RANGE_GRID": Decimal("0.006"),
-            "TREND_FOLLOWING": Decimal("0.012"),
+            "TREND_FOLLOWING": Decimal("0.006"),
         }
     )
     realtime_correlation_enabled: bool = True

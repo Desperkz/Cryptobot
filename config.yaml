@@ -247,7 +247,7 @@ risk:
     VWAP_REVERSION_WATCH: 0.012
     MOMENTUM_CONTINUATION: 0.016
     RANGE_GRID: 0.006
-    TREND_FOLLOWING: 0.012
+    TREND_FOLLOWING: 0.006
   realtime_correlation_enabled: true
   realtime_correlation_threshold: 0.70
   realtime_correlation_lookback: 48

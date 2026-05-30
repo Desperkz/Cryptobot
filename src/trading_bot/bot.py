@@ -1393,7 +1393,7 @@ STRATEGY_LOGIC_VERSIONS = {
     "VWAP_REVERSION": "vwr_research_gate_v2",
     "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
     "RANGE_GRID": "grid_research_gate_v2",
-    "TREND_FOLLOWING": "trend_following_research_v2",
+    "TREND_FOLLOWING": "trend_following_research_v3",
 }
 
 
@@ -1416,6 +1416,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         "VWAP_REVERSION",
         "VWAP_REVERSION_WATCH",
         "RANGE_GRID",
+        "TREND_FOLLOWING",
     }:
         return None
 
@@ -1503,6 +1504,39 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
         if alignment == "aligned" and score < Decimal("0.30"):
             return f"GRID shadow blocked: aligned order-flow is too weak for range fade, score {score:.2f}."
+    elif strategy == "TREND_FOLLOWING":
+        hard_flags = {
+            "taker_flow_against",
+            "aggressive_delta_against",
+            "book_imbalance_against",
+            "structure_break_against",
+            "liquidation_cascade",
+        }
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return f"TF shadow blocked: hostile trend-following flow ({flags})."
+        if alignment != "aligned" or score < Decimal("0.74"):
+            return f"TF shadow blocked: trend continuation needs strong aligned order-flow, got {alignment} {score:.2f}."
+        relative_strength = (signal.metadata or {}).get("relative_strength")
+        rs_alignment = ""
+        if isinstance(relative_strength, dict):
+            rs_alignment = str(relative_strength.get("alignment") or "")
+        if signal.direction == Direction.SHORT and rs_alignment != "aligned":
+            return f"TF shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
+        if signal.direction == Direction.LONG and rs_alignment != "aligned":
+            return f"TF shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
+        atr_pct = _optional_decimal((signal.metadata or {}).get("atr_pct"))
+        if atr_pct is not None and atr_pct < Decimal("0.35"):
+            return f"TF shadow blocked: ATR {atr_pct:.2f}% is too low for trend continuation."
+        liquidity_side = str(order_flow.get("liquidity_side") or "")
+        if signal.direction == Direction.SHORT and liquidity_side == "downside":
+            distance = _optional_decimal(order_flow.get("distance_to_lower_liquidity_bps"))
+            if distance is not None and distance <= Decimal("12"):
+                return f"TF shadow blocked: downside liquidity is already too close ({distance:.1f} bps)."
+        if signal.direction == Direction.LONG and liquidity_side == "upside":
+            distance = _optional_decimal(order_flow.get("distance_to_upper_liquidity_bps"))
+            if distance is not None and distance <= Decimal("12"):
+                return f"TF shadow blocked: upside liquidity is already too close ({distance:.1f} bps)."
     return None
 
 
