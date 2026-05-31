@@ -464,7 +464,6 @@ class SqueezeBreakoutStrategy:
         retest_required = bool(
             self.config.squeeze_retest_enabled
             and is_release
-            and release_offset >= self.config.squeeze_retest_required_after_release_offset
         )
         if retest_required and not retest_confirmed:
             return None

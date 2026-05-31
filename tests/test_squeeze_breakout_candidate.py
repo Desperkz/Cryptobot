@@ -112,9 +112,9 @@ def patch_squeeze(monkeypatch, candles_1h: list[Candle], *, release: bool = True
     monkeypatch.setattr(squeeze, "atr", lambda items, period: [1.0] * len(items))
 
 
-def test_squeeze_champion_accepts_release_with_structural_breakout(monkeypatch) -> None:
-    candles_1h = candles(80)
-    patch_squeeze(monkeypatch, candles_1h, release=True)
+def test_squeeze_champion_accepts_release_with_retest_confirmation(monkeypatch) -> None:
+    candles_1h = candles(80, release_offset=1, release_volume="220")
+    patch_squeeze(monkeypatch, candles_1h, release=True, release_offset=1)
 
     signal = SqueezeBreakoutStrategy(strategy_config(), FakeRegimeDetector()).generate(
         "BTCUSDT",
@@ -128,7 +128,8 @@ def test_squeeze_champion_accepts_release_with_structural_breakout(monkeypatch) 
     assert signal.direction == Direction.LONG
     assert signal.metadata["strategy"] == "SQUEEZE_BREAKOUT"
     assert signal.metadata["squeeze_entry_timing"] == "release_followthrough"
-    assert signal.metadata["squeeze_retest_required"] is False
+    assert signal.metadata["squeeze_retest_required"] is True
+    assert signal.metadata["squeeze_retest_confirmed"] is True
     assert Decimal(signal.metadata["breakout_atr"]) >= Decimal("0.03")
     assert Decimal(signal.metadata["rr"]) == Decimal("2.0")
 
