@@ -110,7 +110,7 @@ strategy:
   mean_reversion_expected_winrate_floor: 0.48
   mean_reversion_min_volume_ratio: 1.05
   mean_reversion_min_edge_score: 0.40
-  mean_reversion_min_confluence: 4
+  mean_reversion_min_confluence: 3
   mean_reversion_require_divergence: true
   mean_reversion_require_edge_confirmation: true
   mean_reversion_btc_direction_gate_enabled: true
@@ -135,7 +135,7 @@ strategy:
   vwap_reversion_deviation_atr: 4.50
   vwap_reversion_max_deviation_atr: 6.00
   vwap_reversion_min_volume_ratio: 1.35
-  vwap_reversion_watch_deviation_atr: 1.80
+  vwap_reversion_watch_deviation_atr: 1.60
   vwap_reversion_watch_max_deviation_atr: 8.00
   vwap_reversion_watch_min_volume_ratio: 1.05
   vwap_reversion_min_progress_atr: 0.80
