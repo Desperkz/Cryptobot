@@ -11,6 +11,7 @@ import secrets
 import socketserver
 import sqlite3
 import subprocess
+import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,6 +49,8 @@ STRATEGY_GATE_DEFAULTS = {
     "max_drawdown": float(os.getenv("STRATEGY_GATE_MAX_DRAWDOWN", "-10")),
 }
 SCORECARD_CLUSTER_WINDOW_MINUTES = int(os.getenv("SCORECARD_CLUSTER_WINDOW_MINUTES", "60"))
+SCORECARD_CACHE_SECONDS = float(os.getenv("SCORECARD_CACHE_SECONDS", "10"))
+SCORECARD_DIAGNOSTIC_LIMIT = int(os.getenv("SCORECARD_DIAGNOSTIC_LIMIT", "5000"))
 SHADOW_GATE_DEFAULTS = {
     "min_closed_trades": int(os.getenv("SHADOW_GATE_MIN_CLOSED_TRADES", "30")),
     "min_sample_age_days": float(os.getenv("SHADOW_GATE_MIN_SAMPLE_AGE_DAYS", "3")),
@@ -56,6 +59,8 @@ SHADOW_GATE_DEFAULTS = {
     "min_avg_r": float(os.getenv("SHADOW_GATE_MIN_AVG_R", "0")),
     "max_drawdown": float(os.getenv("SHADOW_GATE_MAX_DRAWDOWN", "-10")),
 }
+_SCORECARD_CACHE_LOCK = threading.Lock()
+_SCORECARD_CACHE: dict[str, Any] = {"expires_at": 0.0, "data": None}
 ALLOCATOR_WEIGHT_CAPS = {
     "CORE_CANDIDATE": float(os.getenv("ALLOCATOR_CORE_CAP_PCT", "60")),
     "CHAMPION_WATCH": float(os.getenv("ALLOCATOR_CHAMPION_WATCH_CAP_PCT", "45")),
@@ -2753,6 +2758,12 @@ def _summarize_order_flow(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def api_strategy_scorecard() -> dict:
+    now_monotonic = time.monotonic()
+    with _SCORECARD_CACHE_LOCK:
+        cached = _SCORECARD_CACHE.get("data")
+        if cached is not None and now_monotonic < float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0):
+            return cached
+
     try:
         conn = get_db()
         ensure_shadow_trades_table(conn)
@@ -2782,10 +2793,15 @@ def api_strategy_scorecard() -> dict:
         """).fetchall()
         diagnostics = conn.execute("""
             SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata
-            FROM ml_feature_snapshots
-            WHERE decision IN ('STRATEGY_DIAGNOSTIC', 'ORDER_FLOW_ANNOTATION', 'RELATIVE_STRENGTH_ANNOTATION')
+            FROM (
+                SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata, id
+                FROM ml_feature_snapshots
+                WHERE decision IN ('STRATEGY_DIAGNOSTIC', 'ORDER_FLOW_ANNOTATION', 'RELATIVE_STRENGTH_ANNOTATION')
+                ORDER BY id DESC
+                LIMIT ?
+            )
             ORDER BY id ASC
-        """).fetchall()
+        """, (SCORECARD_DIAGNOSTIC_LIMIT,)).fetchall()
         conn.close()
 
         open_symbols = sorted({
@@ -2806,6 +2822,14 @@ def api_strategy_scorecard() -> dict:
             strategy_modes=config.get("strategy_modes", {}),
         )
         scorecard["generated_at"] = datetime.now(timezone.utc).isoformat()
+        scorecard["diagnostics_scope"] = {
+            "limit": SCORECARD_DIAGNOSTIC_LIMIT,
+            "loaded": len(diagnostics),
+            "note": "recent diagnostics only to keep dashboard memory bounded",
+        }
+        with _SCORECARD_CACHE_LOCK:
+            _SCORECARD_CACHE["data"] = scorecard
+            _SCORECARD_CACHE["expires_at"] = time.monotonic() + SCORECARD_CACHE_SECONDS
         return scorecard
     except Exception as e:
         return {"error": str(e)}
@@ -3033,7 +3057,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Authorization, X-Bot-Control-Token, Content-Type")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            return
 
     def _send_bytes(self, body: bytes, content_type: str, status=200):
         self.send_response(status)
@@ -3042,7 +3069,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Authorization, X-Bot-Control-Token, Content-Type")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            return
 
     def _send_dashboard(self):
         path = Path(DASHBOARD_PATH)
