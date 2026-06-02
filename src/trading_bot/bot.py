@@ -22,7 +22,7 @@ from trading_bot.market_universe import MarketUniverseBuilder
 from trading_bot.market_filters import MarketEntryFilter
 from trading_bot.ml import MLSignalFilter
 from trading_bot.models import Candle, Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
-from trading_bot.operational import IncidentAlerter, SystemdNotifier
+from trading_bot.operational import IncidentAlerter, SystemdNotifier, start_watchdog_thread
 from trading_bot.order_manager import OrderManager
 from trading_bot.position_manager import PositionManager
 from trading_bot.risk_manager import (
@@ -144,6 +144,7 @@ class TradingBot:
         self.systemd = SystemdNotifier()
         self._emergency_actions_applied = False
         self._strategy_diagnostic_seen: dict[tuple[str, str, str], float] = {}
+        self._watchdog_stop = False
 
     async def start(self) -> None:
         warnings = self.config.validate()
@@ -248,7 +249,14 @@ class TradingBot:
 
     async def run_forever(self) -> None:
         await self.start()
-        self.systemd.ready()
+        self._watchdog_stop = False
+        watchdog_thread = start_watchdog_thread(
+            "trading-bot-v2-1 running",
+            interval_sec=20.0,
+            stop_when=lambda: self._watchdog_stop,
+        )
+        if watchdog_thread is None:
+            self.systemd.ready()
         try:
             while True:
                 self.systemd.watchdog("trading-bot-v2-1 running")
@@ -263,6 +271,7 @@ class TradingBot:
                 await self.run_cycle()
                 await asyncio.sleep(self.config.trading.poll_interval_sec)
         finally:
+            self._watchdog_stop = True
             await self.stop()
 
     async def run_cycle(self) -> None:
