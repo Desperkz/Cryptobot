@@ -164,6 +164,20 @@ def relative_strength_row(
     }
 
 
+def shadow_decision_row(strategy: str, decision: str, reason: str, symbol: str = "BTCUSDT") -> dict[str, str]:
+    return {
+        "symbol": symbol,
+        "direction": "LONG",
+        "strategy": strategy,
+        "confidence": "0.7",
+        "decision": decision,
+        "reason": reason,
+        "features": json.dumps({}),
+        "metadata": json.dumps({"strategy": strategy}),
+        "created_at": "2026-01-01 00:09:00",
+    }
+
+
 def shadow_trade(
     *,
     strategy: str,
@@ -527,6 +541,49 @@ def test_scorecard_summarizes_relative_strength_annotations() -> None:
     assert relative_strength["avg_score"] == 0.55
     assert relative_strength["by_alignment"] == {"aligned": 1, "against": 1}
     assert relative_strength["top_symbols"] == {"BTCUSDT": 1, "ETHUSDT": 1}
+
+
+def test_scorecard_summarizes_shadow_signal_funnel() -> None:
+    scorecard = build_strategy_scorecard(
+        [],
+        [],
+        [],
+        [],
+        [
+            shadow_decision_row(
+                "TREND_PULLBACK",
+                "SHADOW_SIGNAL",
+                "candidate strategy shadow-only; no order attempted",
+            ),
+            shadow_decision_row(
+                "TREND_PULLBACK",
+                "SHADOW_PAPER_REJECTED_CONTEXT",
+                "TPB shadow blocked: continuation needs aligned order-flow, got mixed.",
+            ),
+            shadow_decision_row(
+                "TREND_PULLBACK",
+                "SHADOW_PAPER_REJECTED_COOLDOWN",
+                "BTCUSDT TREND_PULLBACK re-entry cooldown is active.",
+            ),
+            shadow_decision_row(
+                "TREND_PULLBACK",
+                "SHADOW_PAPER_OPENED",
+                "virtual shadow-paper trade opened; no real/paper order attempted",
+            ),
+        ],
+        initial_equity=1000,
+        strategy_modes={"TREND_PULLBACK": "shadow"},
+    )
+
+    funnel = by_strategy(scorecard, "TREND_PULLBACK")["candidate_evidence"]["shadow_funnel"]
+
+    assert funnel["signals"] == 1
+    assert funnel["context_rejections"] == 1
+    assert funnel["cooldown_rejections"] == 1
+    assert funnel["risk_rejections"] == 0
+    assert funnel["opened"] == 1
+    assert funnel["open_rate"] == 100.0
+    assert funnel["rejected_by_reason"]["TPB shadow blocked: continuation needs aligned order-flow, got mixed."] == 1
 
 
 def test_scorecard_summarizes_shadow_paper_without_polluting_real_pnl() -> None:

@@ -822,13 +822,13 @@ canvas { width: 100%; display: block; }
       <table class="tr-table sc-table">
         <thead>
           <tr>
-            <th>Стратегия</th><th>Gate</th><th>P5</th><th>Shadow Gate</th><th>Policy</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
+            <th>Стратегия</th><th>Gate</th><th>P5</th><th>Shadow Gate</th><th>Funnel</th><th>Policy</th><th>OF</th><th>Сделки</th><th>Класт.</th><th>Откр.</th><th>PnL</th>
             <th>Alloc</th><th>Win</th><th>PF</th><th>Avg R</th><th>DD</th>
             <th>Частота</th><th>Отказы</th><th>Символы</th><th>Последняя</th>
           </tr>
         </thead>
         <tbody id="sc-body">
-          <tr><td colspan="19" class="empty">Нет данных по стратегиям</td></tr>
+          <tr><td colspan="20" class="empty">Нет данных по стратегиям</td></tr>
         </tbody>
       </table>
     </div>
@@ -1152,7 +1152,7 @@ async function loadStrategyScorecard() {
     document.getElementById('sc-total').textContent =
       `${summary.strategies || 0} стратегий · P5 ${summary.post_p5_closed_trade_clusters || 0}/${summary.closed_trade_clusters || summary.closed_trades || 0} кл. · ${summary.closed_trades || 0} сдел.`;
     if (!rows.length) {
-      setHTML('sc-body', '<tr><td colspan="19" class="empty">Нет данных по стратегиям</td></tr>');
+      setHTML('sc-body', '<tr><td colspan="20" class="empty">Нет данных по стратегиям</td></tr>');
       return;
     }
     setHTML('sc-body', rows.map(s => {
@@ -1189,6 +1189,30 @@ async function loadStrategyScorecard() {
       const sgLabel = sgStatus === 'PROMOTE' ? 'PROMOTE TO PAPER' : sgStatus;
       const spTrades = (sp.closed_trades || sp.open_trades) ? `SP ${sp.closed_trades || 0}/${sp.open_trades || 0}` : '';
       const spPnl = (sp.closed_trades || sp.open_trades) ? inlinePnl(sp.total_pnl || 0) : '';
+      const funnel = s.candidate_evidence?.shadow_funnel || {};
+      const funnelSignals = Number(funnel.signals || s.shadow_signals || 0);
+      const funnelRejected = Number(funnel.context_rejections || 0)
+        + Number(funnel.cooldown_rejections || 0)
+        + Number(funnel.risk_rejections || 0);
+      const funnelOpened = Number(funnel.opened || 0);
+      const funnelRate = Number(funnel.open_rate || 0);
+      const funnelReasons = Object.entries(funnel.rejected_by_reason || {})
+        .slice(0,3)
+        .map(([k,v]) => `${k}: ${v}`)
+        .join('\n');
+      const funnelTitle = [
+        `shadow signals: ${funnelSignals}`,
+        `context rejects: ${funnel.context_rejections || 0}`,
+        `cooldown rejects: ${funnel.cooldown_rejections || 0}`,
+        `risk rejects: ${funnel.risk_rejections || 0}`,
+        `opened: ${funnelOpened}`,
+        `open rate: ${fmt(funnelRate, 1)}%`,
+        funnelReasons
+      ].filter(Boolean).join('\n');
+      const funnelCls = funnelOpened > 0 ? 'sc-alloc-core' : funnelSignals > 0 ? 'sc-alloc-watch' : 'sc-alloc-research';
+      const funnelHtml = funnelSignals
+        ? `<span class="sc-tag ${funnelCls}" title="${esc(funnelTitle)}">SH ${funnelSignals} / RJ ${funnelRejected} / OP ${funnelOpened}</span>`
+        : '<span class="sc-muted">—</span>';
       const policy = s.promotion_policy || {};
       const policyAction = policy.action || 'KEEP_COLLECTING_EVIDENCE';
       const policyTier = policy.tier || 'UNKNOWN';
@@ -1288,6 +1312,7 @@ async function loadStrategyScorecard() {
         <td><span class="sc-gate sc-gate-${gateStatus}" title="${esc(gateTitle)}">${esc(gateLabel)}${failedChecks.length ? ' ' + failedChecks.length : ''}</span></td>
         <td>${p5Html}</td>
         <td><span class="sc-gate sc-gate-${sgStatus}" title="${esc(sgTitle)}">${esc(sgLabel)}</span></td>
+        <td>${funnelHtml}</td>
         <td>${policyHtml}</td>
         <td>${ofHtml}</td>
         <td>${s.closed_trades || 0}</td>

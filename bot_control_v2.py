@@ -927,6 +927,17 @@ def build_strategy_scorecard(
             "relative_strength_by_alignment": {},
             "relative_strength_symbols": {},
             "last_relative_strength_at": None,
+            "shadow_funnel": {
+                "signals": 0,
+                "context_rejections": 0,
+                "cooldown_rejections": 0,
+                "risk_rejections": 0,
+                "opened": 0,
+                "rejected_by_reason": {},
+                "last_signal_at": None,
+                "last_context_rejection_at": None,
+                "last_opened_at": None,
+            },
             "rejections_total": 0,
             "rejections_by_type": {},
         })
@@ -1028,6 +1039,37 @@ def build_strategy_scorecard(
                 or relative_strength_dt > item["last_relative_strength_at"]
             ):
                 item["last_relative_strength_at"] = relative_strength_dt
+            continue
+        if decision.startswith("SHADOW_"):
+            reason = str(_row_get(diagnostic, "reason", "") or "unknown")
+            shadow_funnel = item["shadow_funnel"]
+            event_dt = _parse_datetime(_row_get(diagnostic, "created_at"))
+            if decision == "SHADOW_SIGNAL":
+                shadow_funnel["signals"] += 1
+                if event_dt and (
+                    shadow_funnel["last_signal_at"] is None or event_dt > shadow_funnel["last_signal_at"]
+                ):
+                    shadow_funnel["last_signal_at"] = event_dt
+            elif decision == "SHADOW_PAPER_REJECTED_CONTEXT":
+                shadow_funnel["context_rejections"] += 1
+                _increment(shadow_funnel["rejected_by_reason"], reason)
+                if event_dt and (
+                    shadow_funnel["last_context_rejection_at"] is None
+                    or event_dt > shadow_funnel["last_context_rejection_at"]
+                ):
+                    shadow_funnel["last_context_rejection_at"] = event_dt
+            elif decision == "SHADOW_PAPER_REJECTED_COOLDOWN":
+                shadow_funnel["cooldown_rejections"] += 1
+                _increment(shadow_funnel["rejected_by_reason"], reason)
+            elif decision == "SHADOW_PAPER_REJECTED_RISK":
+                shadow_funnel["risk_rejections"] += 1
+                _increment(shadow_funnel["rejected_by_reason"], reason)
+            elif decision == "SHADOW_PAPER_OPENED":
+                shadow_funnel["opened"] += 1
+                if event_dt and (
+                    shadow_funnel["last_opened_at"] is None or event_dt > shadow_funnel["last_opened_at"]
+                ):
+                    shadow_funnel["last_opened_at"] = event_dt
             continue
         if decision != "STRATEGY_DIAGNOSTIC":
             continue
@@ -1238,6 +1280,7 @@ def build_strategy_scorecard(
             "strategy_logic_version_breakdown": _strategy_logic_version_breakdown(shadow_closed),
         }
         shadow_gate = evaluate_shadow_gate(shadow_metrics)
+        shadow_funnel = item["shadow_funnel"]
 
         row = {
             "strategy": strategy,
@@ -1299,6 +1342,26 @@ def build_strategy_scorecard(
                         sorted(item["relative_strength_symbols"].items(), key=lambda kv: kv[1], reverse=True)[:5]
                     ),
                     "last_at": _fmt_dt(item["last_relative_strength_at"]),
+                },
+                "shadow_funnel": {
+                    "signals": shadow_funnel["signals"],
+                    "context_rejections": shadow_funnel["context_rejections"],
+                    "cooldown_rejections": shadow_funnel["cooldown_rejections"],
+                    "risk_rejections": shadow_funnel["risk_rejections"],
+                    "opened": shadow_funnel["opened"],
+                    "open_rate": round(shadow_funnel["opened"] / shadow_funnel["signals"] * 100, 1)
+                    if shadow_funnel["signals"]
+                    else 0,
+                    "rejected_by_reason": dict(
+                        sorted(
+                            shadow_funnel["rejected_by_reason"].items(),
+                            key=lambda kv: kv[1],
+                            reverse=True,
+                        )
+                    ),
+                    "last_signal_at": _fmt_dt(shadow_funnel["last_signal_at"]),
+                    "last_context_rejection_at": _fmt_dt(shadow_funnel["last_context_rejection_at"]),
+                    "last_opened_at": _fmt_dt(shadow_funnel["last_opened_at"]),
                 },
             },
             "shadow_paper": shadow_metrics,
@@ -2802,6 +2865,23 @@ def api_strategy_scorecard() -> dict:
             )
             ORDER BY id ASC
         """, (SCORECARD_DIAGNOSTIC_LIMIT,)).fetchall()
+        shadow_diagnostics = conn.execute("""
+            SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata
+            FROM (
+                SELECT symbol, direction, strategy, confidence, decision, reason, created_at, features, metadata, id
+                FROM ml_feature_snapshots
+                WHERE decision IN (
+                    'SHADOW_SIGNAL',
+                    'SHADOW_PAPER_REJECTED_CONTEXT',
+                    'SHADOW_PAPER_REJECTED_COOLDOWN',
+                    'SHADOW_PAPER_REJECTED_RISK',
+                    'SHADOW_PAPER_OPENED'
+                )
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            ORDER BY id ASC
+        """, (SCORECARD_DIAGNOSTIC_LIMIT,)).fetchall()
         conn.close()
 
         open_symbols = sorted({
@@ -2816,7 +2896,7 @@ def api_strategy_scorecard() -> dict:
             list(rejections),
             list(signals),
             list(shadow_trades),
-            list(diagnostics),
+            [*list(diagnostics), *list(shadow_diagnostics)],
             initial_equity=float(config.get("initial_equity_usdt", 1000.0)),
             prices=prices,
             strategy_modes=config.get("strategy_modes", {}),
@@ -2825,6 +2905,7 @@ def api_strategy_scorecard() -> dict:
         scorecard["diagnostics_scope"] = {
             "limit": SCORECARD_DIAGNOSTIC_LIMIT,
             "loaded": len(diagnostics),
+            "shadow_loaded": len(shadow_diagnostics),
             "note": "recent diagnostics only to keep dashboard memory bounded",
         }
         with _SCORECARD_CACHE_LOCK:

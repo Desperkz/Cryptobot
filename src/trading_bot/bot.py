@@ -1451,9 +1451,11 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
-        if alignment == "mixed" and (score < Decimal("0.55") or not retest_confirmed):
+        if alignment == "mixed" and score < Decimal("0.50"):
             return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
-        if alignment == "aligned" and score < Decimal("0.62"):
+        if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
+            return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
+        if alignment == "aligned" and score < Decimal("0.55"):
             return f"SQZ-DYN shadow blocked: aligned flow is too weak, score {score:.2f}."
     elif strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:
@@ -1475,9 +1477,11 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"TPB shadow blocked: hostile continuation flow ({flags})."
-        if alignment != "aligned":
+        if alignment == "against":
             return f"TPB shadow blocked: continuation needs aligned order-flow, got {alignment}."
-        min_score = Decimal("0.62") if signal.direction == Direction.SHORT else Decimal("0.55")
+        min_score = Decimal("0.58") if signal.direction == Direction.SHORT else Decimal("0.52")
+        if alignment == "mixed":
+            min_score += Decimal("0.05")
         if score < min_score:
             return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
@@ -1524,15 +1528,15 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"TF shadow blocked: hostile trend-following flow ({flags})."
-        if alignment != "aligned" or score < Decimal("0.74"):
+        if alignment != "aligned" or score < Decimal("0.68"):
             return f"TF shadow blocked: trend continuation needs strong aligned order-flow, got {alignment} {score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
         rs_alignment = ""
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
-        if signal.direction == Direction.SHORT and rs_alignment != "aligned":
+        if signal.direction == Direction.SHORT and rs_alignment == "against":
             return f"TF shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
-        if signal.direction == Direction.LONG and rs_alignment != "aligned":
+        if signal.direction == Direction.LONG and rs_alignment == "against":
             return f"TF shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
         atr_pct = _optional_decimal((signal.metadata or {}).get("atr_pct"))
         if atr_pct is not None and atr_pct < Decimal("0.35"):

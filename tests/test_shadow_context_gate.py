@@ -124,7 +124,7 @@ def test_sqz_dynamic_shadow_blocks_order_flow_against_breakout() -> None:
 
 def test_sqz_dynamic_shadow_requires_retest_for_mixed_flow() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="mixed", score="0.58"))
+        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="mixed", score="0.56"))
     )
 
     assert reason is not None
@@ -146,13 +146,19 @@ def test_tpb_shadow_blocks_toxic_symbol_from_retest_quarantine() -> None:
     assert "retest quarantine" in reason
 
 
-def test_tpb_shadow_blocks_mixed_order_flow() -> None:
-    reason = _shadow_candidate_context_rejection_reason(
+def test_tpb_shadow_allows_strong_mixed_order_flow_for_research_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
         signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.70"))
+    ) is None
+
+
+def test_tpb_shadow_blocks_weak_mixed_order_flow() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.55"))
     )
 
     assert reason is not None
-    assert "needs aligned order-flow" in reason
+    assert "order-flow score" in reason
 
 
 def test_tpb_shadow_blocks_short_without_relative_weakness_confirmation() -> None:
@@ -179,12 +185,22 @@ def test_tpb_shadow_allows_clean_long_continuation() -> None:
     ) is None
 
 
-def test_trend_following_shadow_blocks_short_without_relative_weakness() -> None:
-    reason = _shadow_candidate_context_rejection_reason(
+def test_trend_following_shadow_allows_unknown_relative_strength_for_research_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
         signal(
             "TREND_FOLLOWING",
             order_flow(alignment="aligned", score="0.86"),
             relative_strength={"alignment": "unknown"},
+        )
+    ) is None
+
+
+def test_trend_following_shadow_blocks_relative_strength_against() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_FOLLOWING",
+            order_flow(alignment="aligned", score="0.86"),
+            relative_strength={"alignment": "against"},
         )
     )
 
