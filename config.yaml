@@ -101,8 +101,8 @@ strategy:
     RANGE_GRID: shadow
     TREND_FOLLOWING: shadow
   mean_reversion_deviation_atr: 2.0
-  mean_reversion_rsi_oversold: 25       # ужесточено с 28 — только экстремальные входы
-  mean_reversion_rsi_overbought: 75     # ужесточено с 72
+  mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
+  mean_reversion_rsi_overbought: 70
   mean_reversion_stop_atr_multiplier: 1.0
   mean_reversion_take_profit_rr: 1.35   # P6-12: выше TP, чтобы комиссии/slippage не съедали матожидание
   mean_reversion_min_net_reward_risk: 1.15
@@ -111,10 +111,10 @@ strategy:
   mean_reversion_min_volume_ratio: 1.05
   mean_reversion_min_edge_score: 0.40
   mean_reversion_min_confluence: 3
-  mean_reversion_require_divergence: true
+  mean_reversion_require_divergence: false
   mean_reversion_require_edge_confirmation: true
   mean_reversion_btc_direction_gate_enabled: true
-  mean_reversion_btc_direction_gate_pct: 0.012
+  mean_reversion_btc_direction_gate_pct: 0.020
   mean_reversion_order_flow_gate_enabled: true
   mean_reversion_min_order_flow_score: 0.25
   trend_pullback_min_volume_ratio: 1.10
@@ -159,12 +159,12 @@ strategy:
   squeeze_release_lookback_bars: 4       # ловим follow-through после release, но только с quality gate
   squeeze_release_min_breakout_atr: 0.03 # close должен выйти из диапазона сжатия
   squeeze_early_min_breakout_atr: 0.10   # ранний build-вход строже, чем release
-  squeeze_early_min_bars_extra: 4
+  squeeze_early_min_bars_extra: 2
   squeeze_early_min_volume_ratio: 1.50
   squeeze_max_extension_atr: 2.40        # не догоняем поздний, уже растянутый пробой
-  squeeze_retest_enabled: true           # late follow-through требует ретест/отбой от диапазона
+  squeeze_retest_enabled: false          # retest повышает confidence, но не блокирует release follow-through
   squeeze_retest_required_after_release_offset: 2
-  squeeze_retest_lookback_bars: 3
+  squeeze_retest_lookback_bars: 5
   squeeze_retest_tolerance_atr: 0.25
   squeeze_retest_min_rejection_body_atr: 0.10
 

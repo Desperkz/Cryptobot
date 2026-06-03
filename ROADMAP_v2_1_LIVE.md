@@ -442,6 +442,14 @@
   - Готово: добавлен research-only `RELATIVE_STRENGTH_ANNOTATION` для paper/shadow signals; слой сравнивает 4h momentum символа с BTC и размечает `aligned`, `neutral`, `against` без блокировки сделок.
   - Готово: `/strategy-scorecard` агрегирует relative-strength evidence по стратегиям: total, average score, alignment breakdown, top symbols и last timestamp.
   - Gate: использовать relative strength как entry filter или allocation booster можно только после post-P5 evidence, что aligned subset имеет лучший Avg R/PF, чем against/neutral subset.
+- `[x]` P7-09 Controlled frequency unlock для SQZ/MR и shadow research.
+  - Причина: после ужесточений bot v2.1 стал слишком редко открывать paper/shadow сделки; цель `10%/мес` требует больше наблюдений без повышения базового риска.
+  - Готово: `SQUEEZE_BREAKOUT` retest больше не является обязательным блокером (`squeeze_retest_enabled=false`), но найденный retest по-прежнему дает confidence bonus.
+  - Готово: `squeeze_retest_lookback_bars=5`, `squeeze_early_min_bars_extra=2`, чтобы увеличить число SQZ-кандидатов без отключения quality/cost gates.
+  - Готово: MR пороги расширены до RSI `30/70`, divergence стала confidence-фактором, а не hard block; `mean_reversion_min_confluence=3`, edge/reversal/order-flow gates сохранены.
+  - Готово: BTC direction gate для MR расширен до `2.0%` за 4h, чтобы блокировать только сильные BTC-импульсы.
+  - Готово: shadow-only контекстные пороги для `TREND_FOLLOWING` и `TREND_PULLBACK` снижены, чтобы стратегии снова набирали research evidence; hard toxic flags не сняты.
+  - Условие принятия: через 3-7 дней сравнить частоту, post-cost Avg R/PF/DD и funnel `SH/RJ/OP`; если частота выросла, но Avg R деградировал, откатить конкретный источник шума.
 
 ## Отложено до условия
 
@@ -449,6 +457,10 @@
   - Почему отложено: TPB выглядит перспективно, но выборка еще недостаточна для перевода в paper без риска переобучиться на коротком удачном отрезке.
   - Вернуться к задаче, когда: `TREND_PULLBACK` наберет минимум 30 закрытых post-P5 shadow-paper clusters, PF >= 1.30, Avg R >= +0.15, max drawdown лучше -10%, без серии одинаковых стопов по одному symbol.
   - Действие при выполнении условия: включить limited paper-trial на 30 дней с отдельным allocation/risk cap, не переводить в live.
+- `[ ]` D-05 Расширить excluded universe по ликвидным монетам (`LINKUSDT`, `DOTUSDT`, `NEARUSDT`).
+  - Почему отложено: рекомендации предлагают делать это после недельного наблюдения, если после #1-#6 частоты все еще мало.
+  - Вернуться к задаче, когда: через 7 дней после P7-09 частота SQZ/MR/shadow остается ниже целевого диапазона, а текущие quality gates не дают достаточно кандидатов.
+  - Действие при выполнении условия: убрать `LINKUSDT`, `DOTUSDT`, `NEARUSDT` из `universe.excluded_assets`, не снижая `min_symbol_quality_score`, spread, volume и order-book liquidity filters.
 - `[x]` D-02 Ослаблять или перенастраивать `TREND_FOLLOWING`.
   - Причина: после суток диагностики стратегия имела `0` signals; основные blockers были `edge_below_min`, неполный 1h EMA/structure confirmation и слишком высокий shadow volume/ATR threshold.
   - Готово: ослабление применено только для `shadow` режима; paper/live не получают relaxed trend-following entries.

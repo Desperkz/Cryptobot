@@ -154,7 +154,7 @@ def test_tpb_shadow_allows_strong_mixed_order_flow_for_research_sample() -> None
 
 def test_tpb_shadow_blocks_weak_mixed_order_flow() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.55"))
+        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.44"))
     )
 
     assert reason is not None
