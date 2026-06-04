@@ -134,6 +134,24 @@ def test_squeeze_champion_accepts_release_with_retest_confirmation(monkeypatch) 
     assert Decimal(signal.metadata["rr"]) == Decimal("2.0")
 
 
+def test_squeeze_champion_uses_configured_intraday_stop_multiplier(monkeypatch) -> None:
+    candles_1h = candles(80, close="103", release_offset=1, release_volume="220")
+    patch_squeeze(monkeypatch, candles_1h, release=True, release_offset=1)
+    cfg = strategy_config(stop_atr_multiplier={"SCALPING": Decimal("1.2"), "INTRADAY": Decimal("2.2")})
+
+    signal = SqueezeBreakoutStrategy(cfg, FakeRegimeDetector()).generate(
+        "BTCUSDT",
+        candles(80),
+        candles_1h,
+        candles(80),
+        metrics(),
+    )
+
+    assert signal is not None
+    assert signal.entry_price - signal.stop_loss == Decimal("2.2")
+    assert signal.metadata["stop_atr_multiplier"] == "2.2"
+
+
 def test_squeeze_champion_blocks_momentum_without_range_breakout(monkeypatch) -> None:
     candles_1h = candles(80, close="100.8", open_="100.2", high="101", low="99.8")
     patch_squeeze(monkeypatch, candles_1h, release=True)

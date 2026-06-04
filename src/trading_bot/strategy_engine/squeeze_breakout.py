@@ -469,9 +469,10 @@ class SqueezeBreakoutStrategy:
             return None
 
         # Стоп и тейк-профит
-        # Для breakout используем более широкий стоп (1.5 ATR)
-        # и более агрессивный тейк (2.0 RR) — цена может далеко уйти
-        stop_distance = atr_1h * Decimal("1.5")
+        # Для breakout используем INTRADAY stop multiplier из config, чтобы risk sizing
+        # и dashboard attribution не расходились с фактической стратегией.
+        stop_multiplier = self.config.stop_atr_multiplier.get("INTRADAY", Decimal("1.5"))
+        stop_distance = atr_1h * stop_multiplier
         rr = Decimal("2.0")  # агрессивный RR для breakout
 
         if direction == Direction.LONG:
@@ -560,6 +561,7 @@ class SqueezeBreakoutStrategy:
                 "squeeze_retest_rejection_body_atr": str(retest.get("rejection_body_atr"))
                 if retest.get("rejection_body_atr") is not None
                 else None,
+                "stop_atr_multiplier": str(stop_multiplier),
                 "atr_pct": str(atr_pct),
                 "rr": str(rr),
                 "hour_utc": str((candles_1h[-1].close_time // 3_600_000) % 24),
