@@ -456,10 +456,29 @@ canvas { width: 100%; display: block; }
   white-space: nowrap;
 }
 .sc-gate-PROMOTABLE { color: var(--green); border-color: rgba(0,255,157,0.45); }
-.sc-gate-PROMOTE { color: var(--green); border-color: rgba(0,255,157,0.45); box-shadow: 0 0 10px rgba(0,255,157,0.18); }
+.sc-gate-PROMOTE {
+  color: var(--green);
+  border-color: rgba(0,255,157,0.65);
+  background: rgba(0,255,157,0.06);
+  box-shadow: 0 0 10px rgba(0,255,157,0.18);
+  animation: sc-promote-pulse 1.05s ease-in-out infinite;
+}
 .sc-gate-WATCH { color: var(--yellow); border-color: rgba(255,215,0,0.45); }
 .sc-gate-BLOCKED { color: var(--red); border-color: rgba(255,59,92,0.45); }
 .sc-gate-TESTING { color: var(--blue); border-color: rgba(74,144,255,0.45); }
+@keyframes sc-promote-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(0,255,157,0.25);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 18px rgba(0,255,157,0.70), inset 0 0 10px rgba(0,255,157,0.16);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-gate-PROMOTE { animation: none; }
+}
 
 /* ── ОТКАЗЫ ФИЛЬТРОВ ── */
 .card.rj-card { grid-area: rj; }
