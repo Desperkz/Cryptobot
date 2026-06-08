@@ -1397,7 +1397,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
-    "TREND_PULLBACK": "tpb_cost_guard_v2",
+    "TREND_PULLBACK": "tpb_profitable_bucket_v3",
     "LIQUIDITY_SWEEP_REVERSAL": "lsr_research_gate_v2",
     "VWAP_REVERSION": "vwr_research_gate_v2",
     "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
@@ -1463,7 +1463,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if alignment == "against" or score < Decimal("0.65"):
             return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
     elif strategy == "TREND_PULLBACK":
-        toxic_symbols = {"DOGEUSDT", "LTCUSDT"}
+        toxic_symbols = {"BCHUSDT", "BTCUSDT", "DEXEUSDT", "DOGEUSDT", "LTCUSDT", "SOLUSDT"}
         if signal.symbol in toxic_symbols:
             return f"TPB shadow blocked: {signal.symbol} is in the TPB retest quarantine list."
         hard_flags = {
@@ -1477,19 +1477,27 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"TPB shadow blocked: hostile continuation flow ({flags})."
-        if alignment == "against" and score < Decimal("0.40"):
-            return f"TPB shadow blocked: continuation needs aligned order-flow, got {alignment}."
-        min_score = Decimal("0.45") if signal.direction == Direction.SHORT else Decimal("0.40")
-        if alignment == "mixed":
-            min_score += Decimal("0.05")
+        if alignment != "aligned":
+            return f"TPB shadow blocked: profitable bucket requires aligned order-flow, got {alignment}."
+        min_score = Decimal("0.68") if signal.direction == Direction.SHORT else Decimal("0.62")
         if score < min_score:
             return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
         rs_alignment = ""
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
-        if signal.direction == Direction.SHORT and rs_alignment in {"against", "unknown"}:
-            return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment}."
+        if rs_alignment != "aligned":
+            if signal.direction == Direction.SHORT:
+                return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
+            return f"TPB shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
+        depth_atr = _optional_decimal((signal.metadata or {}).get("pullback_depth_atr"))
+        if depth_atr is not None and depth_atr < Decimal("0.55"):
+            return f"TPB shadow blocked: pullback depth {depth_atr:.2f} ATR is too shallow for the profitable bucket."
+        if depth_atr is not None and depth_atr > Decimal("1.95"):
+            return f"TPB shadow blocked: pullback depth {depth_atr:.2f} ATR is too extended for the profitable bucket."
+        volume_ratio = _optional_decimal((signal.metadata or {}).get("volume_ratio"))
+        if volume_ratio is not None and volume_ratio < Decimal("1.20"):
+            return f"TPB shadow blocked: volume ratio {volume_ratio:.2f} is below profitable bucket minimum."
     elif strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
         dangerous_flags = {
             "liquidation_cascade",

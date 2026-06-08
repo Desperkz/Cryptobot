@@ -13,8 +13,9 @@ def signal(
     symbol: str = "ADAUSDT",
     direction: Direction = Direction.SHORT,
     relative_strength: dict | None = None,
+    metadata: dict | None = None,
 ) -> Signal:
-    metadata = {"strategy": strategy, "order_flow": order_flow}
+    metadata = {"strategy": strategy, "order_flow": order_flow, **(metadata or {})}
     if relative_strength is not None:
         metadata["relative_strength"] = relative_strength
     return Signal(
@@ -146,15 +147,28 @@ def test_tpb_shadow_blocks_toxic_symbol_from_retest_quarantine() -> None:
     assert "retest quarantine" in reason
 
 
-def test_tpb_shadow_allows_strong_mixed_order_flow_for_research_sample() -> None:
-    assert _shadow_candidate_context_rejection_reason(
-        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.70"))
-    ) is None
+def test_tpb_shadow_blocks_mixed_order_flow_outside_profitable_bucket() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="mixed", score="0.70"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
+        )
+    )
+
+    assert reason is not None
+    assert "profitable bucket requires aligned order-flow" in reason
 
 
 def test_tpb_shadow_blocks_weak_mixed_order_flow() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("TREND_PULLBACK", order_flow(alignment="mixed", score="0.44"))
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.44"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
+        )
     )
 
     assert reason is not None
@@ -167,6 +181,7 @@ def test_tpb_shadow_blocks_short_without_relative_weakness_confirmation() -> Non
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.70"),
             relative_strength={"alignment": "unknown"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     )
 
@@ -178,11 +193,65 @@ def test_tpb_shadow_allows_clean_long_continuation() -> None:
     assert _shadow_candidate_context_rejection_reason(
         signal(
             "TREND_PULLBACK",
-            order_flow(alignment="aligned", score="0.62"),
+            order_flow(alignment="aligned", score="0.66"),
             direction=Direction.LONG,
-            relative_strength={"alignment": "unknown"},
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     ) is None
+
+
+def test_tpb_shadow_blocks_long_without_relative_strength_confirmation() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.66"),
+            direction=Direction.LONG,
+            relative_strength={"alignment": "unknown"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
+        )
+    )
+
+    assert reason is not None
+    assert "relative-strength confirmation" in reason
+
+
+def test_tpb_shadow_blocks_unprofitable_pullback_depth_bucket() -> None:
+    shallow = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.30", "volume_ratio": "1.50"},
+        )
+    )
+    extended = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "2.10", "volume_ratio": "1.50"},
+        )
+    )
+
+    assert shallow is not None
+    assert "too shallow" in shallow
+    assert extended is not None
+    assert "too extended" in extended
+
+
+def test_tpb_shadow_blocks_low_volume_bucket() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.05"},
+        )
+    )
+
+    assert reason is not None
+    assert "volume ratio" in reason
 
 
 def test_trend_following_shadow_allows_unknown_relative_strength_for_research_sample() -> None:
