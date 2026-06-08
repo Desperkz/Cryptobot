@@ -1463,9 +1463,6 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if alignment == "against" or score < Decimal("0.65"):
             return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
     elif strategy == "TREND_PULLBACK":
-        toxic_symbols = {"BCHUSDT", "BTCUSDT", "DEXEUSDT", "DOGEUSDT", "LTCUSDT", "SOLUSDT"}
-        if signal.symbol in toxic_symbols:
-            return f"TPB shadow blocked: {signal.symbol} is in the TPB retest quarantine list."
         hard_flags = {
             "adverse_liquidity_nearby",
             "taker_flow_against",

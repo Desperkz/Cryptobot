@@ -138,13 +138,16 @@ def test_sqz_dynamic_shadow_allows_clean_aligned_flow() -> None:
     ) is None
 
 
-def test_tpb_shadow_blocks_toxic_symbol_from_retest_quarantine() -> None:
-    reason = _shadow_candidate_context_rejection_reason(
-        signal("TREND_PULLBACK", order_flow(alignment="aligned", score="0.70"), symbol="LTCUSDT")
-    )
-
-    assert reason is not None
-    assert "retest quarantine" in reason
+def test_tpb_shadow_does_not_quarantine_symbol_when_bucket_is_clean() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            symbol="LTCUSDT",
+            relative_strength={"alignment": "aligned"},
+            metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
+        )
+    ) is None
 
 
 def test_tpb_shadow_blocks_mixed_order_flow_outside_profitable_bucket() -> None:
