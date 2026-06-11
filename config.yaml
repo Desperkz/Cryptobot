@@ -92,6 +92,7 @@ strategy:
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
     SQUEEZE_BREAKOUT_DYNAMIC: shadow
+    SQUEEZE_BREAKOUT_DYNAMIC_UPD: shadow
     MEAN_REVERSION: paper
     TREND_PULLBACK: shadow
     LIQUIDITY_SWEEP_REVERSAL: shadow
@@ -229,6 +230,7 @@ risk:
   dynamic_strategy_risk_multipliers:
     SQUEEZE_BREAKOUT: 1.00          # champion: can reduce weak entries, but cannot over-risk current paper line
     SQUEEZE_BREAKOUT_DYNAMIC: 0.65  # challenger: research sizing until clean OF/retest edge is proven
+    SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.65 # challenger copy with near-liquidity/no-retest and cluster guards
     MEAN_REVERSION: 0.65
     TREND_PULLBACK: 0.75
     LIQUIDITY_SWEEP_REVERSAL: 0.60
@@ -240,6 +242,7 @@ risk:
   dynamic_strategy_max_risk_pct:
     SQUEEZE_BREAKOUT: 0.020
     SQUEEZE_BREAKOUT_DYNAMIC: 0.012
+    SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.012
     MEAN_REVERSION: 0.014
     TREND_PULLBACK: 0.016
     LIQUIDITY_SWEEP_REVERSAL: 0.012
@@ -289,6 +292,19 @@ trade_management:
         fraction: 0.40
         activate_trailing: true
     SQUEEZE_BREAKOUT_DYNAMIC:
+      - name: "TP1"
+        reward_risk: 1.0
+        fraction: 0.25
+      - name: "TP2"
+        reward_risk: 1.7
+        fraction: 0.35
+        move_stop_to_breakeven: true
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 2.4
+        fraction: 0.40
+        activate_trailing: true
+    SQUEEZE_BREAKOUT_DYNAMIC_UPD:
       - name: "TP1"
         reward_risk: 1.0
         fraction: 0.25
@@ -355,6 +371,7 @@ trade_management:
   strategy_min_first_target_net_reward_risk:
     SQUEEZE_BREAKOUT: 0.55
     SQUEEZE_BREAKOUT_DYNAMIC: 0.60
+    SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.60
 
 edge_filters:
   enabled: true

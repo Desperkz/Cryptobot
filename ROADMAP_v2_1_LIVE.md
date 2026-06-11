@@ -389,6 +389,11 @@
   - Готово: новые SQZ-DYN сигналы/сделки получают `strategy_logic_version=sqz_dyn_of_retest_v2`.
   - Готово: `/strategy-scorecard` показывает `strategy_logic_version_breakdown` для shadow и post-P5 evidence.
   - Готово: regression test проверяет разделение legacy и новой SQZ-DYN evidence.
+- `[x]` P6-20A Добавить параллельную SQZ-DYN-UPD для проверки точечного фикса без замены прибыльной SQZ-DYN.
+  - Причина: SQZ-DYN упал с `+72.11` до `+38.22` из-за серии из 3 correlated SHORT stop-loss; грубый обязательный retest зарезал бы часть прибыльных сделок.
+  - Готово: `SQUEEZE_BREAKOUT_DYNAMIC_UPD` добавлена как отдельная shadow-only ветка с теми же sizing/exit caps, что SQZ-DYN.
+  - Готово: UPD блокирует no-retest входы, если целевая ликвидность ближе `20 bps`, и ограничивает серию до 2 однонаправленных SQZ-DYN-UPD shadow-paper сделок за `90m`.
+  - Условие наблюдения: сравнивать `SQZ-DYN` и `SQZ-DYN-UPD` раздельно; не переводить UPD в paper до достаточной shadow статистики и human review.
 
 ## P7 Частота сделок и экономика цели 10%/мес
 

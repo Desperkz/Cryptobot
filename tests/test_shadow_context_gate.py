@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from trading_bot.bot import _shadow_candidate_context_rejection_reason
+from trading_bot.bot import _shadow_candidate_context_rejection_reason, _sqz_dynamic_upd_series_rejection_reason
 from trading_bot.models import Direction, Signal, TradingStyle
 
 
@@ -136,6 +137,75 @@ def test_sqz_dynamic_shadow_allows_clean_aligned_flow() -> None:
     assert _shadow_candidate_context_rejection_reason(
         signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="aligned", score="0.70"))
     ) is None
+
+
+def test_sqz_dynamic_upd_blocks_no_retest_when_target_liquidity_is_too_close() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.76"),
+        "distance_to_lower_liquidity_bps": "7.8",
+        "reasons": ["target_liquidity_nearby", "structure_break_aligned"],
+    }
+
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            metadata={"squeeze_retest_confirmed": False},
+        )
+    )
+
+    assert reason is not None
+    assert "target liquidity is too close without retest" in reason
+
+
+def test_sqz_dynamic_original_keeps_near_liquidity_sample_for_comparison() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.76"),
+        "distance_to_lower_liquidity_bps": "7.8",
+        "reasons": ["target_liquidity_nearby", "structure_break_aligned"],
+    }
+
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC",
+            flow,
+            metadata={"squeeze_retest_confirmed": False},
+        )
+    ) is None
+
+
+def test_sqz_dynamic_upd_allows_near_liquidity_after_confirmed_retest() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.76"),
+        "distance_to_lower_liquidity_bps": "7.8",
+        "reasons": ["target_liquidity_nearby", "structure_break_aligned"],
+    }
+
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            metadata={"squeeze_retest_confirmed": True},
+        )
+    ) is None
+
+
+def test_sqz_dynamic_upd_blocks_third_same_direction_cluster() -> None:
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    trades = [
+        {"strategy": "SQUEEZE_BREAKOUT_DYNAMIC_UPD", "direction": "SHORT", "created_at": created_at},
+        {"strategy": "SQUEEZE_BREAKOUT_DYNAMIC_UPD", "direction": "SHORT", "created_at": created_at},
+    ]
+
+    reason = _sqz_dynamic_upd_series_rejection_reason(
+        signal=signal("SQUEEZE_BREAKOUT_DYNAMIC_UPD", order_flow()),
+        trades=trades,
+        window_minutes=90,
+        max_same_direction_trades=2,
+    )
+
+    assert reason is not None
+    assert "same-direction cluster cap" in reason
 
 
 def test_tpb_shadow_does_not_quarantine_symbol_when_bucket_is_clean() -> None:

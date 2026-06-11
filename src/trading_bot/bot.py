@@ -766,6 +766,20 @@ class TradingBot:
                     reentry_reason,
                 )
                 return
+            series_reason = _sqz_dynamic_upd_series_rejection_reason(
+                signal=signal,
+                trades=shadow_history,
+                window_minutes=90,
+                max_same_direction_trades=2,
+            )
+            if series_reason:
+                logger.info("Shadow paper %s %s series blocked: %s", strategy, signal.symbol, series_reason)
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "SHADOW_PAPER_REJECTED_CONTEXT",
+                    series_reason,
+                )
+                return
         except Exception:
             logger.exception("Failed to check shadow paper re-entry policy for %s %s", strategy, signal.symbol)
             return
@@ -1397,6 +1411,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_liquidity_cluster_v1",
     "TREND_PULLBACK": "tpb_profitable_bucket_v3",
     "LIQUIDITY_SWEEP_REVERSAL": "lsr_research_gate_v2",
     "VWAP_REVERSION": "vwr_research_gate_v2",
@@ -1420,6 +1435,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     strategy = _signal_strategy(signal)
     if strategy not in {
         "SQUEEZE_BREAKOUT_DYNAMIC",
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
         "LIQUIDITY_SWEEP_REVERSAL",
         "TREND_PULLBACK",
         "VWAP_REVERSION",
@@ -1436,7 +1452,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     alignment = str(order_flow.get("alignment") or "mixed")
     score = Decimal(str(order_flow.get("score") or "0"))
     risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
-    if strategy == "SQUEEZE_BREAKOUT_DYNAMIC":
+    if strategy in {"SQUEEZE_BREAKOUT_DYNAMIC", "SQUEEZE_BREAKOUT_DYNAMIC_UPD"}:
         hard_flags = {
             "taker_flow_against",
             "aggressive_delta_against",
@@ -1451,6 +1467,16 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
+        if strategy == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+            target_distance = _target_liquidity_distance_bps(signal, order_flow)
+            if not retest_confirmed and target_distance is not None and target_distance < Decimal("20"):
+                return f"SQZ-DYN-UPD shadow blocked: target liquidity is too close without retest ({target_distance:.1f} bps)."
+            if (
+                not retest_confirmed
+                and "absorption_against" in risk_flags
+                and (alignment != "aligned" or score < Decimal("0.62"))
+            ):
+                return f"SQZ-DYN-UPD shadow blocked: absorption against breakout without retest, score {score:.2f}."
         if alignment == "mixed" and score < Decimal("0.50"):
             return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
         if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
@@ -1847,6 +1873,42 @@ def _trade_cluster_metadata(
         "trade_cluster_window_minutes": window_minutes,
         "scale_in": sequence > 1,
     }
+
+
+def _sqz_dynamic_upd_series_rejection_reason(
+    *,
+    signal: Signal,
+    trades: list[dict[str, Any]],
+    window_minutes: int,
+    max_same_direction_trades: int,
+) -> str | None:
+    if _signal_strategy(signal) != "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+        return None
+    now = datetime.now(timezone.utc)
+    window_minutes = max(1, int(window_minutes))
+    max_same_direction_trades = max(1, int(max_same_direction_trades))
+    recent_same_direction = 0
+    for trade in trades:
+        if str(trade.get("strategy") or "").upper() != "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+            continue
+        if str(trade.get("direction") or "").upper() != signal.direction.value:
+            continue
+        created_at = _parse_datetime_utc(trade.get("created_at"))
+        if created_at is None:
+            continue
+        if (now - created_at).total_seconds() / 60 <= window_minutes:
+            recent_same_direction += 1
+    if recent_same_direction >= max_same_direction_trades:
+        return (
+            "SQZ-DYN-UPD shadow blocked: same-direction cluster cap "
+            f"{recent_same_direction}/{max_same_direction_trades} within {window_minutes}m."
+        )
+    return None
+
+
+def _target_liquidity_distance_bps(signal: Signal, order_flow: dict[str, Any]) -> Decimal | None:
+    key = "distance_to_upper_liquidity_bps" if signal.direction == Direction.LONG else "distance_to_lower_liquidity_bps"
+    return _optional_decimal(order_flow.get(key))
 
 
 def _trade_closed_today_utc(value: object) -> bool:

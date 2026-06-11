@@ -88,6 +88,17 @@ STRATEGY_PROMOTION_POLICIES = {
         "min_post_p5_clusters": STRATEGY_GATE_DEFAULTS["min_closed_trades"],
         "notes": ["Separate SQZ challenger; never auto-promote over the champion."],
     },
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": {
+        "tier": "CHALLENGER",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "HUMAN_REVIEW_AFTER_SHADOW_GATE",
+        "live_promotion": "BLOCKED_UNTIL_PAPER_PROVEN",
+        "min_post_p5_clusters": STRATEGY_GATE_DEFAULTS["min_closed_trades"],
+        "notes": [
+            "Updated SQZ-DYN challenger with no-retest near-liquidity guard and same-direction cluster cap.",
+            "Compare against SQZ-DYN before any paper discussion.",
+        ],
+    },
     "MEAN_REVERSION": {
         "tier": "PAPER_ONLY",
         "allowed_modes": ["paper", "shadow"],

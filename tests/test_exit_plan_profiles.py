@@ -103,6 +103,7 @@ def test_runtime_config_profiles_fit_strategy_take_profit_rr() -> None:
     strategy_rr = {
         "SQUEEZE_BREAKOUT": cfg.strategy.take_profit_rr["INTRADAY"],
         "SQUEEZE_BREAKOUT_DYNAMIC": cfg.strategy.take_profit_rr["INTRADAY"],
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD": cfg.strategy.take_profit_rr["INTRADAY"],
         "TREND_PULLBACK": cfg.strategy.trend_pullback_take_profit_rr,
         "MOMENTUM_CONTINUATION": cfg.strategy.momentum_continuation_take_profit_rr,
         "MEAN_REVERSION": cfg.strategy.mean_reversion_take_profit_rr,
