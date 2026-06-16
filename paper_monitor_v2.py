@@ -227,15 +227,21 @@ def close_shadow_position(
     reason: str,
     risk_amount: Decimal | None = None,
     opened_at: object = None,
+    realized_pnl: Decimal = Decimal("0"),
 ) -> None:
     execution = _execution_pnl(direction, entry, close_price, qty, opened_at=opened_at)
-    r_multiple = execution.net_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
+    total_pnl = realized_pnl + execution.net_pnl
+    r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
 
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=5)
         ensure_shadow_trades_table(conn)
-        row = conn.execute("SELECT metadata FROM shadow_trades WHERE id = ?", (trade_id,)).fetchone()
+        row = conn.execute("SELECT metadata, realized_pnl FROM shadow_trades WHERE id = ?", (trade_id,)).fetchone()
         metadata = _metadata(row[0] if row else "{}")
+        if realized_pnl == 0 and row is not None:
+            realized_pnl = Decimal(str(row[1] or "0"))
+            total_pnl = realized_pnl + execution.net_pnl
+            r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
         metadata["shadow_close_price"] = str(close_price)
         metadata["shadow_effective_close_price"] = str(execution.effective_close_price)
         metadata["shadow_fees"] = str(execution.fees)
@@ -252,7 +258,7 @@ def close_shadow_position(
                 closed_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (
-            str(execution.net_pnl),
+            str(total_pnl),
             str(r_multiple),
             reason,
             json.dumps(metadata, ensure_ascii=False),
@@ -267,12 +273,104 @@ def close_shadow_position(
             direction,
             reason,
             close_price,
-            float(execution.net_pnl),
+            float(total_pnl),
             _format_costs(execution),
             float(r_multiple),
         )
     except Exception as e:
         logger.error("Shadow close error #%d: %s", trade_id, e)
+
+
+def close_shadow_partial_target(
+    trade_id: int,
+    symbol: str,
+    direction: str,
+    entry: Decimal,
+    target: dict,
+    qty: Decimal,
+    stop_loss: Decimal,
+    metadata: dict,
+    risk_amount: Decimal | None = None,
+    realized_pnl: Decimal = Decimal("0"),
+    opened_at: object = None,
+) -> None:
+    target_name = str(target.get("name", "TP"))
+    target_price = Decimal(str(target["price"]))
+    target_qty = min(Decimal(str(target.get("quantity", qty))), qty)
+    if target_qty <= 0:
+        return
+    execution = _execution_pnl(direction, entry, target_price, target_qty, opened_at=opened_at)
+    pnl = execution.net_pnl
+
+    remaining_qty = qty - target_qty
+    original_qty = _original_quantity(metadata, qty)
+    filled = set(metadata.get("filled_partial_targets") or [])
+    filled.add(target_name)
+    metadata["filled_partial_targets"] = sorted(filled)
+    metadata.setdefault("original_quantity", str(original_qty))
+    metadata["remaining_quantity"] = str(remaining_qty)
+    _record_execution_metadata(metadata, "shadow_executions", target_name, "partial_take_profit", target_price, execution)
+
+    next_stop = stop_loss
+    if target.get("move_stop_to_breakeven"):
+        next_stop = _breakeven_price(direction, entry, metadata)
+        metadata["stop_moved_to_breakeven"] = True
+        metadata["breakeven_price"] = str(next_stop)
+    if target.get("activate_trailing") and remaining_qty > 0:
+        metadata["trailing_active"] = True
+        metadata.setdefault("trailing_anchor_price", str(target_price))
+        metadata["trailing_callback_rate_pct"] = str(_trailing_callback_rate(metadata))
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        ensure_shadow_trades_table(conn)
+        if remaining_qty <= 0:
+            total_pnl = realized_pnl + pnl
+            r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
+            conn.execute("""
+                UPDATE shadow_trades
+                SET status = 'CLOSED',
+                    quantity = ?,
+                    stop_loss = ?,
+                    realized_pnl = ?,
+                    r_multiple = ?,
+                    close_reason = 'take_profit',
+                    metadata = ?,
+                    closed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                str(original_qty),
+                str(next_stop),
+                str(total_pnl),
+                str(r_multiple),
+                json.dumps(metadata, ensure_ascii=False),
+                trade_id,
+            ))
+        else:
+            conn.execute("""
+                UPDATE shadow_trades
+                SET quantity = ?,
+                    stop_loss = ?,
+                    realized_pnl = realized_pnl + ?,
+                    metadata = ?
+                WHERE id = ?
+            """, (str(remaining_qty), str(next_stop), str(pnl), json.dumps(metadata, ensure_ascii=False), trade_id))
+        conn.commit()
+        conn.close()
+        logger.info(
+            "SHADOW 🟡 %s #%d %s @ $%s | qty=%s | Net partial PnL: %+.4f | costs=%s | Остаток=%s | SL=%s",
+            symbol,
+            trade_id,
+            target_name,
+            target_price,
+            target_qty,
+            float(pnl),
+            _format_costs(execution),
+            remaining_qty,
+            next_stop,
+        )
+    except Exception as e:
+        logger.error("Shadow partial close error #%d: %s", trade_id, e)
 
 
 def close_partial_target(
@@ -727,6 +825,8 @@ async def check_shadow_positions() -> None:
             tp = Decimal(str(pos["take_profit"]))
             qty = Decimal(str(pos["quantity"]))
             risk_amount = Decimal(str(pos.get("risk_amount") or "0"))
+            realized_pnl = Decimal(str(pos.get("realized_pnl") or "0"))
+            metadata = _metadata(pos.get("metadata"))
             opened_at = pos.get("created_at")
 
             snapshot = await get_market_snapshot(client, symbol)
@@ -734,11 +834,54 @@ async def check_shadow_positions() -> None:
                 continue
             snapshot = _snapshot_for_trade_lifetime(snapshot, opened_at)
 
-            event = _next_exit_event(direction, snapshot, sl, tp, [], set())
+            sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
+            if trailing_changed:
+                try:
+                    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+                    ensure_shadow_trades_table(conn)
+                    conn.execute(
+                        "UPDATE shadow_trades SET stop_loss = ?, metadata = ? WHERE id = ?",
+                        (str(sl), json.dumps(metadata, ensure_ascii=False), trade_id),
+                    )
+                    conn.commit()
+                    conn.close()
+                    logger.info("SHADOW 🔁 %s #%d trailing SL обновлен: %s", symbol, trade_id, sl)
+                except Exception as e:
+                    logger.error("Shadow trailing update error #%d: %s", trade_id, e)
+
+            filled_targets = set(metadata.get("filled_partial_targets") or [])
+            partial_targets = metadata.get("partial_take_profits") or []
+            event = _next_exit_event(direction, snapshot, sl, tp, partial_targets, filled_targets)
             if not event:
                 continue
-            reason, trigger_price, _target = event
-            close_shadow_position(trade_id, symbol, direction, entry, trigger_price, qty, reason, risk_amount, opened_at)
+            reason, trigger_price, target = event
+            if reason == "partial_take_profit" and target is not None:
+                close_shadow_partial_target(
+                    trade_id,
+                    symbol,
+                    direction,
+                    entry,
+                    target,
+                    qty,
+                    sl,
+                    metadata,
+                    risk_amount,
+                    realized_pnl,
+                    opened_at,
+                )
+                continue
+            close_shadow_position(
+                trade_id,
+                symbol,
+                direction,
+                entry,
+                trigger_price,
+                qty,
+                reason,
+                risk_amount,
+                opened_at,
+                realized_pnl,
+            )
 
 
 async def main() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -151,3 +153,62 @@ def test_breakeven_and_trailing_move_stop_in_profitable_direction(monkeypatch) -
 
     assert changed is True
     assert stop == Decimal("110.88")
+
+
+def test_shadow_partial_target_updates_remaining_quantity_and_breakeven(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "paper.sqlite3"
+    monkeypatch.setattr(monitor, "DB_PATH", db_path)
+    monkeypatch.setattr(monitor, "TAKER_FEE_BPS", Decimal("0"))
+    monkeypatch.setattr(monitor, "SLIPPAGE_BPS", Decimal("0"))
+    monkeypatch.setattr(monitor, "FUNDING_BPS_PER_8H", Decimal("0"))
+    metadata = {
+        "partial_take_profits": [
+            {
+                "name": "TP1",
+                "price": "103",
+                "quantity": "1",
+                "move_stop_to_breakeven": True,
+            }
+        ],
+        "filled_partial_targets": [],
+        "protection": {"breakeven_price": "100.02"},
+    }
+    conn = sqlite3.connect(str(db_path))
+    monitor.ensure_shadow_trades_table(conn)
+    conn.execute(
+        """
+        INSERT INTO shadow_trades(
+            symbol, direction, strategy, quantity, entry_price, stop_loss, take_profit,
+            status, risk_amount, realized_pnl, metadata
+        )
+        VALUES ('BTCUSDT', 'LONG', 'TPB', '2', '100', '95', '110', 'OPEN', '10', '0', ?)
+        """,
+        (json.dumps(metadata),),
+    )
+    conn.commit()
+    conn.close()
+
+    monitor.close_shadow_partial_target(
+        trade_id=1,
+        symbol="BTCUSDT",
+        direction="LONG",
+        entry=Decimal("100"),
+        target=metadata["partial_take_profits"][0],
+        qty=Decimal("2"),
+        stop_loss=Decimal("95"),
+        metadata=metadata,
+        risk_amount=Decimal("10"),
+        opened_at=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT status, quantity, stop_loss, realized_pnl, metadata FROM shadow_trades").fetchone()
+    conn.close()
+
+    assert row[0] == "OPEN"
+    assert row[1] == "1"
+    assert row[2] == "100.02"
+    assert Decimal(row[3]) == Decimal("3")
+    saved = json.loads(row[4])
+    assert saved["filled_partial_targets"] == ["TP1"]
+    assert saved["shadow_executions"][0]["reason"] == "partial_take_profit"

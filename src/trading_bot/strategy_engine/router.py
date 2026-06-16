@@ -19,6 +19,9 @@ from trading_bot.strategy_engine.squeeze_breakout import SqueezeBreakoutStrategy
 from trading_bot.strategy_engine.trend_pullback import TrendPullbackStrategy
 
 
+ROUTER_CONFLICT_MIN_CONFIDENCE_GAP = Decimal("0.08")
+
+
 class StrategyRouter:
     def __init__(
         self,
@@ -180,13 +183,29 @@ class StrategyRouter:
         if not candidates:
             return None
 
-        # Конфликт направлений — пропускаем
-        if len(candidates) >= 2:
-            directions = {s.direction for s in candidates}
-            if len(directions) > 1:
+        ranked = sorted(candidates, key=lambda s: s.confidence, reverse=True)
+        best = ranked[0]
+        if len(ranked) >= 2:
+            directions = {s.direction for s in ranked}
+            if len(directions) > 1 and best.confidence - ranked[1].confidence < ROUTER_CONFLICT_MIN_CONFIDENCE_GAP:
                 return None
+            if len(directions) > 1:
+                metadata = {
+                    **dict(best.metadata or {}),
+                    "direction_conflict_resolved": True,
+                    "opposing_candidates": [
+                        {
+                            "strategy": str(candidate.metadata.get("strategy", "UNKNOWN")),
+                            "direction": candidate.direction.value,
+                            "confidence": str(candidate.confidence),
+                        }
+                        for candidate in ranked[1:]
+                        if candidate.direction != best.direction
+                    ],
+                }
+                return replace(best, metadata=metadata)
 
-        return max(candidates, key=lambda s: s.confidence)
+        return best
 
     def generate(
         self,

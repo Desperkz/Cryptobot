@@ -827,6 +827,7 @@ class TradingBot:
                     "risk_warnings": list(plan.warnings),
                 }
             )
+            plan_metadata.update(_risk_plan_exit_metadata(plan))
         else:
             quantity, risk_amount = self._fallback_shadow_size(signal, equity, sizing.risk_pct)
             if quantity is None or risk_amount is None:
@@ -1337,6 +1338,36 @@ def _protection_prices(orders: list[dict[str, Any]]) -> tuple[Decimal | None, De
 def _signal_strategy(signal: Signal) -> str:
     metadata = signal.metadata or {}
     return str(metadata.get("strategy") or "UNKNOWN")
+
+
+def _risk_plan_exit_metadata(plan: Any) -> dict[str, Any]:
+    return {
+        "partial_take_profits": [
+            {
+                "name": target.name,
+                "price": str(target.price),
+                "quantity": str(target.quantity),
+                "fraction": str(target.fraction),
+                "reward_risk": str(target.reward_risk),
+                "move_stop_to_breakeven": target.move_stop_to_breakeven,
+                "activate_trailing": target.activate_trailing,
+            }
+            for target in getattr(plan, "partial_take_profits", ())
+        ],
+        "protection": (
+            {
+                "initial_stop": str(plan.protection.initial_stop),
+                "breakeven_price": str(plan.protection.breakeven_price),
+                "breakeven_after_target": plan.protection.breakeven_after_target,
+                "trailing_enabled": plan.protection.trailing_enabled,
+                "trailing_activation_reward_risk": str(plan.protection.trailing_activation_reward_risk),
+                "trailing_callback_rate_pct": str(plan.protection.trailing_callback_rate_pct),
+            }
+            if getattr(plan, "protection", None)
+            else None
+        ),
+        "filled_partial_targets": [],
+    }
 
 
 ACTIVE_TRADE_STATUSES = {"ACCEPTED", "OPEN", "ACTIVE"}

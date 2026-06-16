@@ -130,6 +130,44 @@ def test_signed_funding_can_credit_shorts() -> None:
     assert result.net_pnl > result.gross_pnl
 
 
+def test_timeout_after_partial_target_closes_runner_at_timeout_candle_close() -> None:
+    assumptions = ExecutionAssumptions(
+        taker_fee_bps=Decimal("0"),
+        base_slippage_bps=Decimal("0"),
+        random_slippage_bps=Decimal("0"),
+        funding_bps_per_8h=Decimal("0"),
+    )
+    candles = [
+        candle(0, "100", "100", "100"),
+        candle(1, "104", "99", "103"),
+        candle(2, "104", "100", "101"),
+        candle(3, "102", "96", "97"),
+    ]
+
+    result = simulate_realistic_trade(
+        candles,
+        0,
+        Direction.LONG,
+        entry=Decimal("100"),
+        stop_loss=Decimal("95"),
+        take_profit=Decimal("120"),
+        quantity=Decimal("2"),
+        risk_amount=Decimal("10"),
+        max_bars=3,
+        assumptions=assumptions,
+        partial_targets=[
+            {"name": "TP1", "price": Decimal("103"), "quantity": Decimal("1")},
+            {"name": "TP2", "price": Decimal("120"), "quantity": Decimal("1")},
+        ],
+    )
+
+    assert result.reason == "timeout"
+    assert result.exit_index == 3
+    assert result.exit_price == Decimal("97")
+    assert result.filled_targets == ("TP1",)
+    assert result.net_pnl == Decimal("0")
+
+
 def test_quantity_estimate_includes_round_turn_costs() -> None:
     assumptions = ExecutionAssumptions(
         taker_fee_bps=Decimal("4"),

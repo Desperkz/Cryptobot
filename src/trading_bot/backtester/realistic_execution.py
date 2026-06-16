@@ -235,6 +235,7 @@ def simulate_realistic_trade(
             current_stop = _trailing_stop(direction_value, candle, current_stop, assumptions)
 
     if remaining_qty > 0:
+        last_exit_index = end_index
         candle = candles[last_exit_index]
         exit_price = to_decimal(candle.close)
         closed = _close_slice(

@@ -32,10 +32,10 @@ def strategy_config(
     )
 
 
-def signal(strategy: str, confidence: str = "0.7") -> Signal:
+def signal(strategy: str, confidence: str = "0.7", direction: Direction = Direction.LONG) -> Signal:
     return Signal(
         symbol="BTCUSDT",
-        direction=Direction.LONG,
+        direction=direction,
         style=TradingStyle.INTRADAY,
         entry_price=Decimal("100"),
         stop_loss=Decimal("95"),
@@ -192,3 +192,30 @@ def test_router_records_trend_following_diagnostics_when_no_signal() -> None:
             "block_reason": "weak_volume",
         }
     ]
+
+
+def test_router_resolves_opposite_direction_conflict_when_confidence_gap_is_clear() -> None:
+    router = StrategyRouter(
+        trend=StubStrategy(None),
+        mean_reversion=StubStrategy(signal("MEAN_REVERSION", "0.70", Direction.SHORT)),
+        squeeze_breakout=StubStrategy(signal("SQUEEZE_BREAKOUT", "0.86", Direction.LONG)),
+        enabled_strategies=["MEAN_REVERSION", "SQUEEZE_BREAKOUT"],
+    )
+
+    selected = router.generate("BTCUSDT", [], [], [], None)
+
+    assert selected is not None
+    assert selected.metadata["strategy"] == "SQUEEZE_BREAKOUT"
+    assert selected.metadata["direction_conflict_resolved"] is True
+    assert selected.metadata["opposing_candidates"][0]["strategy"] == "MEAN_REVERSION"
+
+
+def test_router_blocks_opposite_direction_conflict_when_confidence_gap_is_small() -> None:
+    router = StrategyRouter(
+        trend=StubStrategy(None),
+        mean_reversion=StubStrategy(signal("MEAN_REVERSION", "0.80", Direction.SHORT)),
+        squeeze_breakout=StubStrategy(signal("SQUEEZE_BREAKOUT", "0.84", Direction.LONG)),
+        enabled_strategies=["MEAN_REVERSION", "SQUEEZE_BREAKOUT"],
+    )
+
+    assert router.generate("BTCUSDT", [], [], [], None) is None
