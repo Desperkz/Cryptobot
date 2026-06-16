@@ -141,6 +141,7 @@ class LiquiditySweepReversalStrategy:
                 "edge_reasons": list(edge_snapshot.reasons) if edge_snapshot else [],
                 "volume_ratio": str(volume_ratio),
                 "atr_pct": str(_atr_pct(atr_15m, entry)),
+                "hour_utc": str((candles_15m[-1].close_time // 3_600_000) % 24),
                 "prior_high": str(prior_high),
                 "prior_low": str(prior_low),
                 "reclaim_atr": str(reclaim_atr),
@@ -365,6 +366,7 @@ class VwapReversionStrategy:
                 "flow_confirmed": "True",
                 "vwap_variant": variant,
                 "atr_pct": str(atr_pct),
+                "hour_utc": str((candles_15m[-1].close_time // 3_600_000) % 24),
                 "rr": str(rr),
             },
         )
@@ -587,6 +589,7 @@ class MomentumContinuationStrategy:
                 "body_atr": str(body_atr),
                 "breakout_extension_atr": str(breakout_extension_atr),
                 "atr_pct": str(atr_pct),
+                "hour_utc": str((candles_15m[-1].close_time // 3_600_000) % 24),
                 "rr": str(rr),
             },
         )
@@ -670,6 +673,7 @@ class RangeGridStrategy:
                 "spread_bps": str(metrics.spread_bps),
                 "flow_safe": "True",
                 "atr_pct": str(_atr_pct(atr_15m, entry)),
+                "hour_utc": str((candles_15m[-1].close_time // 3_600_000) % 24),
                 "rr": str(rr),
                 "caution": "shadow_only_range_grid",
             },

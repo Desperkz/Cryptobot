@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from trading_bot.database.sqlite import Database
@@ -70,3 +72,42 @@ async def test_shadow_trades_are_persisted_separately_from_real_paper_trades(tmp
     assert shadow_rows[0]["strategy"] == "TREND_PULLBACK"
     assert shadow_rows[0]["mode"] == "SHADOW_PAPER"
     assert real_rows == []
+
+
+@pytest.mark.asyncio
+async def test_pnl_summary_can_be_filtered_by_mode(tmp_path) -> None:
+    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'bot.sqlite3'}")
+    await db.connect()
+    try:
+        paper_plan = SimpleNamespace(
+            symbol="BTCUSDT",
+            direction=Direction.LONG,
+            quantity="1",
+            entry_price="100",
+            stop_loss="95",
+            take_profit="110",
+            risk_amount="5",
+        )
+        live_plan = SimpleNamespace(
+            symbol="ETHUSDT",
+            direction=Direction.SHORT,
+            quantity="1",
+            entry_price="200",
+            stop_loss="210",
+            take_profit="180",
+            risk_amount="10",
+        )
+        await db.insert_trade(paper_plan, "PAPER_TRADING", "OPEN", {"strategy": "SQUEEZE_BREAKOUT"})
+        await db.insert_trade(live_plan, "TESTNET_LIVE", "OPEN", {"strategy": "SQUEEZE_BREAKOUT"})
+        await db.mark_latest_trade_closed("BTCUSDT", "12", "2.4")
+        await db.mark_latest_trade_closed("ETHUSDT", "-3", "-0.3")
+
+        paper_summary = await db.pnl_summary("PAPER_TRADING")
+        live_summary = await db.pnl_summary("TESTNET_LIVE")
+        all_summary = await db.pnl_summary()
+    finally:
+        await db.close()
+
+    assert paper_summary == {"realized_pnl": 12.0, "trades": 1}
+    assert live_summary == {"realized_pnl": -3.0, "trades": 1}
+    assert all_summary == {"realized_pnl": 9.0, "trades": 2}

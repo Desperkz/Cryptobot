@@ -465,7 +465,7 @@ def _execution_pnl(
     slippage_cost = max(gross - gross_after_slippage, Decimal("0"))
     fees = (entry * qty + effective_exit * qty) * TAKER_FEE_BPS / Decimal("10000")
     held_hours = _held_hours(opened_at, closed_at)
-    funding_cost = _funding_cost(entry, qty, held_hours)
+    funding_cost = _funding_cost(direction, entry, qty, held_hours)
     return ExecutionBreakdown(
         net_pnl=gross - slippage_cost - fees - funding_cost,
         gross_pnl=gross,
@@ -506,10 +506,11 @@ def _parse_timestamp(raw: object) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _funding_cost(entry: Decimal, qty: Decimal, held_hours: Decimal) -> Decimal:
-    if held_hours <= 0 or FUNDING_BPS_PER_8H <= 0:
+def _funding_cost(direction: str, entry: Decimal, qty: Decimal, held_hours: Decimal) -> Decimal:
+    if held_hours <= 0 or FUNDING_BPS_PER_8H == 0:
         return Decimal("0")
-    return entry * qty * FUNDING_BPS_PER_8H / Decimal("10000") * (held_hours / Decimal("8"))
+    funding = entry * qty * FUNDING_BPS_PER_8H / Decimal("10000") * (held_hours / Decimal("8"))
+    return funding if direction == "LONG" else -funding
 
 
 def _record_execution_metadata(

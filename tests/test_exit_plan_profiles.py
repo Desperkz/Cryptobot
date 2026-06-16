@@ -52,7 +52,7 @@ def filters() -> SymbolFilters:
     )
 
 
-def signal(strategy: str, take_profit: Decimal = Decimal("109")) -> Signal:
+def signal(strategy: str, take_profit: Decimal = Decimal("112")) -> Signal:
     return Signal(
         symbol="BTCUSDT",
         direction=Direction.LONG,
@@ -74,7 +74,7 @@ def test_squeeze_uses_runner_friendly_exit_profile() -> None:
 
     assert [target.name for target in targets] == ["TP1", "TP2", "RUNNER"]
     assert [target.quantity for target in targets] == [Decimal("2.500"), Decimal("3.500"), Decimal("4.000")]
-    assert [target.reward_risk for target in targets] == [Decimal("1.0"), Decimal("1.6"), Decimal("1.8")]
+    assert [target.reward_risk for target in targets] == [Decimal("1.0"), Decimal("1.6"), Decimal("2.3")]
     assert protection.breakeven_after_target == "TP2"
 
 

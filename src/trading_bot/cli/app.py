@@ -172,7 +172,7 @@ def pnl() -> None:
         bot = TradingBot(config)
         try:
             await bot.db.connect()
-            typer.echo(json.dumps(await bot.db.pnl_summary(), indent=2, ensure_ascii=False))
+            typer.echo(json.dumps(await bot.db.pnl_summary(config.mode.value), indent=2, ensure_ascii=False))
         finally:
             await bot.db.close()
             await bot.binance.close()

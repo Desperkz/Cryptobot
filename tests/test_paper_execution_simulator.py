@@ -27,6 +27,25 @@ def test_execution_pnl_subtracts_fee_slippage_and_funding(monkeypatch) -> None:
     assert execution.net_pnl == Decimal("9.7960440")
 
 
+def test_execution_pnl_can_credit_shorts_with_positive_funding(monkeypatch) -> None:
+    monkeypatch.setattr(monitor, "TAKER_FEE_BPS", Decimal("4.0"))
+    monkeypatch.setattr(monitor, "SLIPPAGE_BPS", Decimal("10.0"))
+    monkeypatch.setattr(monitor, "FUNDING_BPS_PER_8H", Decimal("1.0"))
+
+    execution = monitor._execution_pnl(
+        "SHORT",
+        Decimal("100"),
+        Decimal("90"),
+        Decimal("1"),
+        opened_at=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+        closed_at=datetime(2026, 5, 18, 8, 0, tzinfo=timezone.utc),
+    )
+
+    assert execution.gross_pnl == Decimal("10")
+    assert execution.funding_cost == Decimal("-0.010")
+    assert execution.net_pnl == Decimal("9.8439640")
+
+
 def test_pessimistic_intrabar_prefers_stop_when_tp_and_sl_are_inside_same_candle(monkeypatch) -> None:
     monkeypatch.setattr(monitor, "PESSIMISTIC_INTRABAR", True)
     snapshot = monitor.MarketSnapshot(price=Decimal("108"), high=Decimal("111"), low=Decimal("94"))

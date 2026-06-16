@@ -1006,7 +1006,7 @@ class TradingBot:
         if self.config.mode == TradingMode.PAPER_TRADING:
             realized_pnl = Decimal("0")
             try:
-                summary = await self.db.pnl_summary()
+                summary = await self.db.pnl_summary(TradingMode.PAPER_TRADING.value)
                 realized_pnl = Decimal(str(summary.get("realized_pnl") or "0"))
             except Exception:
                 logger.exception("Could not include realized paper PnL in equity.")
@@ -1257,7 +1257,7 @@ class TradingBot:
                     }
                     for position in await self.positions.active_positions()
                 ],
-                "pnl": await self.db.pnl_summary(),
+                "pnl": await self.db.pnl_summary(self.config.mode.value),
             }
         finally:
             await self.db.close()

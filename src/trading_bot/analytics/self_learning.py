@@ -31,8 +31,11 @@ class SelfLearningEngine:
         self.config = config
 
     def analyze(self, trades: list[dict[str, Any]]) -> list[LearningRecommendation]:
+        closed_trades = [trade for trade in trades if str(trade.get("status") or "").upper() == "CLOSED"]
+        if not closed_trades:
+            return []
         recommendations: list[LearningRecommendation] = []
-        for scope, buckets in self._segments(trades).items():
+        for scope, buckets in self._segments(closed_trades).items():
             for key, rows in buckets.items():
                 stats = self._stats(key, rows)
                 if stats.trades < self.config.segment_min_trades:

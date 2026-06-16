@@ -404,8 +404,11 @@ class Database:
     async def recent_signals(self, limit: int = 50) -> list[dict[str, Any]]:
         return await self._fetch_all("SELECT * FROM signals ORDER BY id DESC LIMIT ?", (limit,))
 
-    async def pnl_summary(self) -> dict[str, Any]:
-        rows = await self._fetch_all("SELECT realized_pnl FROM trades")
+    async def pnl_summary(self, mode: str | None = None) -> dict[str, Any]:
+        if mode:
+            rows = await self._fetch_all("SELECT realized_pnl FROM trades WHERE mode = ?", (mode,))
+        else:
+            rows = await self._fetch_all("SELECT realized_pnl FROM trades")
         pnl = sum(float(row["realized_pnl"]) for row in rows)
         return {"realized_pnl": pnl, "trades": len(rows)}
 

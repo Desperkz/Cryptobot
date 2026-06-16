@@ -473,7 +473,7 @@ class SqueezeBreakoutStrategy:
         # и dashboard attribution не расходились с фактической стратегией.
         stop_multiplier = self.config.stop_atr_multiplier.get("INTRADAY", Decimal("1.5"))
         stop_distance = atr_1h * stop_multiplier
-        rr = Decimal("2.0")  # агрессивный RR для breakout
+        rr = self.config.take_profit_rr.get("INTRADAY", Decimal("2.0"))
 
         if direction == Direction.LONG:
             stop_loss = entry - stop_distance

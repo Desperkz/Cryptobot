@@ -20,7 +20,7 @@ def strategy_config(**overrides) -> StrategyConfig:
         "min_atr_pct": Decimal("0.15"),
         "max_atr_pct": Decimal("8.0"),
         "stop_atr_multiplier": {"SCALPING": Decimal("1.2"), "INTRADAY": Decimal("1.8")},
-        "take_profit_rr": {"SCALPING": Decimal("1.4"), "INTRADAY": Decimal("1.8")},
+        "take_profit_rr": {"SCALPING": Decimal("1.4"), "INTRADAY": Decimal("2.4")},
         "use_funding_filter": True,
         "max_abs_funding_rate": Decimal("0.0008"),
     }
@@ -131,7 +131,7 @@ def test_squeeze_champion_accepts_release_with_retest_confirmation(monkeypatch) 
     assert signal.metadata["squeeze_retest_required"] is True
     assert signal.metadata["squeeze_retest_confirmed"] is True
     assert Decimal(signal.metadata["breakout_atr"]) >= Decimal("0.03")
-    assert Decimal(signal.metadata["rr"]) == Decimal("2.0")
+    assert Decimal(signal.metadata["rr"]) == Decimal("2.4")
 
 
 def test_squeeze_champion_uses_configured_intraday_stop_multiplier(monkeypatch) -> None:

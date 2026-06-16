@@ -110,6 +110,7 @@ def test_vwap_reversion_waits_for_reversal_and_flow_confirmation(monkeypatch) ->
     assert signal is not None
     assert signal.direction == Direction.LONG
     assert signal.metadata["strategy"] == "VWAP_REVERSION"
+    assert signal.metadata["hour_utc"] == "2"
     assert signal.metadata["reversal_confirmed"] == "True"
     assert signal.metadata["flow_confirmed"] == "True"
     assert signal.metadata["rr"] == "1.35"
@@ -159,6 +160,7 @@ def test_vwap_reversion_watch_uses_relaxed_thresholds(monkeypatch) -> None:
     watch = strategy.generate_watch("BTCUSDT", candles_15m, candles(120), candles(120), metrics())
     assert watch is not None
     assert watch.metadata["strategy"] == "VWAP_REVERSION_WATCH"
+    assert watch.metadata["hour_utc"] == "2"
     assert watch.metadata["vwap_variant"] == "watch"
     assert Decimal(watch.metadata["min_progress_atr"]) >= Decimal("1.10")
 

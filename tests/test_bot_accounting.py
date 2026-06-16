@@ -13,8 +13,10 @@ class FakeDB:
     def __init__(self, trades: list[dict], realized_pnl: str = "0") -> None:
         self.trades = trades
         self.realized_pnl = realized_pnl
+        self.pnl_summary_modes: list[str | None] = []
 
-    async def pnl_summary(self) -> dict:
+    async def pnl_summary(self, mode: str | None = None) -> dict:
+        self.pnl_summary_modes.append(mode)
         return {"realized_pnl": self.realized_pnl}
 
     async def recent_trades(self, _limit: int = 50) -> list[dict]:
@@ -85,6 +87,7 @@ async def test_paper_current_equity_includes_realized_and_unrealized_pnl() -> No
     bot.binance = FakeBinance({"BTCUSDT": "110", "ETHUSDT": "45"})
 
     assert await bot.current_equity_usdt() == Decimal("1045")
+    assert bot.db.pnl_summary_modes == [TradingMode.PAPER_TRADING.value]
 
 
 def test_disaster_config_uses_risk_daily_loss_limit() -> None:

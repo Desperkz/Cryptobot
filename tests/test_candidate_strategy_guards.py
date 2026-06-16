@@ -134,6 +134,7 @@ def test_liquidity_sweep_requires_strict_edge_and_flow(monkeypatch) -> None:
 
     assert signal is not None
     assert signal.metadata["strategy"] == "LIQUIDITY_SWEEP_REVERSAL"
+    assert signal.metadata["hour_utc"] == "1"
     assert Decimal(signal.metadata["reclaim_atr"]) >= Decimal("0.90")
     assert signal.metadata["follow_through_confirmed"] == "True"
 
@@ -184,6 +185,7 @@ def test_momentum_continuation_blocks_overextended_breakout_and_weak_flow(monkey
 
     assert signal is not None
     assert signal.metadata["strategy"] == "MOMENTUM_CONTINUATION"
+    assert signal.metadata["hour_utc"] == "4"
 
     monkeypatch.setattr(candidates, "atr", lambda items, period: [3.0] * len(items))
     assert strategy.generate("BTCUSDT", candles, candles, candles, metrics()) is None
@@ -245,6 +247,7 @@ def test_range_grid_requires_deeper_range_edge_and_better_rr(monkeypatch) -> Non
 
     assert signal is not None
     assert signal.metadata["strategy"] == "RANGE_GRID"
+    assert signal.metadata["hour_utc"] == "1"
     assert signal.metadata["entry_zone"] == "0.10"
     assert signal.metadata["rr"] == "1.40"
     assert signal.metadata["flow_safe"] == "True"

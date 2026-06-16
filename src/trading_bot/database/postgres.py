@@ -422,8 +422,13 @@ class PostgresDatabase:
             )
         return dict(row) if row else None
 
-    async def pnl_summary(self) -> dict[str, Any]:
-        rows = await self.recent_trades(10_000)
+    async def pnl_summary(self, mode: str | None = None) -> dict[str, Any]:
+        pool = self._require_pool()
+        async with pool.acquire() as conn:
+            if mode:
+                rows = await conn.fetch("SELECT realized_pnl FROM trades WHERE mode = $1", mode)
+            else:
+                rows = await conn.fetch("SELECT realized_pnl FROM trades")
         pnl = sum(float(row["realized_pnl"]) for row in rows)
         return {"realized_pnl": pnl, "trades": len(rows)}
 

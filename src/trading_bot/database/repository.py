@@ -140,5 +140,5 @@ class Database:
     async def load_risk_state(self) -> dict | None:
         return await self._impl.load_risk_state()
 
-    async def pnl_summary(self) -> dict[str, Any]:
-        return await self._impl.pnl_summary()
+    async def pnl_summary(self, mode: str | None = None) -> dict[str, Any]:
+        return await self._impl.pnl_summary(mode)
