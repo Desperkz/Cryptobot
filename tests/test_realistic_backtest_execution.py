@@ -130,6 +130,36 @@ def test_signed_funding_can_credit_shorts() -> None:
     assert result.net_pnl > result.gross_pnl
 
 
+def test_fallback_funding_bps_can_credit_shorts() -> None:
+    assumptions = ExecutionAssumptions(
+        taker_fee_bps=Decimal("0"),
+        base_slippage_bps=Decimal("0"),
+        random_slippage_bps=Decimal("0"),
+        funding_bps_per_8h=Decimal("1"),
+    )
+    candles = [
+        candle(0, "100", "100", "100"),
+        candle(8, "101", "94", "95"),
+    ]
+
+    result = simulate_realistic_trade(
+        candles,
+        0,
+        Direction.SHORT,
+        entry=Decimal("100"),
+        stop_loss=Decimal("105"),
+        take_profit=Decimal("90"),
+        quantity=Decimal("1"),
+        risk_amount=Decimal("5"),
+        max_bars=1,
+        assumptions=assumptions,
+        partial_targets=[{"name": "TP", "price": Decimal("95"), "quantity": Decimal("1")}],
+    )
+
+    assert result.funding_cost == Decimal("-0.01125")
+    assert result.net_pnl == Decimal("5.01125")
+
+
 def test_timeout_after_partial_target_closes_runner_at_timeout_candle_close() -> None:
     assumptions = ExecutionAssumptions(
         taker_fee_bps=Decimal("0"),

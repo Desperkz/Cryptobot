@@ -381,7 +381,8 @@ def _funding_cost(
     if assumptions.funding_rate_per_8h is not None:
         signed = assumptions.funding_rate_per_8h if direction == "LONG" else -assumptions.funding_rate_per_8h
         return notional * signed * (held_hours / Decimal("8"))
-    return notional * assumptions.funding_bps_per_8h / Decimal("10000") * (held_hours / Decimal("8"))
+    funding = notional * assumptions.funding_bps_per_8h / Decimal("10000") * (held_hours / Decimal("8"))
+    return funding if direction == "LONG" else -funding
 
 
 def _breakeven_price(direction: str, entry: Decimal, assumptions: ExecutionAssumptions) -> Decimal:

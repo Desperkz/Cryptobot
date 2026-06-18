@@ -86,6 +86,37 @@ def load_csv(path: Path) -> list[Candle]:
     return candles
 
 
+def load_metric_overrides(path: Path, symbol: str) -> dict[int, MarketMetrics]:
+    metrics_by_open_time: dict[int, MarketMetrics] = {}
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return metrics_by_open_time
+        metric_columns = {
+            "spread_bps",
+            "top_book_liquidity_usdt",
+            "book_liquidity_usdt",
+            "funding_rate",
+            "funding_rate_per_8h",
+            "open_interest",
+            "open_interest_change_pct",
+            "oi_change_pct",
+            "order_book_imbalance",
+            "taker_buy_ratio",
+            "aggressive_buy_sell_delta",
+            "delta",
+            "quote_volume_24h",
+        }
+        if not metric_columns.intersection(set(reader.fieldnames)):
+            return metrics_by_open_time
+        for row in reader:
+            open_time = _optional_int(row.get("open_time"))
+            if open_time is None:
+                continue
+            metrics_by_open_time[open_time] = _metrics_from_row(row, symbol)
+    return metrics_by_open_time
+
+
 # ---------------------------------------------------------------------------
 # Симуляция сделки по свечам
 # ---------------------------------------------------------------------------
@@ -207,6 +238,76 @@ def _dummy_metrics(candle: Candle) -> MarketMetrics:
     )
 
 
+def _metrics_for_candle(
+    symbol: str,
+    candle: Candle,
+    overrides: dict[int, MarketMetrics] | None = None,
+) -> MarketMetrics:
+    if overrides:
+        metrics = overrides.get(candle.open_time)
+        if metrics:
+            return metrics
+    metrics = _dummy_metrics(candle)
+    return MarketMetrics(
+        symbol=symbol,
+        spread_bps=metrics.spread_bps,
+        top_book_liquidity_usdt=metrics.top_book_liquidity_usdt,
+        aggressive_buy_sell_delta=metrics.aggressive_buy_sell_delta,
+        funding_rate=metrics.funding_rate,
+        open_interest=metrics.open_interest,
+        open_interest_change_pct=metrics.open_interest_change_pct,
+        quote_volume_24h=metrics.quote_volume_24h,
+    )
+
+
+def _metrics_from_row(row: dict[str, str], symbol: str) -> MarketMetrics:
+    quote_volume_24h = _optional_decimal(row, "quote_volume_24h", "quote_volume") or Decimal("0")
+    spread_bps = _optional_decimal(row, "spread_bps") or Decimal("3")
+    top_book_liquidity = (
+        _optional_decimal(row, "top_book_liquidity_usdt", "book_liquidity_usdt")
+        or Decimal("1000000")
+    )
+    return MarketMetrics(
+        symbol=symbol,
+        quote_volume_24h=quote_volume_24h,
+        spread_bps=spread_bps,
+        top_book_liquidity_usdt=top_book_liquidity,
+        funding_rate=_optional_decimal(row, "funding_rate", "funding_rate_per_8h"),
+        open_interest=_optional_decimal(row, "open_interest"),
+        open_interest_change_pct=_optional_decimal(row, "open_interest_change_pct", "oi_change_pct"),
+        order_book_imbalance=_optional_decimal(row, "order_book_imbalance") or Decimal("0"),
+        taker_buy_ratio=_optional_decimal(row, "taker_buy_ratio"),
+        aggressive_buy_sell_delta=_optional_decimal(row, "aggressive_buy_sell_delta", "delta") or Decimal("0"),
+    )
+
+
+def _optional_decimal(row: dict[str, str], *names: str) -> Decimal | None:
+    for name in names:
+        raw = row.get(name)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text or text.lower() in {"none", "null", "nan"}:
+            continue
+        try:
+            return Decimal(text)
+        except Exception:
+            continue
+    return None
+
+
+def _optional_int(raw: str | None) -> int | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Тест одного окна
 # ---------------------------------------------------------------------------
@@ -223,6 +324,7 @@ def test_window(
     window_idx: int,
     train_start: int,
     cfg: Any,
+    metrics_by_open_time: dict[int, MarketMetrics] | None = None,
 ) -> list[WindowResult]:
     results = []
     risk_pct = Decimal("0.02")
@@ -249,7 +351,7 @@ def test_window(
             if len(c1h) < 50 or len(c4h) < 50 or len(c15m) < 50:
                 continue
 
-            metrics = _dummy_metrics(candles_1h[i])
+            metrics = _metrics_for_candle(symbol, candles_1h[i], metrics_by_open_time)
 
             try:
                 signal = strategy.generate(symbol, c15m, c1h, c4h, metrics)
@@ -354,6 +456,11 @@ def walk_forward_symbol(
     c15m = load_csv(p15)
     c1h  = load_csv(p1h)
     c4h  = load_csv(p4h)
+    metrics_by_open_time = load_metric_overrides(p1h, symbol)
+    if metrics_by_open_time:
+        print(f"  market metrics: {len(metrics_by_open_time)} rows from {p1h.name}")
+    else:
+        print("  market metrics: not found in CSV, using neutral placeholders")
 
     print(f"  {symbol}: 15m={len(c15m)} 1h={len(c1h)} 4h={len(c4h)} баров")
 
@@ -392,6 +499,7 @@ def walk_forward_symbol(
             window_idx=window_idx,
             train_start=train_start,
             cfg=cfg,
+            metrics_by_open_time=metrics_by_open_time,
         )
         all_results.extend(results)
         window_idx += 1

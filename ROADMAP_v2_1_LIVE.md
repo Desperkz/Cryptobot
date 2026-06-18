@@ -259,9 +259,12 @@
   - Готово: устаревший `backtest_real.py` отключен как legacy guard, потому что он содержал копии стратегий, расходящиеся с production engine.
   - Готово: `PAPER_TRADING` и shadow-paper входы теперь получают simulated market fill с adverse entry slippage; effective entry price сохраняется в БД/локальной позиции, а entry fee/slippage metadata пишется в `execution`.
   - Готово: `walkforward.py` больше не переписывает MR stop/TP под 1h ATR, исполняет сделки на 15m свечах, использует production exit profiles и cooldown до фактического выхода сделки.
-  - Готово: regression tests покрывают costs, pessimistic intrabar, signed funding credit/debit и cost-aware quantity sizing.
-  - Проверка: `217 passed`.
+  - Готово: fallback funding bps в realistic backtester теперь signed так же, как `paper_monitor_v2.py`: LONG платит fallback funding, SHORT получает funding credit.
+  - Готово: `walkforward.py` читает historical `funding_rate`, `open_interest`, `open_interest_change_pct`, `aggressive_buy_sell_delta`, `order_book_imbalance`, `spread_bps` и book liquidity из 1h CSV, если эти колонки присутствуют.
+  - Готово: regression tests покрывают costs, pessimistic intrabar, signed funding credit/debit, signed fallback funding, CSV market metrics и cost-aware quantity sizing.
+  - Проверка: `223 passed`.
   - Следующая evidence-задача: прогнать `walkforward.py` по top symbols и нескольким market regimes перед promotion любой стратегии.
+  - Отложено: full production-pipeline walkforward. Текущий `walkforward.py` всё ещё вызывает `strategy.generate()` напрямую и не является полной копией runtime gates (`MarketEntryFilter`, BTC 4h/session gate, MR context gate, order-flow gate, self-learning blocked symbols/hours). Для promotion использовать как strategy-level evidence, пока не появится full pipeline replay.
 - `[x]` P5-06 Сбросить evidence gates только на post-P5 realistic trades.
   - Готово: `/strategy-scorecard` отдельно показывает `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades` и post-P5 realistic PnL.
   - Готово: strategy Gate и paper allocator используют только post-P5 realistic execution evidence, поэтому pre-P5 ideal fills видны, но не могут открыть promotion/live-readiness.
