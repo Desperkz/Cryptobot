@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from trading_bot.config import load_config
+from trading_bot.data_provider import BinanceAPIError
 from trading_bot.models import Direction, RiskPlan, TakeProfitTarget, TradingMode
 from trading_bot.order_manager.manager import OrderManager, _client_order_id
 from trading_bot.position_manager import PositionManager
@@ -78,6 +79,43 @@ async def test_failed_post_fill_protection_verification_defensively_closes_execu
     assert binance.cancelled_symbols == ["BTCUSDT"]
 
 
+@pytest.mark.asyncio
+async def test_live_noop_margin_type_error_is_skipped_before_entry() -> None:
+    config = replace(load_config(), mode=TradingMode.TESTNET_LIVE)
+    binance = FakeBinance(
+        margin_type_error=BinanceAPIError(
+            "No need to change margin type.",
+            400,
+            {"code": -4046, "msg": "No need to change margin type."},
+        )
+    )
+    manager = OrderManager(config, binance, PositionManager())
+
+    result = await manager.execute(_risk_plan())
+
+    assert result.accepted is True
+    assert any(order["type"] == "MARKET" and not order.get("reduceOnly") for order in binance.new_orders)
+
+
+@pytest.mark.asyncio
+async def test_live_position_setting_error_blocks_before_market_entry() -> None:
+    config = replace(load_config(), mode=TradingMode.TESTNET_LIVE)
+    binance = FakeBinance(
+        margin_type_error=BinanceAPIError(
+            "Cannot change margin type if there exists position.",
+            400,
+            {"code": -4048, "msg": "Cannot change margin type if there exists position."},
+        )
+    )
+    manager = OrderManager(config, binance, PositionManager())
+
+    with pytest.raises(BinanceAPIError, match="exists position"):
+        await manager.execute(_risk_plan())
+
+    assert binance.new_orders == []
+    assert binance.cancelled_symbols == []
+
+
 def _risk_plan() -> RiskPlan:
     return RiskPlan(
         symbol="BTCUSDT",
@@ -109,18 +147,26 @@ class FakeBinance:
         executed_qty: str = "1",
         cumulative_quote_qty: str = "100",
         stop_status: str = "NEW",
+        leverage_error: BinanceAPIError | None = None,
+        margin_type_error: BinanceAPIError | None = None,
     ) -> None:
         self.entry_status = entry_status
         self.executed_qty = executed_qty
         self.cumulative_quote_qty = cumulative_quote_qty
         self.stop_status = stop_status
+        self.leverage_error = leverage_error
+        self.margin_type_error = margin_type_error
         self.new_orders: list[dict] = []
         self.cancelled_symbols: list[str] = []
 
     async def change_leverage(self, symbol: str, leverage: int) -> dict:
+        if self.leverage_error:
+            raise self.leverage_error
         return {"symbol": symbol, "leverage": leverage}
 
     async def change_margin_type(self, symbol: str, margin_type: str) -> dict:
+        if self.margin_type_error:
+            raise self.margin_type_error
         return {"symbol": symbol, "marginType": margin_type}
 
     async def new_order(self, **params) -> dict:

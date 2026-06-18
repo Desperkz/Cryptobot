@@ -27,6 +27,7 @@
   - Готово: live-ордера теперь используют общий `trade_id`; entry, SL, TP, breakeven, trailing и cleanup получают уникальные client order IDs.
   - Готово: после неоднозначных ошибок Binance отправка ордера проверяет состояние через `clientOrderId`, а не делает слепой retry.
   - Готово: live entry больше не считает `origQty` исполненным количеством, если recovered order явно не имеет статус `FILLED`.
+  - Готово: live setup для leverage/margin-type пропускает только Binance no-op (`No need to change`) и блокирует прочие preparation-ошибки до MARKET-entry без defensive cancel чужих ордеров.
   - Проверка вынесена в P3 testnet/chaos tests.
 - `[x]` P0-03 Синхронизировать удаленные позиции/ордера Binance с локальной БД при старте и во время работы.
   - Готово: live-старт теперь требует Binance position/order sync до продолжения торговли.

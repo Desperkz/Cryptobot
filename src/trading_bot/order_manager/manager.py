@@ -79,13 +79,11 @@ class OrderManager:
             "stop": stop_client_order_id,
         }
 
+        entry_order_attempted = False
         try:
-            await self.binance.change_leverage(plan.symbol, plan.leverage)
-            try:
-                await self.binance.change_margin_type(plan.symbol, self.config.trading.margin_type)
-            except Exception as exc:
-                logger.info("Margin type change skipped for %s: %s", plan.symbol, exc)
+            await self._apply_live_position_settings(plan.symbol, plan.leverage)
 
+            entry_order_attempted = True
             entry_order = await self._new_order_with_recovery(
                 client_order_id=entry_client_order_id,
                 symbol=plan.symbol,
@@ -156,13 +154,36 @@ class OrderManager:
                 execution_metadata=execution_metadata,
             )
         except Exception:
-            logger.exception("Order placement failed for %s; attempting defensive cancel/close.", plan.symbol)
-            await self._defensive_cleanup(
-                plan,
-                entry_client_order_id,
-                executed_qty=locals().get("executed_qty"),
-            )
+            executed_qty = locals().get("executed_qty")
+            if entry_order_attempted or executed_qty is not None:
+                logger.exception("Order placement failed for %s; attempting defensive cancel/close.", plan.symbol)
+                await self._defensive_cleanup(
+                    plan,
+                    entry_client_order_id if entry_order_attempted else None,
+                    executed_qty=executed_qty,
+                )
+            else:
+                logger.exception("Live order setup failed for %s before entry submission.", plan.symbol)
             raise
+
+    async def _apply_live_position_settings(self, symbol: str, leverage: int) -> None:
+        if not self.binance:
+            raise RuntimeError("Live execution requires Binance client.")
+        try:
+            await self.binance.change_leverage(symbol, leverage)
+        except BinanceAPIError as exc:
+            if _is_noop_position_setting_error(exc):
+                logger.info("Leverage change already satisfied for %s: %s", symbol, exc)
+            else:
+                raise
+
+        try:
+            await self.binance.change_margin_type(symbol, self.config.trading.margin_type)
+        except BinanceAPIError as exc:
+            if _is_noop_position_setting_error(exc):
+                logger.info("Margin type change already satisfied for %s: %s", symbol, exc)
+            else:
+                raise
 
     async def close_position(self, position: Position, reason: str = "manual") -> OrderResult:
         if self.config.mode in {TradingMode.DRY_RUN, TradingMode.BACKTEST, TradingMode.PAPER_TRADING}:
@@ -364,6 +385,13 @@ def _truthy(value: object) -> bool:
     if isinstance(value, str):
         return value.lower() == "true"
     return bool(value)
+
+
+def _is_noop_position_setting_error(exc: BinanceAPIError) -> bool:
+    payload = exc.payload if isinstance(exc.payload, dict) else {}
+    code = payload.get("code")
+    message = str(payload.get("msg") or exc).lower()
+    return code == -4046 or "no need to change" in message
 
 
 def _order_quantity(order: dict) -> Decimal | None:
