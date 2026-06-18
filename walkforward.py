@@ -38,14 +38,16 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from trading_bot.config import load_config
 from trading_bot.backtester.realistic_execution import (
     ExecutionAssumptions,
+    SimulatedExecution,
     estimate_quantity_for_risk,
     simulate_realistic_trade,
 )
 from trading_bot.market_regime_detector import MarketRegimeDetector
-from trading_bot.models import Candle, Direction, MarketMetrics, to_decimal
+from trading_bot.models import Candle, Direction, MarketMetrics, Signal, SymbolFilters, to_decimal
 from trading_bot.strategy_engine.edge import EdgeAnalyzer
 from trading_bot.strategy_engine.mean_reversion import MeanReversionStrategy
 from trading_bot.strategy_engine.squeeze_breakout import SqueezeBreakoutStrategy
+from trading_bot.trade_manager.exit_plan import ExitPlanBuilder
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +99,7 @@ EXECUTION_ASSUMPTIONS = ExecutionAssumptions(
 
 
 def simulate_trade(
-    candles_1h: list[Candle],
+    candles: list[Candle],
     entry_idx: int,
     direction: Direction,
     entry_price: Decimal,
@@ -106,13 +108,14 @@ def simulate_trade(
     risk_amount: Decimal,
     quantity: Decimal,
     max_bars: int = 72,
-) -> Decimal:
+    partial_targets: list[dict[str, Any]] | None = None,
+) -> SimulatedExecution:
     """
     Симулирует сделку по единой realistic-модели: partial TP, fees,
     slippage, funding, breakeven/trailing и pessimistic intrabar.
     """
-    execution = simulate_realistic_trade(
-        candles_1h,
+    return simulate_realistic_trade(
+        candles,
         entry_idx,
         direction,
         entry_price,
@@ -122,8 +125,39 @@ def simulate_trade(
         risk_amount,
         max_bars=max_bars,
         assumptions=EXECUTION_ASSUMPTIONS,
+        partial_targets=partial_targets,
     )
-    return execution.net_pnl
+
+
+def _backtest_filters(symbol: str) -> SymbolFilters:
+    return SymbolFilters(
+        symbol=symbol,
+        tick_size=Decimal("0.00000001"),
+        step_size=Decimal("0.00000001"),
+        min_qty=Decimal("0"),
+        min_notional=Decimal("0"),
+    )
+
+
+def _partial_targets_for_signal(symbol: str, signal: Signal, quantity: Decimal, cfg: Any) -> list[dict[str, Any]]:
+    builder = ExitPlanBuilder(cfg.trade_management)
+    targets = builder.build_targets(signal, quantity, _backtest_filters(symbol))
+    return [
+        {
+            "name": target.name,
+            "price": target.price,
+            "quantity": target.quantity,
+            "move_stop_to_breakeven": target.move_stop_to_breakeven,
+            "activate_trailing": target.activate_trailing,
+        }
+        for target in targets
+    ]
+
+
+def _entry_index_15m(one_hour_index: int, candles_15m: list[Candle]) -> int:
+    if not candles_15m:
+        return 0
+    return min(max(one_hour_index * 4, 0), len(candles_15m) - 1)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +222,7 @@ def test_window(
     equity: Decimal,
     window_idx: int,
     train_start: int,
+    cfg: Any,
 ) -> list[WindowResult]:
     results = []
     risk_pct = Decimal("0.02")
@@ -234,35 +269,9 @@ def test_window(
                 continue
             risk_amount = balance * risk_pct
 
-            # Симулируем сделку
-            # Для MR пересчитываем стоп по 1h ATR (15m стоп слишком узкий)
-            # SQZ уже использует 1h ATR
-            from trading_bot.strategy_engine.indicators import atr as _atr
-            if strategy_name == "MEAN_REVERSION":
-                atr_1h_val = Decimal(str(_atr(candles_1h[max(0,i-50):i+1], 14)[-1]))
-                stop_dist_1h = atr_1h_val * Decimal("1.0")
-                rr = Decimal("1.1")
-                if signal.direction.value == "LONG":
-                    signal = signal.__class__(
-                        symbol=signal.symbol, direction=signal.direction,
-                        style=signal.style, entry_price=entry,
-                        stop_loss=entry - stop_dist_1h,
-                        take_profit=entry + stop_dist_1h * rr,
-                        confidence=signal.confidence, reason=signal.reason,
-                        metadata=signal.metadata,
-                    )
-                else:
-                    signal = signal.__class__(
-                        symbol=signal.symbol, direction=signal.direction,
-                        style=signal.style, entry_price=entry,
-                        stop_loss=entry + stop_dist_1h,
-                        take_profit=entry - stop_dist_1h * rr,
-                        confidence=signal.confidence, reason=signal.reason,
-                        metadata=signal.metadata,
-                    )
-            sim_candles = candles_1h
-            sim_idx = i
-            sim_max_bars = 72
+            sim_candles = candles_15m
+            sim_idx = _entry_index_15m(i, candles_15m)
+            sim_max_bars = 72 * 4
             quantity = estimate_quantity_for_risk(
                 signal.entry_price,
                 signal.stop_loss,
@@ -271,8 +280,9 @@ def test_window(
             )
             if quantity <= 0:
                 continue
-            trade_pnl = simulate_trade(
-                candles_1h=sim_candles,
+            partial_targets = _partial_targets_for_signal(symbol, signal, quantity, cfg)
+            execution = simulate_trade(
+                candles=sim_candles,
                 entry_idx=sim_idx,
                 direction=signal.direction,
                 entry_price=signal.entry_price,
@@ -281,9 +291,11 @@ def test_window(
                 risk_amount=risk_amount,
                 quantity=quantity,
                 max_bars=sim_max_bars,
+                partial_targets=partial_targets,
             )
+            trade_pnl = execution.net_pnl
 
-            skip_until = i + (sim_max_bars // 4 + 1 if strategy_name == "MEAN_REVERSION" else 73)
+            skip_until = max(i + 1, execution.exit_index // 4 + 1)
             trades += 1
             pnl += trade_pnl
             balance += trade_pnl
@@ -379,6 +391,7 @@ def walk_forward_symbol(
             equity=equity,
             window_idx=window_idx,
             train_start=train_start,
+            cfg=cfg,
         )
         all_results.extend(results)
         window_idx += 1

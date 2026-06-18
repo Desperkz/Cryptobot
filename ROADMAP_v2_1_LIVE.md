@@ -254,8 +254,9 @@
   - Готово: simulator применяет taker fees, base + spread/random slippage, signed funding estimate при наличии, partial TP, breakeven, trailing, timeout close и pessimistic intrabar sequencing.
   - Готово: `BacktestEngine`, `backtest_real.py`, `backtest_multi.py` и `walkforward.py` теперь используют общий realistic execution model вместо raw `+reward/-risk` exits.
   - Готово: `PAPER_TRADING` и shadow-paper входы теперь получают simulated market fill с adverse entry slippage; effective entry price сохраняется в БД/локальной позиции, а entry fee/slippage metadata пишется в `execution`.
+  - Готово: `walkforward.py` больше не переписывает MR stop/TP под 1h ATR, исполняет сделки на 15m свечах, использует production exit profiles и cooldown до фактического выхода сделки.
   - Готово: regression tests покрывают costs, pessimistic intrabar, signed funding credit/debit и cost-aware quantity sizing.
-  - Проверка: `95 passed`.
+  - Проверка: `214 passed`.
   - Следующая evidence-задача: прогнать `walkforward.py` по top symbols и нескольким market regimes перед promotion любой стратегии.
 - `[x]` P5-06 Сбросить evidence gates только на post-P5 realistic trades.
   - Готово: `/strategy-scorecard` отдельно показывает `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades` и post-P5 realistic PnL.
