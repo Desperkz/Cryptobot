@@ -23,7 +23,7 @@ from trading_bot.market_filters import MarketEntryFilter
 from trading_bot.ml import MLSignalFilter
 from trading_bot.models import Candle, Direction, Position, Signal, SymbolFilters, TradingMode, to_decimal
 from trading_bot.operational import IncidentAlerter, SystemdNotifier, start_watchdog_thread
-from trading_bot.order_manager import OrderManager
+from trading_bot.order_manager import OrderManager, simulated_local_entry_order
 from trading_bot.position_manager import PositionManager
 from trading_bot.risk_manager import (
     DynamicSizingDecision,
@@ -576,8 +576,9 @@ class TradingBot:
                     "ACCEPTED_TRADE" if result.accepted else "REJECTED_ORDER",
                     result.message,
                 )
+                stored_plan = _plan_with_paper_entry_fill(plan, result, self.config.mode)
                 await self.db.insert_trade(
-                    plan,
+                    stored_plan,
                     self.config.mode.value,
                     "ACCEPTED",
                     {
@@ -625,7 +626,11 @@ class TradingBot:
                     },
                 )
                 await self.telegram.trade_opened(
-                    plan.symbol, str(plan.quantity), str(plan.entry_price), str(plan.stop_loss), str(plan.take_profit)
+                    plan.symbol,
+                    str(plan.quantity),
+                    str(stored_plan.entry_price),
+                    str(plan.stop_loss),
+                    str(plan.take_profit),
                 )
                 logger.info("Trade accepted: %s", result.message)
                 continue
@@ -837,8 +842,17 @@ class TradingBot:
         if quantity <= 0 or risk_amount <= 0:
             return
         try:
+            shadow_entry_order = simulated_local_entry_order(
+                symbol=signal.symbol,
+                direction=signal.direction,
+                quantity=quantity,
+                planned_entry_price=signal.entry_price,
+                taker_fee_bps=self.config.risk.taker_fee_bps,
+                slippage_bps=self.config.risk.slippage_bps,
+            )
+            shadow_signal = replace(signal, entry_price=Decimal(str(shadow_entry_order["avgPrice"])))
             await self.db.insert_shadow_trade(
-                signal=signal,
+                signal=shadow_signal,
                 strategy=strategy,
                 quantity=str(quantity),
                 risk_amount=str(risk_amount),
@@ -850,6 +864,8 @@ class TradingBot:
                     "source": "shadow_signal",
                     "signal_reason": signal.reason,
                     "signal_metadata": dict(signal.metadata or {}),
+                    "entry_order": shadow_entry_order,
+                    "execution": OrderManager._execution_metadata(shadow_entry_order, quantity),
                     **plan_metadata,
                 },
             )
@@ -1368,6 +1384,24 @@ def _risk_plan_exit_metadata(plan: Any) -> dict[str, Any]:
         ),
         "filled_partial_targets": [],
     }
+
+
+def _plan_with_paper_entry_fill(plan: Any, result: Any, mode: TradingMode) -> Any:
+    if mode != TradingMode.PAPER_TRADING:
+        return plan
+    metadata = getattr(result, "execution_metadata", {}) or {}
+    raw_entry = metadata.get("averageFillPrice") or metadata.get("effectiveEntryPrice")
+    if raw_entry in (None, "", "None"):
+        return plan
+    try:
+        entry_price = Decimal(str(raw_entry))
+    except Exception:
+        return plan
+    if entry_price <= 0:
+        return plan
+    notional = entry_price * plan.quantity
+    initial_margin = notional / Decimal(plan.leverage) if getattr(plan, "leverage", 0) else plan.initial_margin
+    return replace(plan, entry_price=entry_price, notional=notional, initial_margin=initial_margin)
 
 
 ACTIVE_TRADE_STATUSES = {"ACCEPTED", "OPEN", "ACTIVE"}

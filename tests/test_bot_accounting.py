@@ -5,8 +5,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from trading_bot.bot import TradingBot, _disaster_config_from_app_config, _paper_trade_unrealized_pnl
-from trading_bot.models import TradingMode
+from trading_bot.bot import (
+    TradingBot,
+    _disaster_config_from_app_config,
+    _paper_trade_unrealized_pnl,
+    _plan_with_paper_entry_fill,
+)
+from trading_bot.models import Direction, RiskPlan, TradingMode
 
 
 class FakeDB:
@@ -96,3 +101,29 @@ def test_disaster_config_uses_risk_daily_loss_limit() -> None:
     disaster_config = _disaster_config_from_app_config(config)
 
     assert disaster_config.max_daily_loss_pct == 0.06
+
+
+def test_paper_db_plan_uses_effective_entry_fill_for_unrealized_and_close_pnl() -> None:
+    plan = RiskPlan(
+        symbol="BTCUSDT",
+        direction=Direction.LONG,
+        entry_price=Decimal("100"),
+        stop_loss=Decimal("95"),
+        take_profit=Decimal("110"),
+        quantity=Decimal("2"),
+        notional=Decimal("200"),
+        initial_margin=Decimal("100"),
+        risk_amount=Decimal("10"),
+        reward_amount=Decimal("20"),
+        risk_pct=Decimal("0.01"),
+        leverage=2,
+        reward_risk=Decimal("2"),
+    )
+    result = SimpleNamespace(execution_metadata={"averageFillPrice": "100.05"})
+
+    adjusted = _plan_with_paper_entry_fill(plan, result, TradingMode.PAPER_TRADING)
+
+    assert adjusted.entry_price == Decimal("100.05")
+    assert adjusted.notional == Decimal("200.10")
+    assert adjusted.initial_margin == Decimal("100.05")
+    assert _plan_with_paper_entry_fill(plan, result, TradingMode.TESTNET_LIVE) is plan

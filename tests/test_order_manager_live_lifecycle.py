@@ -25,6 +25,25 @@ def test_executed_quantity_does_not_treat_orig_qty_as_fill() -> None:
 
 
 @pytest.mark.asyncio
+async def test_paper_entry_fill_applies_adverse_slippage_and_records_metadata() -> None:
+    config = replace(load_config(), mode=TradingMode.PAPER_TRADING)
+    positions = PositionManager()
+    manager = OrderManager(config, None, positions)
+
+    result = await manager.execute(_risk_plan())
+    active = await positions.active_positions()
+
+    assert result.entry_order is not None
+    assert result.entry_order["simulatedFillModel"] == "paper_entry_slippage_v1"
+    assert result.execution_metadata["simulated"] is True
+    assert result.execution_metadata["plannedEntryPrice"] == "100"
+    assert result.execution_metadata["averageFillPrice"] == "100.05"
+    assert result.execution_metadata["entrySlippageCost"] == "0.05"
+    assert result.execution_metadata["entryFee"] == "0.04002"
+    assert active[0].entry_price == Decimal("100.05")
+
+
+@pytest.mark.asyncio
 async def test_live_partial_fill_scales_take_profit_ladder_and_records_execution_metadata() -> None:
     config = replace(load_config(), mode=TradingMode.TESTNET_LIVE)
     binance = FakeBinance(entry_status="FILLED", executed_qty="0.5", cumulative_quote_qty="50")

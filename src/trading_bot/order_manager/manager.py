@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from decimal import Decimal
+from typing import Any
 
 from trading_bot.config import AppConfig
 from trading_bot.data_provider import BinanceAPIError, BinanceUSDMClient
@@ -24,11 +25,25 @@ class OrderManager:
         await self.positions.ensure_symbol_available(plan.symbol)
 
         if self.config.mode in {TradingMode.DRY_RUN, TradingMode.BACKTEST, TradingMode.PAPER_TRADING}:
+            entry_order: dict[str, Any] | None = None
+            execution_metadata: dict[str, Any] = {}
+            local_entry_price = plan.entry_price
+            if self.config.mode == TradingMode.PAPER_TRADING:
+                entry_order = simulated_local_entry_order(
+                    symbol=plan.symbol,
+                    direction=plan.direction,
+                    quantity=plan.quantity,
+                    planned_entry_price=plan.entry_price,
+                    taker_fee_bps=self.config.risk.taker_fee_bps,
+                    slippage_bps=self.config.risk.slippage_bps,
+                )
+                execution_metadata = self._execution_metadata(entry_order, plan.quantity)
+                local_entry_price = Decimal(str(execution_metadata["averageFillPrice"]))
             position = Position(
                 symbol=plan.symbol,
                 direction=plan.direction,
                 quantity=plan.quantity,
-                entry_price=plan.entry_price,
+                entry_price=local_entry_price,
                 stop_loss=plan.stop_loss,
                 take_profit=plan.take_profit,
                 managed_by_bot=True,
@@ -41,7 +56,9 @@ class OrderManager:
                 mode=self.config.mode,
                 accepted=True,
                 message=f"{self.config.mode.value}: no exchange order sent; partial exits simulated locally.",
+                entry_order=entry_order,
                 take_profit_orders=tuple({"name": tp.name, "price": str(tp.price), "quantity": str(tp.quantity)} for tp in plan.partial_take_profits),
+                execution_metadata=execution_metadata,
             )
 
         if self.config.mode not in {TradingMode.TESTNET_LIVE, TradingMode.MAINNET_LIVE}:
@@ -330,6 +347,14 @@ class OrderManager:
             "averageFillPrice": format_decimal(average_fill_price) if average_fill_price is not None else None,
             "plannedQty": format_decimal(planned_qty),
             "partialFill": executed_qty > 0 and executed_qty < planned_qty,
+            "simulated": bool(order.get("simulated")),
+            "simulatedFillModel": order.get("simulatedFillModel"),
+            "plannedEntryPrice": order.get("plannedEntryPrice"),
+            "effectiveEntryPrice": order.get("effectiveEntryPrice"),
+            "entrySlippageBps": order.get("entrySlippageBps"),
+            "entrySlippageCost": order.get("entrySlippageCost"),
+            "entryTakerFeeBps": order.get("entryTakerFeeBps"),
+            "entryFee": order.get("entryFee"),
         }
 
 
@@ -355,6 +380,53 @@ def _cumulative_quote_quantity(order: dict) -> Decimal | None:
         if order.get(key) not in (None, ""):
             return to_decimal(order[key])
     return None
+
+
+def simulated_local_entry_order(
+    *,
+    symbol: str,
+    direction: Direction,
+    quantity: Decimal,
+    planned_entry_price: Decimal,
+    taker_fee_bps: Decimal,
+    slippage_bps: Decimal,
+) -> dict[str, Any]:
+    effective_entry = simulated_entry_price(direction, planned_entry_price, slippage_bps)
+    notional = effective_entry * quantity
+    if direction == Direction.LONG:
+        slippage_cost = (effective_entry - planned_entry_price) * quantity
+        side = OrderSide.BUY.value
+    else:
+        slippage_cost = (planned_entry_price - effective_entry) * quantity
+        side = OrderSide.SELL.value
+    entry_fee = notional * taker_fee_bps / Decimal("10000")
+    return {
+        "symbol": symbol,
+        "side": side,
+        "type": "MARKET",
+        "status": "FILLED",
+        "origQty": format_decimal(quantity),
+        "executedQty": format_decimal(quantity),
+        "cumulativeQuoteQty": format_decimal(notional),
+        "avgPrice": format_decimal(effective_entry),
+        "simulated": True,
+        "simulatedFillModel": "paper_entry_slippage_v1",
+        "plannedEntryPrice": format_decimal(planned_entry_price),
+        "effectiveEntryPrice": format_decimal(effective_entry),
+        "entrySlippageBps": format_decimal(slippage_bps),
+        "entrySlippageCost": format_decimal(max(slippage_cost, Decimal("0"))),
+        "entryTakerFeeBps": format_decimal(taker_fee_bps),
+        "entryFee": format_decimal(entry_fee),
+    }
+
+
+def simulated_entry_price(direction: Direction, planned_entry_price: Decimal, slippage_bps: Decimal) -> Decimal:
+    slippage = slippage_bps / Decimal("10000")
+    if direction == Direction.LONG:
+        return planned_entry_price * (Decimal("1") + slippage)
+    if direction == Direction.SHORT:
+        return planned_entry_price * (Decimal("1") - slippage)
+    return planned_entry_price
 
 
 def _trade_id() -> str:
