@@ -239,6 +239,7 @@
   - Готово: paper partial TP может переносить SL на тот же breakeven price, что risk plan; paper trailing обновляет stop при активном trailing.
   - Готово: regular paper и shadow-paper closures используют net PnL, поэтому scorecard/equity evidence больше не основаны на ideal fills.
   - Готово: SQLite для bot DB и `paper_monitor_v2.py` работает с WAL, `busy_timeout=30s` и `synchronous=NORMAL`, чтобы снизить риск `database is locked` между ботом и монитором.
+  - Готово: legacy `paper_monitor.py` защищен deprecation guard-ом, чтобы его нельзя было случайно запустить рядом с `paper_monitor_v2.py` и получить двойное закрытие сделок.
 - `[x]` P5-02 Добавить breakdown издержек в dashboard для последних закрытых сделок.
   - Готово: `/trades` и `/shadow-trades` возвращают `execution_costs` с gross PnL, fees, slippage, funding, total cost и net PnL.
   - Готово: dashboard trade history показывает компактную колонку `Costs` с tooltip breakdown; pre-P5 trades явно помечаются как missing cost detail.
