@@ -206,6 +206,26 @@ def test_same_symbol_position_blocks_new_trade_but_other_symbol_is_allowed() -> 
         manager.calculate_plan(long_signal(), Decimal("1000"), filters(), leverage=5, active_positions=same_symbol)
 
 
+def test_margin_usage_uses_position_initial_margin_before_default_leverage() -> None:
+    manager = RiskManager(risk_config(), trade_management_config())
+    active_positions = [
+        Position(
+            "ETHUSDT",
+            Direction.LONG,
+            Decimal("16.5"),
+            Decimal("100"),
+            stop_loss=Decimal("96"),
+            leverage=5,
+            initial_margin=Decimal("330"),
+        )
+    ]
+
+    plan = manager.calculate_plan(long_signal(), Decimal("1000"), filters(), leverage=5, active_positions=active_positions)
+
+    assert plan.quantity == Decimal("3.891")
+    assert "Position size was capped by max margin usage." not in plan.warnings
+
+
 def test_live_mode_requires_liquidation_check() -> None:
     manager = RiskManager(risk_config(), trade_management_config())
 

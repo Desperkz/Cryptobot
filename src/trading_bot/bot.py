@@ -584,6 +584,9 @@ class TradingBot:
                     {
                         "message": result.message,
                         "trade_id": result.trade_id,
+                        "notional": str(stored_plan.notional),
+                        "initial_margin": str(stored_plan.initial_margin),
+                        "leverage": str(stored_plan.leverage),
                         "client_order_ids": result.client_order_ids,
                         "entry_order": result.entry_order,
                         "stop_order": result.stop_order,
@@ -1083,6 +1086,7 @@ class TradingBot:
 
         for symbol, row in open_rows.items():
             try:
+                metadata = _trade_metadata(row)
                 self.positions.set_local_position(
                     Position(
                         symbol=symbol,
@@ -1093,6 +1097,8 @@ class TradingBot:
                         take_profit=_optional_decimal(row.get("take_profit")),
                         managed_by_bot=True,
                         source="PAPER_TRADING_DB",
+                        leverage=_optional_int(metadata.get("leverage")),
+                        initial_margin=_optional_decimal(metadata.get("initial_margin")),
                     )
                 )
             except Exception:
@@ -1145,6 +1151,8 @@ class TradingBot:
                     managed_by_bot=managed_by_bot,
                     unrealized_pnl=to_decimal(item.get("unRealizedProfit", "0")),
                     source="BINANCE_RECONCILIATION",
+                    leverage=_optional_int(item.get("leverage")),
+                    initial_margin=_optional_decimal(item.get("positionInitialMargin")),
                 )
             )
             await self.db.sync_live_position(
@@ -1327,6 +1335,16 @@ def _optional_decimal(value: object) -> Decimal | None:
     if value in (None, "", "None"):
         return None
     return Decimal(str(value))
+
+
+def _optional_int(value: object) -> int | None:
+    if value in (None, "", "None", "0"):
+        return None
+    try:
+        parsed = int(str(value))
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _decimal_or_zero(value: object) -> Decimal:

@@ -103,7 +103,7 @@ class RiskManager:
 
         max_notional = equity_usdt * selected_leverage
         max_qty_by_leverage = max_notional / entry
-        margin_used = sum(position.notional / self.config.default_leverage for position in active_positions)
+        margin_used = sum(_position_margin_estimate(position, self.config.default_leverage) for position in active_positions)
         max_allowed_margin = equity_usdt * self.config.max_margin_usage_pct
         available_margin = max_allowed_margin - margin_used
         if available_margin <= 0:
@@ -286,7 +286,7 @@ class RiskManager:
         if active_risk + new_risk_amount > equity_usdt * self.config.max_portfolio_risk_pct:
             raise RiskError("New trade blocked: max portfolio risk would be exceeded.")
 
-        margin_used = sum(position.notional / self.config.default_leverage for position in active_positions)
+        margin_used = sum(_position_margin_estimate(position, self.config.default_leverage) for position in active_positions)
         if margin_used + new_margin > equity_usdt * self.config.max_margin_usage_pct:
             raise RiskError("New trade blocked: max margin usage would be exceeded.")
 
@@ -335,6 +335,15 @@ def _position_risk_estimate(position: Position) -> Decimal:
     if position.stop_loss is not None:
         return abs(position.entry_price - position.stop_loss) * position.quantity
     return position.notional * Decimal("0.05")
+
+
+def _position_margin_estimate(position: Position, default_leverage: int) -> Decimal:
+    if position.initial_margin is not None and position.initial_margin > 0:
+        return position.initial_margin
+    leverage = position.leverage or default_leverage
+    if leverage <= 0:
+        leverage = 1
+    return position.notional / Decimal(leverage)
 
 
 def _exit_profile_signature(targets: tuple[object, ...]) -> str:

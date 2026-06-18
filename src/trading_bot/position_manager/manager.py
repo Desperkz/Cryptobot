@@ -57,6 +57,8 @@ class PositionManager:
                     managed_by_bot=False,
                     unrealized_pnl=position.unrealized_pnl,
                     source="MANUAL_OR_EXTERNAL",
+                    leverage=position.leverage,
+                    initial_margin=position.initial_margin,
                 )
                 self._local_positions[position.symbol] = adopted_position
                 adopted.append(adopted_position)
@@ -85,4 +87,26 @@ def _parse_positions(raw_positions: Iterable[dict]) -> Iterable[Position]:
             liquidation_price=to_decimal(liquidation) if liquidation not in (None, "", "0") else None,
             unrealized_pnl=to_decimal(item.get("unRealizedProfit", "0")),
             source="BINANCE",
+            leverage=_optional_int(item.get("leverage")),
+            initial_margin=_optional_decimal(item.get("positionInitialMargin")),
         )
+
+
+def _optional_decimal(value: object) -> Decimal | None:
+    if value in (None, "", "None", "0"):
+        return None
+    try:
+        parsed = to_decimal(value)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _optional_int(value: object) -> int | None:
+    if value in (None, "", "None", "0"):
+        return None
+    try:
+        parsed = int(str(value))
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None

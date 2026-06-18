@@ -17,6 +17,8 @@ class PaperTrader:
             direction=plan.direction,
             quantity=plan.quantity,
             entry_price=plan.entry_price,
+            leverage=plan.leverage,
+            initial_margin=plan.initial_margin,
             source="PAPER",
         )
         self.positions.set_local_position(position)
@@ -38,4 +40,3 @@ class PaperTrader:
         self.balance += pnl
         self.positions.clear_local_position(symbol)
         return pnl
-

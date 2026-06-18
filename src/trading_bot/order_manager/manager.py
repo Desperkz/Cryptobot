@@ -48,6 +48,8 @@ class OrderManager:
                 take_profit=plan.take_profit,
                 managed_by_bot=True,
                 source=self.config.mode.value,
+                leverage=plan.leverage,
+                initial_margin=plan.initial_margin,
             )
             if self.config.mode == TradingMode.PAPER_TRADING:
                 self.positions.set_local_position(position)

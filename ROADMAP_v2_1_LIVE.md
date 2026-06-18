@@ -293,6 +293,7 @@
   - Готово: correlation filter теперь конфигурируется через `risk.realtime_correlation_*` и перед новым входом обновляет 1h-корреляции по активным позициям.
   - Готово: в live/testnet при недоступной correlation refresh проверке новый вход блокируется, чтобы не получить скрытый двойной риск.
   - Готово: cooldown по символу и стратегии поднят до 180 минут, `scale_in_enabled=false` остается runtime safety default.
+  - Готово: active position margin accounting использует сохраненные `initial_margin`/`leverage`, а не всегда `notional / default_leverage`, чтобы не получать ложные `max margin usage` блокировки после dynamic leverage.
   - Проверка: добавлены regression tests для correlation block, live unavailable-correlation block и runtime safety config.
 - `[x]` P6-05 Добавить operational watchdogs и incident alerts.
   - Добавить systemd watchdog/health timeout для paper monitor и control API.

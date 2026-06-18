@@ -210,6 +210,8 @@ class Position:
     protection_status: ProtectionStatus = ProtectionStatus.PENDING
     unrealized_pnl: Decimal = Decimal("0")
     source: str = "LOCAL"
+    leverage: int | None = None
+    initial_margin: Decimal | None = None
 
     @property
     def notional(self) -> Decimal:
