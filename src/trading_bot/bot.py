@@ -1187,7 +1187,7 @@ class TradingBot:
         if not self.config.market_filters.btc_4h_drop_filter_enabled:
             return None
         try:
-            candles = await self.market_data.candles("BTCUSDT", "4h", limit=2)
+            candles = await self.market_data.candles("BTCUSDT", "4h", limit=3)
         except Exception:
             logger.exception("Could not fetch BTCUSDT 4h candles for market filter.")
             return None

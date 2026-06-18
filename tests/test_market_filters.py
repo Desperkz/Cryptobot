@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from decimal import Decimal
 
 from trading_bot.config import MarketFilterConfig
@@ -61,6 +62,27 @@ def test_btc_drop_blocks_longs_but_not_shorts() -> None:
 
     assert entry_filter.allow_signal(signal(Direction.LONG), Decimal("-0.04")).allowed is False
     assert entry_filter.allow_signal(signal(Direction.SHORT), Decimal("-0.04")).allowed is True
+
+
+def test_btc_4h_change_uses_completed_candles_not_live_candle() -> None:
+    entry_filter = MarketEntryFilter(filter_config())
+    candles = [
+        SimpleNamespace(close=Decimal("100")),
+        SimpleNamespace(close=Decimal("105")),
+        SimpleNamespace(close=Decimal("80")),
+    ]
+
+    assert entry_filter.btc_4h_change(candles) == Decimal("0.05")
+
+
+def test_btc_4h_change_requires_live_candle_buffer() -> None:
+    entry_filter = MarketEntryFilter(filter_config())
+    candles = [
+        SimpleNamespace(close=Decimal("100")),
+        SimpleNamespace(close=Decimal("80")),
+    ]
+
+    assert entry_filter.btc_4h_change(candles) is None
 
 
 def test_utc_session_filter_blocks_avoid_hours() -> None:

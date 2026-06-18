@@ -169,6 +169,7 @@
   - Готово: `MAINNET_LIVE` остается защищенным, потому что paper-mode стратегии не исполняются в mainnet, а live allow-list все еще содержит только `SQUEEZE_BREAKOUT`.
   - Готово: добавлены более строгие exhaustion rules: RSI extreme, ATR deviation, divergence, volume confirmation, reversal wick/absorption/sweep confirmation и confluence scoring.
   - Готово: добавлен `MR_CONTEXT` gate перед paper-входом; MR блокируется, если BTC 4h impulse резко против сделки или order-flow/liquidation context враждебен.
+  - Готово: BTC 4h change считается по двум закрытым 4h свечам (`[-3] -> [-2]`), а не по текущей формирующейся свече, чтобы BTC direction gate не дергался внутри бара.
   - Готово: `/strategy-scorecard` суммирует candidate evidence из shadow signals: average confidence, average confluence, divergence, volume, edge и reversal counts.
   - Требуется отдельная v2.1 paper/testnet-статистика перед включением за пределами paper-наблюдения.
 - `[x]` P4-04 Добавить кандидата `TREND_PULLBACK`.
