@@ -16,8 +16,9 @@ class Database:
 
     async def connect(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = await aiosqlite.connect(self.path)
+        self._conn = await aiosqlite.connect(self.path, timeout=30)
         self._conn.row_factory = aiosqlite.Row
+        await self._configure_connection()
         await self.migrate()
 
     async def close(self) -> None:
@@ -443,6 +444,12 @@ class Database:
             rows = await cursor.fetchall()
         if column not in {row["name"] for row in rows}:
             await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    async def _configure_connection(self) -> None:
+        conn = self._require_conn()
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
 
     @staticmethod
     def _sqlite_path(url: str) -> Path:

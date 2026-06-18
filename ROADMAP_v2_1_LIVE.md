@@ -238,6 +238,7 @@
   - Готово: paper monitor использует 1m high/low snapshots и пессимистично выбирает SL первым, если SL и TP/partial TP попали в одну свечу.
   - Готово: paper partial TP может переносить SL на тот же breakeven price, что risk plan; paper trailing обновляет stop при активном trailing.
   - Готово: regular paper и shadow-paper closures используют net PnL, поэтому scorecard/equity evidence больше не основаны на ideal fills.
+  - Готово: SQLite для bot DB и `paper_monitor_v2.py` работает с WAL, `busy_timeout=30s` и `synchronous=NORMAL`, чтобы снизить риск `database is locked` между ботом и монитором.
 - `[x]` P5-02 Добавить breakdown издержек в dashboard для последних закрытых сделок.
   - Готово: `/trades` и `/shadow-trades` возвращают `execution_costs` с gross PnL, fees, slippage, funding, total cost и net PnL.
   - Готово: dashboard trade history показывает компактную колонку `Costs` с tooltip breakdown; pre-P5 trades явно помечаются как missing cost detail.
@@ -257,7 +258,7 @@
   - Готово: `PAPER_TRADING` и shadow-paper входы теперь получают simulated market fill с adverse entry slippage; effective entry price сохраняется в БД/локальной позиции, а entry fee/slippage metadata пишется в `execution`.
   - Готово: `walkforward.py` больше не переписывает MR stop/TP под 1h ATR, исполняет сделки на 15m свечах, использует production exit profiles и cooldown до фактического выхода сделки.
   - Готово: regression tests покрывают costs, pessimistic intrabar, signed funding credit/debit и cost-aware quantity sizing.
-  - Проверка: `215 passed`.
+  - Проверка: `217 passed`.
   - Следующая evidence-задача: прогнать `walkforward.py` по top symbols и нескольким market regimes перед promotion любой стратегии.
 - `[x]` P5-06 Сбросить evidence gates только на post-P5 realistic trades.
   - Готово: `/strategy-scorecard` отдельно показывает `post_p5_evidence`, `post_p5_closed_trades`, `pre_p5_closed_trades` и post-P5 realistic PnL.

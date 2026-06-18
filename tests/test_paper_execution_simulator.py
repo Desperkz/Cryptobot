@@ -8,6 +8,21 @@ from decimal import Decimal
 import paper_monitor_v2 as monitor
 
 
+def test_paper_monitor_sqlite_connection_uses_wal_and_busy_timeout(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(monitor, "DB_PATH", tmp_path / "paper.sqlite3")
+    monkeypatch.setattr(monitor, "SQLITE_BUSY_TIMEOUT_MS", 30000)
+
+    conn = monitor._connect_db()
+    try:
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert str(journal_mode).lower() == "wal"
+    assert busy_timeout == 30000
+
+
 def test_execution_pnl_subtracts_fee_slippage_and_funding(monkeypatch) -> None:
     monkeypatch.setattr(monitor, "TAKER_FEE_BPS", Decimal("4.0"))
     monkeypatch.setattr(monitor, "SLIPPAGE_BPS", Decimal("10.0"))

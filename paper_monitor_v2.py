@@ -39,6 +39,8 @@ FUNDING_BPS_PER_8H = Decimal(os.getenv("PAPER_FUNDING_BPS_PER_8H", "1.0"))
 BREAKEVEN_OFFSET_BPS = Decimal(os.getenv("PAPER_BREAKEVEN_OFFSET_BPS", "2.0"))
 TRAILING_CALLBACK_RATE_PCT = Decimal(os.getenv("PAPER_TRAILING_CALLBACK_RATE_PCT", "0.4"))
 PESSIMISTIC_INTRABAR = os.getenv("PAPER_PESSIMISTIC_INTRABAR", "1").strip().lower() not in {"0", "false", "no"}
+SQLITE_TIMEOUT_SEC = float(os.getenv("PAPER_SQLITE_TIMEOUT_SEC", "30"))
+SQLITE_BUSY_TIMEOUT_MS = int(os.getenv("PAPER_SQLITE_BUSY_TIMEOUT_MS", "30000"))
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,15 @@ class ExecutionBreakdown:
     held_hours: Decimal
     funding_rate_per_8h: Decimal | None = None
     funding_source: str = "fallback_bps"
+
+
+def _connect_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(DB_PATH), timeout=SQLITE_TIMEOUT_SEC)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+    return conn
 
 
 def ensure_shadow_trades_table(conn: sqlite3.Connection) -> None:
@@ -134,7 +145,7 @@ async def get_current_price(client: httpx.AsyncClient, symbol: str) -> Decimal |
 
 def get_open_positions() -> list[dict]:
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         conn.row_factory = sqlite3.Row
         cur = conn.execute("""
             SELECT id, created_at, symbol, direction, entry_price, stop_loss, take_profit, quantity,
@@ -153,7 +164,7 @@ def get_open_positions() -> list[dict]:
 
 def get_open_shadow_positions() -> list[dict]:
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         conn.row_factory = sqlite3.Row
         ensure_shadow_trades_table(conn)
         cur = conn.execute("""
@@ -198,7 +209,7 @@ def close_position(
     r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         conn.execute("""
             UPDATE trades
             SET status = 'CLOSED',
@@ -239,7 +250,7 @@ def close_shadow_position(
     realized_pnl: Decimal = Decimal("0"),
 ) -> None:
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         ensure_shadow_trades_table(conn)
         row = conn.execute("SELECT metadata, realized_pnl FROM shadow_trades WHERE id = ?", (trade_id,)).fetchone()
         metadata = _metadata(row[0] if row else "{}")
@@ -344,7 +355,7 @@ def close_shadow_partial_target(
         metadata["trailing_callback_rate_pct"] = str(_trailing_callback_rate(metadata))
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         ensure_shadow_trades_table(conn)
         if remaining_qty <= 0:
             total_pnl = realized_pnl + pnl
@@ -454,7 +465,7 @@ def close_partial_target(
         metadata["trailing_callback_rate_pct"] = str(_trailing_callback_rate(metadata))
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn = _connect_db()
         if remaining_qty <= 0:
             current_realized = conn.execute(
                 "SELECT realized_pnl FROM trades WHERE id = ?",
@@ -820,7 +831,7 @@ async def check_positions() -> None:
             sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
             if trailing_changed:
                 try:
-                    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+                    conn = _connect_db()
                     conn.execute(
                         "UPDATE trades SET stop_loss = ?, metadata = ? WHERE id = ?",
                         (str(sl), json.dumps(metadata, ensure_ascii=False), trade_id),
@@ -910,7 +921,7 @@ async def check_shadow_positions() -> None:
             sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
             if trailing_changed:
                 try:
-                    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+                    conn = _connect_db()
                     ensure_shadow_trades_table(conn)
                     conn.execute(
                         "UPDATE shadow_trades SET stop_loss = ?, metadata = ? WHERE id = ?",

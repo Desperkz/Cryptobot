@@ -9,6 +9,23 @@ from trading_bot.models import Direction, Signal, TradingStyle
 
 
 @pytest.mark.asyncio
+async def test_sqlite_connection_uses_wal_and_busy_timeout(tmp_path) -> None:
+    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'bot.sqlite3'}")
+    await db.connect()
+    try:
+        conn = db._require_conn()
+        async with conn.execute("PRAGMA journal_mode") as cursor:
+            journal_mode = (await cursor.fetchone())[0]
+        async with conn.execute("PRAGMA busy_timeout") as cursor:
+            busy_timeout = (await cursor.fetchone())[0]
+    finally:
+        await db.close()
+
+    assert str(journal_mode).lower() == "wal"
+    assert busy_timeout == 30000
+
+
+@pytest.mark.asyncio
 async def test_risk_state_persists_pnl_date(tmp_path) -> None:
     db = Database(f"sqlite+aiosqlite:///{tmp_path / 'bot.sqlite3'}")
     await db.connect()
