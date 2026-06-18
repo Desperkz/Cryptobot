@@ -48,6 +48,46 @@ def test_execution_pnl_can_credit_shorts_with_positive_funding(monkeypatch) -> N
     assert execution.net_pnl == Decimal("9.8439640")
 
 
+def test_execution_pnl_uses_symbol_funding_rate_metadata_before_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(monitor, "TAKER_FEE_BPS", Decimal("0"))
+    monkeypatch.setattr(monitor, "SLIPPAGE_BPS", Decimal("0"))
+    monkeypatch.setattr(monitor, "FUNDING_BPS_PER_8H", Decimal("99"))
+
+    long_execution = monitor._execution_pnl(
+        "LONG",
+        Decimal("100"),
+        Decimal("101"),
+        Decimal("1"),
+        opened_at=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+        closed_at=datetime(2026, 5, 18, 8, 0, tzinfo=timezone.utc),
+        funding_rate_per_8h=Decimal("0.0002"),
+    )
+    short_execution = monitor._execution_pnl(
+        "SHORT",
+        Decimal("100"),
+        Decimal("99"),
+        Decimal("1"),
+        opened_at=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+        closed_at=datetime(2026, 5, 18, 8, 0, tzinfo=timezone.utc),
+        funding_rate_per_8h=Decimal("0.0002"),
+    )
+
+    assert long_execution.funding_cost == Decimal("0.0200")
+    assert long_execution.funding_source == "metadata_rate"
+    assert short_execution.funding_cost == Decimal("-0.0200")
+    assert short_execution.funding_source == "metadata_rate"
+
+
+def test_metadata_funding_rate_reads_nested_signal_metadata() -> None:
+    metadata = {
+        "signal_metadata": {
+            "funding_rate": "-0.0003",
+        }
+    }
+
+    assert monitor._metadata_funding_rate(metadata) == Decimal("-0.0003")
+
+
 def test_pessimistic_intrabar_prefers_stop_when_tp_and_sl_are_inside_same_candle(monkeypatch) -> None:
     monkeypatch.setattr(monitor, "PESSIMISTIC_INTRABAR", True)
     snapshot = monitor.MarketSnapshot(price=Decimal("108"), high=Decimal("111"), low=Decimal("94"))

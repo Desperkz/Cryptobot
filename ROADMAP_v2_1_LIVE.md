@@ -233,6 +233,7 @@
 
 - `[x]` P5-01 Симулировать net paper execution перед использованием scorecard evidence.
   - Готово: paper exits теперь хранят gross PnL, taker fees, slippage cost, funding cost, held hours и net PnL в trade metadata.
+  - Готово: paper/shadow exits используют symbol-specific `funding_rate` из metadata, когда он есть; старый `PAPER_FUNDING_BPS_PER_8H` остается fallback для сделок без funding evidence.
   - Готово: paper monitor использует 1m high/low snapshots и пессимистично выбирает SL первым, если SL и TP/partial TP попали в одну свечу.
   - Готово: paper partial TP может переносить SL на тот же breakeven price, что risk plan; paper trailing обновляет stop при активном trailing.
   - Готово: regular paper и shadow-paper closures используют net PnL, поэтому scorecard/equity evidence больше не основаны на ideal fills.

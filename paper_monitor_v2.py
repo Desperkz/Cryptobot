@@ -59,6 +59,8 @@ class ExecutionBreakdown:
     funding_cost: Decimal
     effective_close_price: Decimal
     held_hours: Decimal
+    funding_rate_per_8h: Decimal | None = None
+    funding_source: str = "fallback_bps"
 
 
 def ensure_shadow_trades_table(conn: sqlite3.Connection) -> None:
@@ -182,7 +184,14 @@ def close_position(
     opened_at: object = None,
 ) -> None:
     metadata = metadata or {}
-    execution = _execution_pnl(direction, entry, close_price, qty, opened_at=opened_at)
+    execution = _execution_pnl(
+        direction,
+        entry,
+        close_price,
+        qty,
+        opened_at=opened_at,
+        funding_rate_per_8h=_metadata_funding_rate(metadata),
+    )
     _record_execution_metadata(metadata, "paper_executions", "FINAL", reason, close_price, execution)
 
     total_pnl = realized_pnl + execution.net_pnl
@@ -229,15 +238,21 @@ def close_shadow_position(
     opened_at: object = None,
     realized_pnl: Decimal = Decimal("0"),
 ) -> None:
-    execution = _execution_pnl(direction, entry, close_price, qty, opened_at=opened_at)
-    total_pnl = realized_pnl + execution.net_pnl
-    r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
-
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=5)
         ensure_shadow_trades_table(conn)
         row = conn.execute("SELECT metadata, realized_pnl FROM shadow_trades WHERE id = ?", (trade_id,)).fetchone()
         metadata = _metadata(row[0] if row else "{}")
+        execution = _execution_pnl(
+            direction,
+            entry,
+            close_price,
+            qty,
+            opened_at=opened_at,
+            funding_rate_per_8h=_metadata_funding_rate(metadata),
+        )
+        total_pnl = realized_pnl + execution.net_pnl
+        r_multiple = total_pnl / risk_amount if risk_amount and risk_amount > 0 else Decimal("0")
         if realized_pnl == 0 and row is not None:
             realized_pnl = Decimal(str(row[1] or "0"))
             total_pnl = realized_pnl + execution.net_pnl
@@ -299,7 +314,14 @@ def close_shadow_partial_target(
     target_qty = min(Decimal(str(target.get("quantity", qty))), qty)
     if target_qty <= 0:
         return
-    execution = _execution_pnl(direction, entry, target_price, target_qty, opened_at=opened_at)
+    execution = _execution_pnl(
+        direction,
+        entry,
+        target_price,
+        target_qty,
+        opened_at=opened_at,
+        funding_rate_per_8h=_metadata_funding_rate(metadata),
+    )
     pnl = execution.net_pnl
 
     remaining_qty = qty - target_qty
@@ -390,7 +412,14 @@ def close_partial_target(
     target_qty = min(Decimal(str(target.get("quantity", qty))), qty)
     if target_qty <= 0:
         return
-    execution = _execution_pnl(direction, entry, target_price, target_qty, opened_at=opened_at)
+    execution = _execution_pnl(
+        direction,
+        entry,
+        target_price,
+        target_qty,
+        opened_at=opened_at,
+        funding_rate_per_8h=_metadata_funding_rate(metadata),
+    )
     pnl = execution.net_pnl
 
     remaining_qty = qty - target_qty
@@ -551,6 +580,7 @@ def _execution_pnl(
     qty: Decimal,
     opened_at: object = None,
     closed_at: datetime | None = None,
+    funding_rate_per_8h: Decimal | None = None,
 ) -> ExecutionBreakdown:
     closed_at = closed_at or datetime.now(timezone.utc)
     effective_exit = _exit_price_with_slippage(direction, exit_price)
@@ -563,7 +593,7 @@ def _execution_pnl(
     slippage_cost = max(gross - gross_after_slippage, Decimal("0"))
     fees = (entry * qty + effective_exit * qty) * TAKER_FEE_BPS / Decimal("10000")
     held_hours = _held_hours(opened_at, closed_at)
-    funding_cost = _funding_cost(direction, entry, qty, held_hours)
+    funding_cost, funding_source = _funding_cost(direction, entry, qty, held_hours, funding_rate_per_8h)
     return ExecutionBreakdown(
         net_pnl=gross - slippage_cost - fees - funding_cost,
         gross_pnl=gross,
@@ -572,6 +602,8 @@ def _execution_pnl(
         funding_cost=funding_cost,
         effective_close_price=effective_exit,
         held_hours=held_hours,
+        funding_rate_per_8h=funding_rate_per_8h,
+        funding_source=funding_source,
     )
 
 
@@ -604,11 +636,48 @@ def _parse_timestamp(raw: object) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _funding_cost(direction: str, entry: Decimal, qty: Decimal, held_hours: Decimal) -> Decimal:
-    if held_hours <= 0 or FUNDING_BPS_PER_8H == 0:
-        return Decimal("0")
+def _funding_cost(
+    direction: str,
+    entry: Decimal,
+    qty: Decimal,
+    held_hours: Decimal,
+    funding_rate_per_8h: Decimal | None = None,
+) -> tuple[Decimal, str]:
+    if held_hours <= 0:
+        return Decimal("0"), "none"
+    if funding_rate_per_8h is not None:
+        signed_rate = funding_rate_per_8h if direction == "LONG" else -funding_rate_per_8h
+        return entry * qty * signed_rate * (held_hours / Decimal("8")), "metadata_rate"
+    if FUNDING_BPS_PER_8H == 0:
+        return Decimal("0"), "fallback_bps"
     funding = entry * qty * FUNDING_BPS_PER_8H / Decimal("10000") * (held_hours / Decimal("8"))
-    return funding if direction == "LONG" else -funding
+    return (funding if direction == "LONG" else -funding), "fallback_bps"
+
+
+def _metadata_funding_rate(metadata: dict) -> Decimal | None:
+    for container in _metadata_funding_containers(metadata):
+        raw = container.get("funding_rate")
+        if raw in (None, "", "None"):
+            continue
+        try:
+            return Decimal(str(raw))
+        except Exception:
+            continue
+    return None
+
+
+def _metadata_funding_containers(metadata: dict) -> list[dict]:
+    containers: list[dict] = [metadata]
+    signal_metadata = metadata.get("signal_metadata")
+    if isinstance(signal_metadata, dict):
+        containers.append(signal_metadata)
+    order_flow = metadata.get("order_flow")
+    if isinstance(order_flow, dict):
+        containers.append(order_flow)
+    nested_signal_metadata = signal_metadata.get("order_flow") if isinstance(signal_metadata, dict) else None
+    if isinstance(nested_signal_metadata, dict):
+        containers.append(nested_signal_metadata)
+    return containers
 
 
 def _record_execution_metadata(
@@ -628,6 +697,10 @@ def _record_execution_metadata(
         "fees": str(execution.fees),
         "slippage_cost": str(execution.slippage_cost),
         "funding_cost": str(execution.funding_cost),
+        "funding_source": execution.funding_source,
+        "funding_rate_per_8h": str(execution.funding_rate_per_8h)
+        if execution.funding_rate_per_8h is not None
+        else None,
         "net_pnl": str(execution.net_pnl),
         "held_hours": str(execution.held_hours),
     }
