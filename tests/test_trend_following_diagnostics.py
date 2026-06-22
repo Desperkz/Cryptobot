@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 from trading_bot.config import StrategyConfig
@@ -59,6 +60,10 @@ def metrics() -> MarketMetrics:
     )
 
 
+def metrics_without_open_interest() -> MarketMetrics:
+    return replace(metrics(), open_interest_change_pct=None)
+
+
 class FakeRegimeDetector:
     def __init__(self, regime: MarketRegime) -> None:
         self.regime = regime
@@ -101,6 +106,20 @@ def test_trend_following_diagnostic_names_non_trend_regime() -> None:
     assert diagnostic["trend_regime"] == "RANGE"
 
 
+def test_trend_following_diagnostic_treats_momentum_as_separate_strategy() -> None:
+    signal, diagnostic = strategy(MarketRegime.MOMENTUM).evaluate(
+        "BTCUSDT",
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        metrics(),
+    )
+
+    assert signal is None
+    assert diagnostic["block_reason"] == "no_trend_regime"
+    assert diagnostic["trend_regime"] == "MOMENTUM"
+
+
 def test_trend_following_diagnostic_names_missing_4h_alignment() -> None:
     signal, diagnostic = strategy(MarketRegime.TREND_UP).evaluate(
         "BTCUSDT",
@@ -127,3 +146,16 @@ def test_trend_following_diagnostic_names_missing_1h_structure() -> None:
     assert signal is None
     assert diagnostic["block_reason"] in {"no_1h_bullish_ema_stack", "no_1h_higher_high_higher_low"}
     assert "hh_hl" in diagnostic
+
+
+def test_trend_following_diagnostic_requires_open_interest_confirmation() -> None:
+    signal, diagnostic = strategy(MarketRegime.TREND_UP).evaluate(
+        "BTCUSDT",
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        metrics_without_open_interest(),
+    )
+
+    assert signal is None
+    assert diagnostic["block_reason"] == "missing_open_interest_confirmation"

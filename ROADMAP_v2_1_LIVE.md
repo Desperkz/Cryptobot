@@ -1,6 +1,6 @@
 # Дорожная карта готовности Bot v2.1 к live
 
-Обновлено: 2026-05-23
+Обновлено: 2026-06-22
 
 Легенда статусов:
 - `[x]` выполнено и проверено локально
@@ -229,6 +229,7 @@
   - Цель: не повышать частоту вслепую, а сначала понять, какой именно фильтр режет стратегию: regime/structure, edge, order-flow, volume, entry-confirmation, ATR или funding.
   - Готово: `TREND_FOLLOWING` получил диагностический `evaluate()` и пишет `STRATEGY_DIAGNOSTIC` snapshots через общий router, когда сигнал не проходит.
   - Готово: общий `no_trend_structure` разделен на точные причины: нет трендового режима, нет 4h alignment, нет 1h EMA stack, нет 1h HH/HL или LH/LL.
+  - Готово: после negative shadow evidence ослабление отменено для promotion-grade sample: `TREND_FOLLOWING` больше не использует `MOMENTUM` regime, shadow-relaxed 1h trend confirmation, `unknown` relative strength или missing OI.
   - Gate: ослаблять условия `TREND_FOLLOWING` можно только после 24-48 часов свежей статистики причин отказов в `/rejections` и `/strategy-scorecard`.
 
 ## P5 Реалистичное paper-исполнение
@@ -390,6 +391,7 @@
   - Готово: `TREND_FOLLOWING` получил shadow-only research relaxation: ниже edge/volume/ATR пороги и разрешение неполного 1h trend confirmation, чтобы набрать первичную выборку без включения в paper/live.
   - Готово: после 3/3 TF shadow stop-loss (`-36.26 USDT`, Avg R `-1.007`) добавлен `trend_following_research_v3`: TF shadow теперь требует relative strength/weakness confirmation, strong aligned OF, minimum ATR `0.35%`, и не входит, если целевая ликвидность уже ближе `12 bps`.
   - Готово: TF shadow risk cap снижен с `1.2%` до `0.6%`, пока стратегия не докажет post-cost edge.
+  - Готово: после расширенного аудита TF (`23` closed shadow trades, PnL `-23.09`, основной минус в `MOMENTUM` bucket и `unknown` RS/OI) relaxation отменен: `MOMENTUM` теперь остается отдельной `MOMENTUM_CONTINUATION`, а `TREND_FOLLOWING` требует production-like trend structure, aligned relative strength/weakness и OI confirmation; новые сделки размечаются `trend_following_strict_evidence_v4`.
   - Gate: новая TPB-статистика должна оцениваться отдельно по `strategy_logic_version=tpb_cost_guard_v2`; старый legacy TPB не использовать для paper promotion.
 - `[x]` P6-19 Monthly target economics report.
   - Причина: цель `+10%/мес` должна проверяться математически через Avg R, частоту сделок, риск на сделку и evidence maturity, а не через ощущение по PnL.
@@ -405,6 +407,7 @@
   - Причина: SQZ-DYN упал с `+72.11` до `+38.22` из-за серии из 3 correlated SHORT stop-loss; грубый обязательный retest зарезал бы часть прибыльных сделок.
   - Готово: `SQUEEZE_BREAKOUT_DYNAMIC_UPD` добавлена как отдельная shadow-only ветка с теми же sizing/exit caps, что SQZ-DYN.
   - Готово: UPD блокирует no-retest входы, если целевая ликвидность ближе `20 bps`, и ограничивает серию до 2 однонаправленных SQZ-DYN-UPD shadow-paper сделок за `90m`.
+  - Готово: после ночного инцидента 2026-06-22 (`TAOUSDT`, `ONDOUSDT`, `KASUSDT` без retest/BTC/OI confirmation) UPD дополнительно требует aligned relative strength/weakness, OI confirmation и retest либо очень сильный clean release; `absorption_against` блокируется независимо от локального OF score; новые сделки размечаются `sqz_dyn_upd_confirmed_release_v2`.
   - Условие наблюдения: сравнивать `SQZ-DYN` и `SQZ-DYN-UPD` раздельно; не переводить UPD в paper до достаточной shadow статистики и human review.
 
 ## P7 Частота сделок и экономика цели 10%/мес
@@ -483,7 +486,8 @@
   - Готово: ослабление применено только для `shadow` режима; paper/live не получают relaxed trend-following entries.
   - Готово: первый post-relaxation TF срез показал 3 закрытых SHORT shadow-сделки и 3 стопа; причина - вход в хвост downside-импульса без BTC/relative-weakness benchmark и слишком близко к downside liquidity.
   - Готово: `trend_following_research_v3` ужесточил TF shadow gate по RS/OF/ATR/target-liquidity и снизил max risk cap до `0.6%`.
-  - Следующий контроль: оценивать только новую `strategy_logic_version=trend_following_research_v3`; если она снова даст отрицательный post-cost Avg R/PF на 10+ закрытых clusters, перевести `TREND_FOLLOWING` в disabled/research-only quarantine.
+  - Готово: `trend_following_strict_evidence_v4` отменил shadow-relaxed 1h trend, исключил `MOMENTUM` regime из TF и требует aligned RS/OI confirmation.
+  - Следующий контроль: оценивать только новую `strategy_logic_version=trend_following_strict_evidence_v4`; если она снова даст отрицательный post-cost Avg R/PF на 10+ закрытых clusters, перевести `TREND_FOLLOWING` в disabled/research-only quarantine.
 - `[ ]` D-03 Destructive chaos scenarios для P3-03.
   - Почему отложено: reboot VPS, network break и принудительные stale stream сценарии могут временно нарушить работу paper-ботов.
   - Вернуться к задаче, когда: пользователь явно разрешит окно технических работ или появится отдельная testnet/staging VPS.

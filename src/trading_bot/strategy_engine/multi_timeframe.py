@@ -113,8 +113,7 @@ class MultiTimeframeStrategy:
                     "structure_break": bool(edge_snapshot.structure_break),
                 }
             )
-        is_shadow_research = self.config.mode_for_strategy("TREND_FOLLOWING") == "shadow"
-        min_edge_score = Decimal("0.45") if is_shadow_research else Decimal("0.60")
+        min_edge_score = Decimal("0.60")
         if self.edge_filters and self.edge_filters.enabled:
             if not edge_snapshot or edge_snapshot.score < min_edge_score:
                 diagnostic.update(
@@ -124,6 +123,10 @@ class MultiTimeframeStrategy:
                     }
                 )
                 return None, diagnostic
+
+        if metrics.open_interest_change_pct is None:
+            diagnostic.update({"block_reason": "missing_open_interest_confirmation"})
+            return None, diagnostic
 
         if not self._edge_confirmed(direction, metrics):
             diagnostic.update(
@@ -140,7 +143,7 @@ class MultiTimeframeStrategy:
 
         min_volume_ratio = max(
             self.config.min_volume_ratio,
-            Decimal("1.35") if is_shadow_research else Decimal("1.70"),
+            Decimal("1.70"),
         )
         if volume_ratio < min_volume_ratio:
             diagnostic.update({"block_reason": "weak_volume", "min_volume_ratio": str(min_volume_ratio)})
@@ -157,7 +160,7 @@ class MultiTimeframeStrategy:
             return None, diagnostic
         atr_pct = atr_value / entry * Decimal("100")
         diagnostic.update({"entry": str(entry), "atr": str(atr_value), "atr_pct": str(atr_pct)})
-        min_trend_atr_pct = Decimal("0.25") if is_shadow_research else Decimal("0.35")
+        min_trend_atr_pct = Decimal("0.35")
         if atr_pct < min_trend_atr_pct:
             diagnostic.update(
                 {
@@ -312,11 +315,11 @@ class MultiTimeframeStrategy:
             "lh_ll": bool(lh_ll),
         }
 
-        if regime not in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN, MarketRegime.MOMENTUM}:
+        if regime not in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN}:
             return Direction.NONE, "no_trend_regime", details
 
-        bullish_regime = regime in {MarketRegime.TREND_UP, MarketRegime.MOMENTUM}
-        bearish_regime = regime in {MarketRegime.TREND_DOWN, MarketRegime.MOMENTUM}
+        bullish_regime = regime == MarketRegime.TREND_UP
+        bearish_regime = regime == MarketRegime.TREND_DOWN
         bullish_4h = bullish_regime and close_4h > ema_slow_4h
         bearish_4h = bearish_regime and close_4h < ema_slow_4h
         details.update(
@@ -332,14 +335,6 @@ class MultiTimeframeStrategy:
             return Direction.LONG, "passed", details
         if bearish_4h and ema_fast_1h < ema_mid_1h and lh_ll:
             return Direction.SHORT, "passed", details
-
-        if self.config.mode_for_strategy("TREND_FOLLOWING") == "shadow":
-            if bullish_4h and (ema_fast_1h > ema_mid_1h or hh_hl):
-                details["research_relaxed_1h_trend"] = True
-                return Direction.LONG, "passed_shadow_research", details
-            if bearish_4h and (ema_fast_1h < ema_mid_1h or lh_ll):
-                details["research_relaxed_1h_trend"] = True
-                return Direction.SHORT, "passed_shadow_research", details
 
         if bullish_regime and not bullish_4h:
             return Direction.NONE, "no_4h_bullish_alignment", details

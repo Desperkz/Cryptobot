@@ -1494,13 +1494,13 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
-    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_liquidity_cluster_v1",
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_confirmed_release_v2",
     "TREND_PULLBACK": "tpb_profitable_bucket_v3",
     "LIQUIDITY_SWEEP_REVERSAL": "lsr_research_gate_v2",
     "VWAP_REVERSION": "vwr_research_gate_v2",
     "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
     "RANGE_GRID": "grid_research_gate_v2",
-    "TREND_FOLLOWING": "trend_following_research_v3",
+    "TREND_FOLLOWING": "trend_following_strict_evidence_v4",
 }
 
 
@@ -1528,6 +1528,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     }:
         return None
 
+    metadata = signal.metadata or {}
     order_flow = _order_flow_metadata(signal)
     if not order_flow:
         return None
@@ -1544,7 +1545,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "structure_break_against",
             "adverse_liquidity_nearby",
         }
-        retest_confirmed = bool((signal.metadata or {}).get("squeeze_retest_confirmed"))
+        retest_confirmed = bool(metadata.get("squeeze_retest_confirmed"))
         if alignment == "against":
             return "SQZ-DYN shadow blocked: order-flow is against breakout."
         if risk_flags.intersection(hard_flags):
@@ -1554,12 +1555,36 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             target_distance = _target_liquidity_distance_bps(signal, order_flow)
             if not retest_confirmed and target_distance is not None and target_distance < Decimal("20"):
                 return f"SQZ-DYN-UPD shadow blocked: target liquidity is too close without retest ({target_distance:.1f} bps)."
-            if (
-                not retest_confirmed
-                and "absorption_against" in risk_flags
-                and (alignment != "aligned" or score < Decimal("0.62"))
-            ):
-                return f"SQZ-DYN-UPD shadow blocked: absorption against breakout without retest, score {score:.2f}."
+            if "absorption_against" in risk_flags:
+                return f"SQZ-DYN-UPD shadow blocked: absorption against breakout, score {score:.2f}."
+            relative_strength = metadata.get("relative_strength")
+            rs_alignment = ""
+            if isinstance(relative_strength, dict):
+                rs_alignment = str(relative_strength.get("alignment") or "")
+            if rs_alignment != "aligned":
+                return (
+                    "SQZ-DYN-UPD shadow blocked: relative-strength confirmation is "
+                    f"{rs_alignment or 'missing'}."
+                )
+            oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
+            if oi_change is None:
+                oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
+            if oi_change is None:
+                return "SQZ-DYN-UPD shadow blocked: missing open-interest confirmation."
+            state = str(metadata.get("squeeze_state") or "")
+            timing = str(metadata.get("squeeze_entry_timing") or "")
+            breakout_atr = _optional_decimal(metadata.get("breakout_atr"))
+            is_strong_release = (
+                state == "release"
+                and timing == "release_followthrough"
+                and breakout_atr is not None
+                and breakout_atr >= Decimal("1.50")
+                and alignment == "aligned"
+                and score >= Decimal("0.72")
+                and not risk_flags
+            )
+            if not retest_confirmed and not is_strong_release:
+                return "SQZ-DYN-UPD shadow blocked: no retest and release is not strong enough."
         if alignment == "mixed" and score < Decimal("0.50"):
             return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
         if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
@@ -1644,15 +1669,20 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"TF shadow blocked: hostile trend-following flow ({flags})."
         if alignment == "against" and score < Decimal("0.40"):
             return f"TF shadow blocked: trend continuation needs strong aligned order-flow, got {alignment} {score:.2f}."
-        relative_strength = (signal.metadata or {}).get("relative_strength")
+        relative_strength = metadata.get("relative_strength")
         rs_alignment = ""
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
-        if signal.direction == Direction.SHORT and rs_alignment == "against":
+        if signal.direction == Direction.SHORT and rs_alignment != "aligned":
             return f"TF shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
-        if signal.direction == Direction.LONG and rs_alignment == "against":
+        if signal.direction == Direction.LONG and rs_alignment != "aligned":
             return f"TF shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
-        atr_pct = _optional_decimal((signal.metadata or {}).get("atr_pct"))
+        oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
+        if oi_change is None:
+            oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
+        if oi_change is None:
+            return "TF shadow blocked: missing open-interest confirmation."
+        atr_pct = _optional_decimal(metadata.get("atr_pct"))
         if atr_pct is not None and atr_pct < Decimal("0.35"):
             return f"TF shadow blocked: ATR {atr_pct:.2f}% is too low for trend continuation."
         liquidity_side = str(order_flow.get("liquidity_side") or "")

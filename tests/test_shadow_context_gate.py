@@ -150,7 +150,8 @@ def test_sqz_dynamic_upd_blocks_no_retest_when_target_liquidity_is_too_close() -
         signal(
             "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
             flow,
-            metadata={"squeeze_retest_confirmed": False},
+            relative_strength={"alignment": "aligned"},
+            metadata={"squeeze_retest_confirmed": False, "open_interest_change_pct": "0.35"},
         )
     )
 
@@ -178,6 +179,7 @@ def test_sqz_dynamic_upd_allows_near_liquidity_after_confirmed_retest() -> None:
     flow = {
         **order_flow(alignment="aligned", score="0.76"),
         "distance_to_lower_liquidity_bps": "7.8",
+        "open_interest_change_pct": "0.35",
         "reasons": ["target_liquidity_nearby", "structure_break_aligned"],
     }
 
@@ -185,7 +187,111 @@ def test_sqz_dynamic_upd_allows_near_liquidity_after_confirmed_retest() -> None:
         signal(
             "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
             flow,
+            relative_strength={"alignment": "aligned"},
             metadata={"squeeze_retest_confirmed": True},
+        )
+    ) is None
+
+
+def test_sqz_dynamic_upd_blocks_unknown_relative_strength() -> None:
+    flow = {**order_flow(alignment="aligned", score="0.80"), "open_interest_change_pct": "0.42"}
+
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            relative_strength={"alignment": "unknown"},
+            metadata={
+                "squeeze_retest_confirmed": True,
+                "squeeze_state": "release",
+                "squeeze_entry_timing": "release_followthrough",
+                "breakout_atr": "1.80",
+            },
+        )
+    )
+
+    assert reason is not None
+    assert "relative-strength confirmation" in reason
+
+
+def test_sqz_dynamic_upd_blocks_missing_open_interest_confirmation() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            order_flow(alignment="aligned", score="0.80"),
+            relative_strength={"alignment": "aligned"},
+            metadata={
+                "squeeze_retest_confirmed": True,
+                "squeeze_state": "release",
+                "squeeze_entry_timing": "release_followthrough",
+                "breakout_atr": "1.80",
+            },
+        )
+    )
+
+    assert reason is not None
+    assert "open-interest confirmation" in reason
+
+
+def test_sqz_dynamic_upd_blocks_absorption_against_even_with_aligned_flow() -> None:
+    flow = {
+        **order_flow(alignment="aligned", score="0.72", flags=["absorption_against"]),
+        "open_interest_change_pct": "0.35",
+    }
+
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            relative_strength={"alignment": "aligned"},
+            metadata={
+                "squeeze_retest_confirmed": False,
+                "squeeze_state": "release",
+                "squeeze_entry_timing": "release_followthrough",
+                "breakout_atr": "1.80",
+            },
+        )
+    )
+
+    assert reason is not None
+    assert "absorption against breakout" in reason
+
+
+def test_sqz_dynamic_upd_blocks_weak_no_retest_release() -> None:
+    flow = {**order_flow(alignment="aligned", score="0.70"), "open_interest_change_pct": "0.35"}
+
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            relative_strength={"alignment": "aligned"},
+            metadata={
+                "squeeze_retest_confirmed": False,
+                "squeeze_state": "build",
+                "squeeze_entry_timing": "early_breakout",
+                "breakout_atr": "1.20",
+            },
+        )
+    )
+
+    assert reason is not None
+    assert "no retest" in reason
+
+
+def test_sqz_dynamic_upd_allows_strong_release_without_retest() -> None:
+    flow = {**order_flow(alignment="aligned", score="0.76"), "open_interest_change_pct": "0.35"}
+
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+            flow,
+            relative_strength={"alignment": "aligned"},
+            metadata={
+                "squeeze_retest_confirmed": False,
+                "squeeze_state": "release",
+                "squeeze_entry_timing": "release_followthrough",
+                "breakout_atr": "1.80",
+            },
         )
     ) is None
 
@@ -327,14 +433,18 @@ def test_tpb_shadow_blocks_low_volume_bucket() -> None:
     assert "volume ratio" in reason
 
 
-def test_trend_following_shadow_allows_unknown_relative_strength_for_research_sample() -> None:
-    assert _shadow_candidate_context_rejection_reason(
+def test_trend_following_shadow_blocks_unknown_relative_strength_for_promotion_grade_sample() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
         signal(
             "TREND_FOLLOWING",
             order_flow(alignment="aligned", score="0.86"),
             relative_strength={"alignment": "unknown"},
+            metadata={"open_interest_change_pct": "0.35"},
         )
-    ) is None
+    )
+
+    assert reason is not None
+    assert "relative-weakness confirmation" in reason
 
 
 def test_trend_following_shadow_blocks_relative_strength_against() -> None:
@@ -361,6 +471,7 @@ def test_trend_following_shadow_blocks_too_close_target_liquidity() -> None:
             "TREND_FOLLOWING",
             flow,
             relative_strength={"alignment": "aligned"},
+            metadata={"open_interest_change_pct": "0.35"},
         )
     )
 
@@ -373,6 +484,7 @@ def test_trend_following_shadow_blocks_low_atr_continuation() -> None:
         "TREND_FOLLOWING",
         order_flow(alignment="aligned", score="0.86"),
         relative_strength={"alignment": "aligned"},
+        metadata={"open_interest_change_pct": "0.35"},
     )
     trend_signal.metadata["atr_pct"] = "0.31"
 
@@ -392,10 +504,24 @@ def test_trend_following_shadow_allows_clean_continuation_sample() -> None:
         "TREND_FOLLOWING",
         flow,
         relative_strength={"alignment": "aligned"},
+        metadata={"open_interest_change_pct": "0.35"},
     )
     trend_signal.metadata["atr_pct"] = "0.48"
 
     assert _shadow_candidate_context_rejection_reason(trend_signal) is None
+
+
+def test_trend_following_shadow_blocks_missing_open_interest_confirmation() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_FOLLOWING",
+            order_flow(alignment="aligned", score="0.86"),
+            relative_strength={"alignment": "aligned"},
+        )
+    )
+
+    assert reason is not None
+    assert "open-interest confirmation" in reason
 
 
 def test_shadow_context_gate_ignores_non_candidate_strategy() -> None:
