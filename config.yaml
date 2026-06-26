@@ -163,7 +163,7 @@ strategy:
   squeeze_early_min_bars_extra: 2
   squeeze_early_min_volume_ratio: 1.50
   squeeze_max_extension_atr: 2.40        # не догоняем поздний, уже растянутый пробой
-  squeeze_retest_enabled: false          # retest повышает confidence, но не блокирует release follow-through
+  squeeze_retest_enabled: false          # retest считает quality gate; слабые no-retest входы режутся entry-фильтром
   squeeze_retest_required_after_release_offset: 2
   squeeze_retest_lookback_bars: 5
   squeeze_retest_tolerance_atr: 0.25

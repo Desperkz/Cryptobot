@@ -1514,6 +1514,36 @@ def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _relative_strength_alignment(signal: Signal) -> str:
+    metadata = signal.metadata or {}
+    payload = metadata.get("relative_strength") if isinstance(metadata, dict) else None
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("alignment") or "")
+
+
+def _is_strong_clean_squeeze_release(
+    signal: Signal,
+    *,
+    alignment: str,
+    score: Decimal,
+    risk_flags: set[str],
+) -> bool:
+    metadata = signal.metadata or {}
+    state = str(metadata.get("squeeze_state") or "")
+    timing = str(metadata.get("squeeze_entry_timing") or "")
+    breakout_atr = _optional_decimal(metadata.get("breakout_atr"))
+    return (
+        state == "release"
+        and timing == "release_followthrough"
+        and breakout_atr is not None
+        and breakout_atr >= Decimal("1.50")
+        and alignment == "aligned"
+        and score >= Decimal("0.72")
+        and not risk_flags
+    )
+
+
 def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
     strategy = _signal_strategy(signal)
     if strategy not in {
@@ -1551,40 +1581,30 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         if risk_flags.intersection(hard_flags):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
+        if "absorption_against" in risk_flags:
+            return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
+        rs_alignment = _relative_strength_alignment(signal)
+        if rs_alignment != "aligned":
+            return (
+                "SQZ-DYN shadow blocked: relative-strength confirmation is "
+                f"{rs_alignment or 'missing'}."
+            )
         if strategy == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
             target_distance = _target_liquidity_distance_bps(signal, order_flow)
             if not retest_confirmed and target_distance is not None and target_distance < Decimal("20"):
                 return f"SQZ-DYN-UPD shadow blocked: target liquidity is too close without retest ({target_distance:.1f} bps)."
-            if "absorption_against" in risk_flags:
-                return f"SQZ-DYN-UPD shadow blocked: absorption against breakout, score {score:.2f}."
-            relative_strength = metadata.get("relative_strength")
-            rs_alignment = ""
-            if isinstance(relative_strength, dict):
-                rs_alignment = str(relative_strength.get("alignment") or "")
-            if rs_alignment != "aligned":
-                return (
-                    "SQZ-DYN-UPD shadow blocked: relative-strength confirmation is "
-                    f"{rs_alignment or 'missing'}."
-                )
             oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
             if oi_change is None:
                 oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
             if oi_change is None:
                 return "SQZ-DYN-UPD shadow blocked: missing open-interest confirmation."
-            state = str(metadata.get("squeeze_state") or "")
-            timing = str(metadata.get("squeeze_entry_timing") or "")
-            breakout_atr = _optional_decimal(metadata.get("breakout_atr"))
-            is_strong_release = (
-                state == "release"
-                and timing == "release_followthrough"
-                and breakout_atr is not None
-                and breakout_atr >= Decimal("1.50")
-                and alignment == "aligned"
-                and score >= Decimal("0.72")
-                and not risk_flags
-            )
-            if not retest_confirmed and not is_strong_release:
-                return "SQZ-DYN-UPD shadow blocked: no retest and release is not strong enough."
+        if not retest_confirmed and not _is_strong_clean_squeeze_release(
+            signal,
+            alignment=alignment,
+            score=score,
+            risk_flags=risk_flags,
+        ):
+            return "SQZ-DYN shadow blocked: no retest and release is not strong enough."
         if alignment == "mixed" and score < Decimal("0.50"):
             return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
         if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
@@ -1721,8 +1741,24 @@ def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None
         if risk_flags.intersection(hard_flags) and score < Decimal("0.70"):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return "ORDER_FLOW", f"{strategy} blocked: hostile breakout flow ({flags}), score {score:.2f}."
+        if "absorption_against" in risk_flags:
+            return "ORDER_FLOW", f"{strategy} blocked: absorption against breakout, score {score:.2f}."
         if alignment == "mixed" and score < Decimal("0.45"):
             return "ORDER_FLOW", f"{strategy} blocked: weak mixed order-flow score {score:.2f}."
+        rs_alignment = _relative_strength_alignment(signal)
+        if rs_alignment != "aligned":
+            return (
+                "RELATIVE_STRENGTH",
+                f"{strategy} blocked: relative-strength confirmation is {rs_alignment or 'missing'}.",
+            )
+        retest_confirmed = bool((signal.metadata or {}).get("squeeze_retest_confirmed"))
+        if not retest_confirmed and not _is_strong_clean_squeeze_release(
+            signal,
+            alignment=alignment,
+            score=score,
+            risk_flags=risk_flags,
+        ):
+            return "SQZ_RETEST", f"{strategy} blocked: no retest and release is not strong enough."
 
     if strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:

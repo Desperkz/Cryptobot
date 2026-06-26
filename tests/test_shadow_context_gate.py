@@ -126,16 +126,31 @@ def test_sqz_dynamic_shadow_blocks_order_flow_against_breakout() -> None:
 
 def test_sqz_dynamic_shadow_requires_retest_for_mixed_flow() -> None:
     reason = _shadow_candidate_context_rejection_reason(
-        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="mixed", score="0.56"))
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC",
+            order_flow(alignment="mixed", score="0.56"),
+            relative_strength={"alignment": "aligned"},
+            metadata={
+                "squeeze_retest_confirmed": False,
+                "squeeze_state": "build",
+                "squeeze_entry_timing": "early_breakout",
+                "breakout_atr": "0.80",
+            },
+        )
     )
 
     assert reason is not None
-    assert "retest confirmation" in reason
+    assert "no retest" in reason
 
 
 def test_sqz_dynamic_shadow_allows_clean_aligned_flow() -> None:
     assert _shadow_candidate_context_rejection_reason(
-        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="aligned", score="0.70"))
+        signal(
+            "SQUEEZE_BREAKOUT_DYNAMIC",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "aligned"},
+            metadata={"squeeze_retest_confirmed": True},
+        )
     ) is None
 
 
@@ -159,20 +174,23 @@ def test_sqz_dynamic_upd_blocks_no_retest_when_target_liquidity_is_too_close() -
     assert "target liquidity is too close without retest" in reason
 
 
-def test_sqz_dynamic_original_keeps_near_liquidity_sample_for_comparison() -> None:
+def test_sqz_dynamic_original_now_requires_relative_strength_and_retest() -> None:
     flow = {
         **order_flow(alignment="aligned", score="0.76"),
         "distance_to_lower_liquidity_bps": "7.8",
         "reasons": ["target_liquidity_nearby", "structure_break_aligned"],
     }
 
-    assert _shadow_candidate_context_rejection_reason(
+    reason = _shadow_candidate_context_rejection_reason(
         signal(
             "SQUEEZE_BREAKOUT_DYNAMIC",
             flow,
             metadata={"squeeze_retest_confirmed": False},
         )
-    ) is None
+    )
+
+    assert reason is not None
+    assert "relative-strength confirmation" in reason
 
 
 def test_sqz_dynamic_upd_allows_near_liquidity_after_confirmed_retest() -> None:

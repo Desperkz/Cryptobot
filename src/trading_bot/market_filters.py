@@ -19,12 +19,12 @@ class MarketEntryFilter:
         self.config = config
 
     def btc_4h_change(self, candles: list[Candle]) -> Decimal | None:
-        if len(candles) < 3:
+        if len(candles) < 2:
             return None
-        # Binance klines usually include the currently forming candle as the
-        # last item, so compare the two completed 4h candles.
-        previous = candles[-3].close
-        current = candles[-2].close
+        # MarketDataProvider strips the currently forming candle, so the last
+        # two candles here are the two latest completed 4h bars.
+        previous = candles[-2].close
+        current = candles[-1].close
         if previous <= 0:
             return None
         return (current - previous) / previous

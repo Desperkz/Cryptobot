@@ -64,22 +64,20 @@ def test_btc_drop_blocks_longs_but_not_shorts() -> None:
     assert entry_filter.allow_signal(signal(Direction.SHORT), Decimal("-0.04")).allowed is True
 
 
-def test_btc_4h_change_uses_completed_candles_not_live_candle() -> None:
+def test_btc_4h_change_uses_latest_completed_candles_from_provider() -> None:
     entry_filter = MarketEntryFilter(filter_config())
     candles = [
         SimpleNamespace(close=Decimal("100")),
         SimpleNamespace(close=Decimal("105")),
-        SimpleNamespace(close=Decimal("80")),
     ]
 
     assert entry_filter.btc_4h_change(candles) == Decimal("0.05")
 
 
-def test_btc_4h_change_requires_live_candle_buffer() -> None:
+def test_btc_4h_change_requires_two_completed_candles() -> None:
     entry_filter = MarketEntryFilter(filter_config())
     candles = [
         SimpleNamespace(close=Decimal("100")),
-        SimpleNamespace(close=Decimal("80")),
     ]
 
     assert entry_filter.btc_4h_change(candles) is None
