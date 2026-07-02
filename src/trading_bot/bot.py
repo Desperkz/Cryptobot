@@ -6,7 +6,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -788,6 +788,23 @@ class TradingBot:
                     series_reason,
                 )
                 return
+            loss_control_reason = _shadow_strategy_loss_control_reason(
+                signal=signal,
+                trades=shadow_history,
+                window_hours=168,
+                min_closed_trades=2,
+                max_total_r=Decimal("-1.50"),
+                max_loss_count=2,
+                loss_count_max_total_r=Decimal("-1.00"),
+            )
+            if loss_control_reason:
+                logger.info("Shadow paper %s %s loss-control blocked: %s", strategy, signal.symbol, loss_control_reason)
+                await self._record_ml_feature_snapshot(
+                    signal,
+                    "SHADOW_PAPER_REJECTED_LOSS_CONTROL",
+                    loss_control_reason,
+                )
+                return
         except Exception:
             logger.exception("Failed to check shadow paper re-entry policy for %s %s", strategy, signal.symbol)
             return
@@ -1500,6 +1517,7 @@ STRATEGY_LOGIC_VERSIONS = {
     "VWAP_REVERSION": "vwr_research_gate_v2",
     "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
     "RANGE_GRID": "grid_research_gate_v2",
+    "MOMENTUM_CONTINUATION": "mom_rs_target_space_v2",
     "TREND_FOLLOWING": "trend_following_strict_evidence_v4",
 }
 
@@ -1520,6 +1538,14 @@ def _relative_strength_alignment(signal: Signal) -> str:
     if not isinstance(payload, dict):
         return ""
     return str(payload.get("alignment") or "")
+
+
+def _relative_strength_score(signal: Signal) -> Decimal | None:
+    metadata = signal.metadata or {}
+    payload = metadata.get("relative_strength") if isinstance(metadata, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    return _optional_decimal(payload.get("score"))
 
 
 def _is_strong_clean_squeeze_release(
@@ -1554,6 +1580,7 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         "VWAP_REVERSION",
         "VWAP_REVERSION_WATCH",
         "RANGE_GRID",
+        "MOMENTUM_CONTINUATION",
         "TREND_FOLLOWING",
     }:
         return None
@@ -1635,20 +1662,56 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
         rs_alignment = ""
+        rs_score: Decimal | None = None
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
+            rs_score = _optional_decimal(relative_strength.get("score"))
         if rs_alignment != "aligned":
             if signal.direction == Direction.SHORT:
                 return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
             return f"TPB shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
+        if rs_score is None or rs_score < Decimal("0.60"):
+            return f"TPB shadow blocked: relative-strength score {rs_score or Decimal('0'):.2f} below 0.60."
         depth_atr = _optional_decimal((signal.metadata or {}).get("pullback_depth_atr"))
-        if depth_atr is not None and depth_atr < Decimal("0.55"):
+        if depth_atr is not None and depth_atr < Decimal("0.65"):
             return f"TPB shadow blocked: pullback depth {depth_atr:.2f} ATR is too shallow for the profitable bucket."
         if depth_atr is not None and depth_atr > Decimal("1.95"):
             return f"TPB shadow blocked: pullback depth {depth_atr:.2f} ATR is too extended for the profitable bucket."
         volume_ratio = _optional_decimal((signal.metadata or {}).get("volume_ratio"))
         if volume_ratio is not None and volume_ratio < Decimal("1.20"):
             return f"TPB shadow blocked: volume ratio {volume_ratio:.2f} is below profitable bucket minimum."
+        target_distance = _target_liquidity_distance_bps(signal, order_flow)
+        if target_distance is not None and target_distance < Decimal("12"):
+            return f"TPB shadow blocked: target liquidity is already too close ({target_distance:.1f} bps)."
+    elif strategy == "MOMENTUM_CONTINUATION":
+        hard_flags = {
+            "adverse_liquidity_nearby",
+            "taker_flow_against",
+            "book_imbalance_against",
+            "aggressive_delta_against",
+            "structure_break_against",
+            "liquidation_cascade",
+            "absorption_against",
+        }
+        if risk_flags.intersection(hard_flags):
+            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+            return f"MOM shadow blocked: hostile momentum flow ({flags})."
+        if alignment != "aligned":
+            return f"MOM shadow blocked: continuation requires aligned order-flow, got {alignment}."
+        if score < Decimal("0.78"):
+            return f"MOM shadow blocked: order-flow score {score:.2f} below 0.78."
+        rs_alignment = _relative_strength_alignment(signal)
+        rs_score = _relative_strength_score(signal)
+        if rs_alignment != "aligned":
+            return f"MOM shadow blocked: continuation needs relative-strength confirmation, got {rs_alignment or 'missing'}."
+        if rs_score is None or rs_score < Decimal("0.62"):
+            return f"MOM shadow blocked: relative-strength score {rs_score or Decimal('0'):.2f} below 0.62."
+        target_distance = _target_liquidity_distance_bps(signal, order_flow)
+        if target_distance is not None and target_distance < Decimal("12"):
+            return f"MOM shadow blocked: target liquidity is already too close ({target_distance:.1f} bps)."
+        breakout_extension = _optional_decimal(metadata.get("breakout_extension_atr"))
+        if breakout_extension is not None and breakout_extension < Decimal("0.15"):
+            return f"MOM shadow blocked: breakout extension {breakout_extension:.2f} ATR is too weak."
     elif strategy in {"VWAP_REVERSION", "VWAP_REVERSION_WATCH"}:
         dangerous_flags = {
             "liquidation_cascade",
@@ -1831,6 +1894,20 @@ def _mean_reversion_context_rejection_reason(
                 "MR_CONTEXT",
                 f"MR blocked: weak order-flow score {annotation.score:.2f} below {min_score:.2f}; flags={flags}.",
             )
+        if against_flags and annotation.score < Decimal("0.55"):
+            flags = ",".join(sorted(against_flags))
+            return (
+                "MR_CONTEXT",
+                f"MR blocked: mixed order-flow has adverse flags ({flags}) with score {annotation.score:.2f}.",
+            )
+
+    rs_alignment = _relative_strength_alignment(signal)
+    rs_score = _relative_strength_score(signal)
+    if rs_alignment == "against" and (rs_score is None or rs_score < Decimal("0.45")):
+        return (
+            "MR_CONTEXT",
+            f"MR blocked: relative strength is against the reversal signal (score {rs_score or Decimal('0'):.2f}).",
+        )
 
     return None
 
@@ -2051,6 +2128,54 @@ def _sqz_dynamic_upd_series_rejection_reason(
         return (
             "SQZ-DYN-UPD shadow blocked: same-direction cluster cap "
             f"{recent_same_direction}/{max_same_direction_trades} within {window_minutes}m."
+        )
+    return None
+
+
+def _shadow_strategy_loss_control_reason(
+    *,
+    signal: Signal,
+    trades: list[dict[str, Any]],
+    window_hours: int,
+    min_closed_trades: int,
+    max_total_r: Decimal,
+    max_loss_count: int,
+    loss_count_max_total_r: Decimal,
+) -> str | None:
+    strategy = _signal_strategy(signal)
+    if not strategy:
+        return None
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=max(1, int(window_hours)))
+    closed: list[dict[str, Any]] = []
+    for trade in trades:
+        if str(trade.get("strategy") or "").upper() != strategy:
+            continue
+        if _trade_status(trade) != "CLOSED":
+            continue
+        closed_at = _parse_datetime_utc(trade.get("closed_at") or trade.get("created_at"))
+        if closed_at is None or closed_at < cutoff:
+            continue
+        closed.append(trade)
+
+    if len(closed) < max(1, int(min_closed_trades)):
+        return None
+
+    total_r = sum((_decimal_or_zero(trade.get("r_multiple")) for trade in closed), Decimal("0"))
+    losses = sum(
+        1
+        for trade in closed
+        if _decimal_or_zero(trade.get("r_multiple")) < 0 or _decimal_or_zero(trade.get("realized_pnl")) < 0
+    )
+    if total_r <= max_total_r:
+        return (
+            f"{strategy} shadow loss-control: {len(closed)} closed trades in {window_hours}h "
+            f"total R {total_r:.2f} <= {max_total_r:.2f}; pausing virtual entries."
+        )
+    if losses >= max(1, int(max_loss_count)) and total_r <= loss_count_max_total_r:
+        return (
+            f"{strategy} shadow loss-control: {losses} losses in {window_hours}h "
+            f"with total R {total_r:.2f}; pausing virtual entries."
         )
     return None
 

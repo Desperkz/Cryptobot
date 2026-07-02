@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from trading_bot.bot import _shadow_candidate_context_rejection_reason, _sqz_dynamic_upd_series_rejection_reason
+from trading_bot.bot import (
+    _shadow_candidate_context_rejection_reason,
+    _shadow_strategy_loss_control_reason,
+    _sqz_dynamic_upd_series_rejection_reason,
+)
 from trading_bot.models import Direction, Signal, TradingStyle
 
 
@@ -37,6 +41,22 @@ def order_flow(*, alignment: str = "aligned", score: str = "0.70", flags: list[s
         "alignment": alignment,
         "score": score,
         "risk_flags": flags or [],
+    }
+
+
+def target_flow(
+    *,
+    alignment: str = "aligned",
+    score: str = "0.86",
+    lower_bps: str = "25",
+    upper_bps: str = "200",
+    flags: list[str] | None = None,
+) -> dict:
+    return {
+        **order_flow(alignment=alignment, score=score, flags=flags),
+        "distance_to_lower_liquidity_bps": lower_bps,
+        "distance_to_upper_liquidity_bps": upper_bps,
+        "liquidity_side": "downside",
     }
 
 
@@ -338,7 +358,7 @@ def test_tpb_shadow_does_not_quarantine_symbol_when_bucket_is_clean() -> None:
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.70"),
             symbol="LTCUSDT",
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     ) is None
@@ -349,7 +369,7 @@ def test_tpb_shadow_blocks_mixed_order_flow_outside_profitable_bucket() -> None:
         signal(
             "TREND_PULLBACK",
             order_flow(alignment="mixed", score="0.70"),
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     )
@@ -363,7 +383,7 @@ def test_tpb_shadow_blocks_weak_mixed_order_flow() -> None:
         signal(
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.44"),
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     )
@@ -392,7 +412,7 @@ def test_tpb_shadow_allows_clean_long_continuation() -> None:
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.66"),
             direction=Direction.LONG,
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.50"},
         )
     ) is None
@@ -418,7 +438,7 @@ def test_tpb_shadow_blocks_unprofitable_pullback_depth_bucket() -> None:
         signal(
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.70"),
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.30", "volume_ratio": "1.50"},
         )
     )
@@ -426,7 +446,7 @@ def test_tpb_shadow_blocks_unprofitable_pullback_depth_bucket() -> None:
         signal(
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.70"),
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "2.10", "volume_ratio": "1.50"},
         )
     )
@@ -442,13 +462,94 @@ def test_tpb_shadow_blocks_low_volume_bucket() -> None:
         signal(
             "TREND_PULLBACK",
             order_flow(alignment="aligned", score="0.70"),
-            relative_strength={"alignment": "aligned"},
+            relative_strength={"alignment": "aligned", "score": "0.62"},
             metadata={"pullback_depth_atr": "0.75", "volume_ratio": "1.05"},
         )
     )
 
     assert reason is not None
     assert "volume ratio" in reason
+
+
+def test_tpb_shadow_blocks_low_relative_strength_score() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            order_flow(alignment="aligned", score="0.70"),
+            relative_strength={"alignment": "aligned", "score": "0.58"},
+            metadata={"pullback_depth_atr": "0.90", "volume_ratio": "1.50"},
+        )
+    )
+
+    assert reason is not None
+    assert "relative-strength score" in reason
+
+
+def test_tpb_shadow_blocks_close_target_liquidity() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "TREND_PULLBACK",
+            target_flow(score="0.70", lower_bps="4.2"),
+            relative_strength={"alignment": "aligned", "score": "0.62"},
+            metadata={"pullback_depth_atr": "0.90", "volume_ratio": "1.50"},
+        )
+    )
+
+    assert reason is not None
+    assert "target liquidity" in reason
+
+
+def test_momentum_shadow_blocks_low_relative_strength_score() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "MOMENTUM_CONTINUATION",
+            target_flow(score="0.86", lower_bps="25"),
+            relative_strength={"alignment": "aligned", "score": "0.58"},
+            metadata={"breakout_extension_atr": "0.30"},
+        )
+    )
+
+    assert reason is not None
+    assert "relative-strength score" in reason
+
+
+def test_momentum_shadow_blocks_close_target_liquidity() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "MOMENTUM_CONTINUATION",
+            target_flow(score="0.86", lower_bps="4.7"),
+            relative_strength={"alignment": "aligned", "score": "0.66"},
+            metadata={"breakout_extension_atr": "0.30"},
+        )
+    )
+
+    assert reason is not None
+    assert "target liquidity" in reason
+
+
+def test_momentum_shadow_blocks_weak_breakout_extension() -> None:
+    reason = _shadow_candidate_context_rejection_reason(
+        signal(
+            "MOMENTUM_CONTINUATION",
+            target_flow(score="0.86", lower_bps="25"),
+            relative_strength={"alignment": "aligned", "score": "0.66"},
+            metadata={"breakout_extension_atr": "0.08"},
+        )
+    )
+
+    assert reason is not None
+    assert "breakout extension" in reason
+
+
+def test_momentum_shadow_allows_clean_continuation_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
+        signal(
+            "MOMENTUM_CONTINUATION",
+            target_flow(score="0.86", lower_bps="25"),
+            relative_strength={"alignment": "aligned", "score": "0.66"},
+            metadata={"breakout_extension_atr": "0.30"},
+        )
+    ) is None
 
 
 def test_trend_following_shadow_blocks_unknown_relative_strength_for_promotion_grade_sample() -> None:
@@ -544,3 +645,64 @@ def test_trend_following_shadow_blocks_missing_open_interest_confirmation() -> N
 
 def test_shadow_context_gate_ignores_non_candidate_strategy() -> None:
     assert _shadow_candidate_context_rejection_reason(signal("SQUEEZE_BREAKOUT", order_flow(alignment="against"))) is None
+
+
+def test_shadow_strategy_loss_control_blocks_recent_drawdown() -> None:
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    trades = [
+        {
+            "strategy": "MOMENTUM_CONTINUATION",
+            "status": "CLOSED",
+            "created_at": created_at,
+            "closed_at": created_at,
+            "r_multiple": "-1.04",
+            "realized_pnl": "-16.0",
+        },
+        {
+            "strategy": "MOMENTUM_CONTINUATION",
+            "status": "CLOSED",
+            "created_at": created_at,
+            "closed_at": created_at,
+            "r_multiple": "-1.05",
+            "realized_pnl": "-16.2",
+        },
+    ]
+
+    reason = _shadow_strategy_loss_control_reason(
+        signal=signal("MOMENTUM_CONTINUATION", order_flow()),
+        trades=trades,
+        window_hours=168,
+        min_closed_trades=2,
+        max_total_r=Decimal("-1.50"),
+        max_loss_count=2,
+        loss_count_max_total_r=Decimal("-1.00"),
+    )
+
+    assert reason is not None
+    assert "loss-control" in reason
+
+
+def test_shadow_strategy_loss_control_ignores_other_strategies() -> None:
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    trades = [
+        {
+            "strategy": "VWAP_REVERSION_WATCH",
+            "status": "CLOSED",
+            "created_at": created_at,
+            "closed_at": created_at,
+            "r_multiple": "-2.00",
+            "realized_pnl": "-30.0",
+        }
+    ]
+
+    reason = _shadow_strategy_loss_control_reason(
+        signal=signal("MOMENTUM_CONTINUATION", order_flow()),
+        trades=trades,
+        window_hours=168,
+        min_closed_trades=2,
+        max_total_r=Decimal("-1.50"),
+        max_loss_count=2,
+        loss_count_max_total_r=Decimal("-1.00"),
+    )
+
+    assert reason is None

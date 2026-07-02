@@ -128,6 +128,35 @@ def test_mr_context_gate_blocks_weak_score_with_multiple_against_flags() -> None
     assert "weak order-flow score" in reason[1]
 
 
+def test_mr_context_gate_blocks_mixed_flow_with_adverse_flag() -> None:
+    reason = _mean_reversion_context_rejection_reason(
+        signal(Direction.LONG),
+        Decimal("0"),
+        order_flow(score="0.50", flags=("book_imbalance_against",)),
+        config(),
+    )
+
+    assert reason is not None
+    assert reason[0] == "MR_CONTEXT"
+    assert "adverse flags" in reason[1]
+
+
+def test_mr_context_gate_blocks_relative_strength_against_reversal() -> None:
+    weak = signal(Direction.LONG)
+    weak.metadata["relative_strength"] = {"alignment": "against", "score": "0.10"}
+
+    reason = _mean_reversion_context_rejection_reason(
+        weak,
+        Decimal("0"),
+        order_flow(score="0.70"),
+        config(),
+    )
+
+    assert reason is not None
+    assert reason[0] == "MR_CONTEXT"
+    assert "relative strength is against" in reason[1]
+
+
 def test_mr_context_gate_ignores_non_mr_signals() -> None:
     assert (
         _mean_reversion_context_rejection_reason(

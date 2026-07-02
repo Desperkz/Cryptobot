@@ -1,6 +1,6 @@
 # Дорожная карта готовности Bot v2.1 к live
 
-Обновлено: 2026-06-22
+Обновлено: 2026-07-02
 
 Легенда статусов:
 - `[x]` выполнено и проверено локально
@@ -220,6 +220,13 @@
   - Готово: `MOMENTUM_CONTINUATION` теперь блокирует overextended/too-volatile breakouts и требует более сильные edge/volume/flow.
   - Готово: `TREND_FOLLOWING` теперь требует более сильные edge, volume и minimum ATR перед shadow entries.
   - Подготовлено: `D:\Codex\archive_quarantined_shadow_stats.cmd` архивирует старые убыточные shadow rows на VPS, чтобы retuned strategies стартовали с чистой baseline.
+- `[x]` P4-11B Post-fix loss-control pass по свежим paper/shadow сделкам.
+  - Причина: после SQZ hotfix paper `MR` взял LONG по слабой relative strength, а shadow `MOMENTUM_CONTINUATION`, `TREND_PULLBACK` и `VWAP_REVERSION_WATCH` дали свежие отрицательные R.
+  - Готово: `MEAN_REVERSION` теперь блокируется, если relative strength явно против reversal-сигнала или mixed order-flow несет adverse flags.
+  - Готово: `MOMENTUM_CONTINUATION` теперь проходит shadow context gate и требует aligned order-flow, RS score, пространство до target liquidity и минимальный breakout extension.
+  - Готово: `TREND_PULLBACK` стал строже к RS score, слишком мелкому pullback depth и близкой target liquidity.
+  - Готово: добавлен shadow-only loss-control circuit breaker: стратегия временно не открывает virtual trades, если за последние 168 часов набрала отрицательный R по закрытым shadow-paper сделкам.
+  - Проверка: `245 passed`.
 - `[x]` P4-12 Показать shadow-paper rejects в dashboard rejection journal.
   - Готово: `/rejections` объединяет hard `filter_rejections` с shadow-paper `SHADOW_PAPER_REJECTED_RISK` и `SHADOW_PAPER_REJECTED_COOLDOWN` snapshots.
   - Готово: `/rejection-stats` считает `SHADOW_RISK` и `SHADOW_COOLDOWN`, поэтому журнал больше не выглядит пустым, пока shadow strategies фильтруются.
