@@ -477,6 +477,13 @@
   - Готово: BTC direction gate для MR расширен до `2.0%` за 4h, чтобы блокировать только сильные BTC-импульсы.
   - Готово: shadow-only контекстные пороги для `TREND_FOLLOWING` и `TREND_PULLBACK` снижены, чтобы стратегии снова набирали research evidence; hard toxic flags не сняты.
   - Условие принятия: через 3-7 дней сравнить частоту, post-cost Avg R/PF/DD и funnel `SH/RJ/OP`; если частота выросла, но Avg R деградировал, откатить конкретный источник шума.
+- `[x]` P7-10 Evidence-first edge discovery reset.
+  - Причина: fresh DB slice показал, что shadow не молчит, а почти весь поток режется контекстом; единственная post-fix shadow-сделка была `RANGE_GRID` и закрылась в минус.
+  - Evidence 30d: `TREND_FOLLOWING` = 23 закрытых shadow trades, `+3.35R`, Avg R `+0.146`; `VWAP_REVERSION` = 4/4 закрытых, `+2.48R`, Avg R `+0.620`; `SQUEEZE_BREAKOUT_DYNAMIC` = небольшой плюс, но нестабильный.
+  - Evidence 30d losers: `MOMENTUM_CONTINUATION`, `RANGE_GRID`, `TREND_PULLBACK`, `VWAP_REVERSION_WATCH`, `SQUEEZE_BREAKOUT_DYNAMIC_UPD` имеют отрицательное или нестабильное матожидание.
+  - Готово: `TREND_FOLLOWING` переведен в `trend_following_edge_research_v5`: для shadow возвращена research-гибкость v3 по momentum/volume/ATR/OI/RS, но hard toxic order-flow flags и target-liquidity checks сохранены.
+  - Готово: минусовые shadow-кандидаты переведены в diagnostic-only для shadow-paper: они продолжают давать `SHADOW_SIGNAL`/rejection evidence, но не открывают новые виртуальные сделки до отдельной переработки.
+  - Условие принятия: через 48-72 часа проверить, что новые shadow-paper открытия идут преимущественно по `TREND_FOLLOWING`, `VWAP_REVERSION` или чистому `SQZ-DYN`, а не по отрицательным бакетам.
 
 ## Отложено до условия
 
@@ -494,7 +501,8 @@
   - Готово: первый post-relaxation TF срез показал 3 закрытых SHORT shadow-сделки и 3 стопа; причина - вход в хвост downside-импульса без BTC/relative-weakness benchmark и слишком близко к downside liquidity.
   - Готово: `trend_following_research_v3` ужесточил TF shadow gate по RS/OF/ATR/target-liquidity и снизил max risk cap до `0.6%`.
   - Готово: `trend_following_strict_evidence_v4` отменил shadow-relaxed 1h trend, исключил `MOMENTUM` regime из TF и требует aligned RS/OI confirmation.
-  - Следующий контроль: оценивать только новую `strategy_logic_version=trend_following_strict_evidence_v4`; если она снова даст отрицательный post-cost Avg R/PF на 10+ закрытых clusters, перевести `TREND_FOLLOWING` в disabled/research-only quarantine.
+  - Обновлено: fresh 30d evidence показал, что v4 задушил именно положительный TF research bucket; с P7-10 оценивать новую версию `trend_following_edge_research_v5`.
+  - Следующий контроль: если `trend_following_edge_research_v5` снова даст отрицательный post-cost Avg R/PF на 10+ закрытых clusters, перевести `TREND_FOLLOWING` в disabled/research-only quarantine.
 - `[ ]` D-03 Destructive chaos scenarios для P3-03.
   - Почему отложено: reboot VPS, network break и принудительные stale stream сценарии могут временно нарушить работу paper-ботов.
   - Вернуться к задаче, когда: пользователь явно разрешит окно технических работ или появится отдельная testnet/staging VPS.

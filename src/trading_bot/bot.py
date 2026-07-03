@@ -731,6 +731,20 @@ class TradingBot:
             "SHADOW_SIGNAL",
             "candidate strategy shadow-only; no order attempted",
         )
+        diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(shadow_signal)
+        if diagnostic_only_reason:
+            logger.info(
+                "Shadow paper diagnostic-only for %s %s: %s",
+                _signal_strategy(shadow_signal),
+                shadow_signal.symbol,
+                diagnostic_only_reason,
+            )
+            await self._record_ml_feature_snapshot(
+                shadow_signal,
+                "SHADOW_PAPER_REJECTED_CONTEXT",
+                diagnostic_only_reason,
+            )
+            return
         context_rejection = _shadow_candidate_context_rejection_reason(shadow_signal)
         if context_rejection:
             logger.info(
@@ -1518,12 +1532,28 @@ STRATEGY_LOGIC_VERSIONS = {
     "VWAP_REVERSION_WATCH": "vwrw_research_gate_v2",
     "RANGE_GRID": "grid_research_gate_v2",
     "MOMENTUM_CONTINUATION": "mom_rs_target_space_v2",
-    "TREND_FOLLOWING": "trend_following_strict_evidence_v4",
+    "TREND_FOLLOWING": "trend_following_edge_research_v5",
+}
+
+SHADOW_PAPER_DIAGNOSTIC_ONLY_STRATEGIES = {
+    "MOMENTUM_CONTINUATION": "negative 30d expectancy; keep signals/diagnostics only until retuned",
+    "RANGE_GRID": "negative 30d expectancy and latest post-fix shadow loss; keep diagnostics only",
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "challenger underperformed base SQZ-DYN; keep diagnostics only until retuned",
+    "TREND_PULLBACK": "negative 30d expectancy; keep signals/diagnostics only until retuned",
+    "VWAP_REVERSION_WATCH": "watch variant is unstable; use stricter VWAP_REVERSION for edge discovery",
 }
 
 
 def _strategy_logic_version(strategy: str) -> str | None:
     return STRATEGY_LOGIC_VERSIONS.get(str(strategy or "").upper())
+
+
+def _shadow_paper_diagnostic_only_reason(signal: Signal) -> str | None:
+    strategy = _signal_strategy(signal)
+    reason = SHADOW_PAPER_DIAGNOSTIC_ONLY_STRATEGIES.get(strategy)
+    if not reason:
+        return None
+    return f"{strategy} shadow-paper disabled: {reason}."
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
@@ -1756,15 +1786,10 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
         rs_alignment = ""
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
-        if signal.direction == Direction.SHORT and rs_alignment != "aligned":
+        if signal.direction == Direction.SHORT and rs_alignment == "against":
             return f"TF shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
-        if signal.direction == Direction.LONG and rs_alignment != "aligned":
+        if signal.direction == Direction.LONG and rs_alignment == "against":
             return f"TF shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
-        oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
-        if oi_change is None:
-            oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
-        if oi_change is None:
-            return "TF shadow blocked: missing open-interest confirmation."
         atr_pct = _optional_decimal(metadata.get("atr_pct"))
         if atr_pct is not None and atr_pct < Decimal("0.35"):
             return f"TF shadow blocked: ATR {atr_pct:.2f}% is too low for trend continuation."

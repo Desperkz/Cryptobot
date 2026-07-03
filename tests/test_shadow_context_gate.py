@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from trading_bot.bot import (
     _shadow_candidate_context_rejection_reason,
+    _shadow_paper_diagnostic_only_reason,
     _shadow_strategy_loss_control_reason,
     _sqz_dynamic_upd_series_rejection_reason,
 )
@@ -552,18 +553,14 @@ def test_momentum_shadow_allows_clean_continuation_sample() -> None:
     ) is None
 
 
-def test_trend_following_shadow_blocks_unknown_relative_strength_for_promotion_grade_sample() -> None:
-    reason = _shadow_candidate_context_rejection_reason(
+def test_trend_following_shadow_allows_unknown_relative_strength_for_edge_research_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
         signal(
             "TREND_FOLLOWING",
             order_flow(alignment="aligned", score="0.86"),
             relative_strength={"alignment": "unknown"},
-            metadata={"open_interest_change_pct": "0.35"},
         )
-    )
-
-    assert reason is not None
-    assert "relative-weakness confirmation" in reason
+    ) is None
 
 
 def test_trend_following_shadow_blocks_relative_strength_against() -> None:
@@ -630,17 +627,31 @@ def test_trend_following_shadow_allows_clean_continuation_sample() -> None:
     assert _shadow_candidate_context_rejection_reason(trend_signal) is None
 
 
-def test_trend_following_shadow_blocks_missing_open_interest_confirmation() -> None:
-    reason = _shadow_candidate_context_rejection_reason(
+def test_trend_following_shadow_allows_missing_open_interest_for_edge_research_sample() -> None:
+    assert _shadow_candidate_context_rejection_reason(
         signal(
             "TREND_FOLLOWING",
             order_flow(alignment="aligned", score="0.86"),
             relative_strength={"alignment": "aligned"},
         )
+    ) is None
+
+
+def test_negative_expectancy_shadow_strategies_are_diagnostic_only() -> None:
+    reason = _shadow_paper_diagnostic_only_reason(
+        signal("RANGE_GRID", order_flow(alignment="aligned", score="0.86"))
     )
 
     assert reason is not None
-    assert "open-interest confirmation" in reason
+    assert "diagnostics only" in reason
+
+
+def test_edge_candidate_shadow_strategies_can_open_shadow_paper() -> None:
+    reason = _shadow_paper_diagnostic_only_reason(
+        signal("TREND_FOLLOWING", order_flow(alignment="aligned", score="0.86"))
+    )
+
+    assert reason is None
 
 
 def test_shadow_context_gate_ignores_non_candidate_strategy() -> None:

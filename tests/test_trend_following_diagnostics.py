@@ -48,6 +48,31 @@ def candles(count: int, start: Decimal = Decimal("100"), step: Decimal = Decimal
     return result
 
 
+def volume_spike_candles(count: int, start: Decimal = Decimal("100"), step: Decimal = Decimal("0")) -> list[Candle]:
+    result = candles(count, start=start, step=step)
+    result[-1] = replace(result[-1], volume=Decimal("500"))
+    return result
+
+
+def trend_entry_candles(count: int, start: Decimal = Decimal("100")) -> list[Candle]:
+    result: list[Candle] = []
+    for i in range(count):
+        wave = Decimal("0.50") if i % 4 in (0, 1) else Decimal("-0.50")
+        close = start + (Decimal("0.08") * Decimal(i)) + wave
+        result.append(
+            Candle(
+                open_time=i * 60_000,
+                open=close,
+                high=close + Decimal("1"),
+                low=close - Decimal("1"),
+                close=close,
+                volume=Decimal("500") if i == count - 1 else Decimal("200"),
+                close_time=(i + 1) * 60_000,
+            )
+        )
+    return result
+
+
 def metrics() -> MarketMetrics:
     return MarketMetrics(
         symbol="BTCUSDT",
@@ -92,6 +117,15 @@ def strategy(regime: MarketRegime) -> MultiTimeframeStrategy:
     )
 
 
+def paper_strategy(regime: MarketRegime) -> MultiTimeframeStrategy:
+    return MultiTimeframeStrategy(
+        strategy_config(strategy_modes={"TREND_FOLLOWING": "paper"}),
+        FakeRegimeDetector(regime),
+        FakeStyleSelector(),
+        edge_filters=None,
+    )
+
+
 def test_trend_following_diagnostic_names_non_trend_regime() -> None:
     signal, diagnostic = strategy(MarketRegime.RANGE).evaluate(
         "BTCUSDT",
@@ -106,17 +140,17 @@ def test_trend_following_diagnostic_names_non_trend_regime() -> None:
     assert diagnostic["trend_regime"] == "RANGE"
 
 
-def test_trend_following_diagnostic_treats_momentum_as_separate_strategy() -> None:
+def test_trend_following_shadow_research_can_sample_momentum_regime() -> None:
     signal, diagnostic = strategy(MarketRegime.MOMENTUM).evaluate(
         "BTCUSDT",
-        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        trend_entry_candles(220, start=Decimal("100")),
         candles(220, start=Decimal("100"), step=Decimal("0.2")),
         candles(220, start=Decimal("100"), step=Decimal("0.2")),
         metrics(),
     )
 
-    assert signal is None
-    assert diagnostic["block_reason"] == "no_trend_regime"
+    assert signal is not None
+    assert diagnostic["block_reason"] == "passed"
     assert diagnostic["trend_regime"] == "MOMENTUM"
 
 
@@ -148,8 +182,21 @@ def test_trend_following_diagnostic_names_missing_1h_structure() -> None:
     assert "hh_hl" in diagnostic
 
 
-def test_trend_following_diagnostic_requires_open_interest_confirmation() -> None:
+def test_trend_following_shadow_research_allows_missing_open_interest_confirmation() -> None:
     signal, diagnostic = strategy(MarketRegime.TREND_UP).evaluate(
+        "BTCUSDT",
+        trend_entry_candles(220, start=Decimal("100")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        candles(220, start=Decimal("100"), step=Decimal("0.2")),
+        metrics_without_open_interest(),
+    )
+
+    assert signal is not None
+    assert diagnostic["block_reason"] == "passed"
+
+
+def test_trend_following_paper_requires_open_interest_confirmation() -> None:
+    signal, diagnostic = paper_strategy(MarketRegime.TREND_UP).evaluate(
         "BTCUSDT",
         candles(220, start=Decimal("100"), step=Decimal("0.2")),
         candles(220, start=Decimal("100"), step=Decimal("0.2")),
