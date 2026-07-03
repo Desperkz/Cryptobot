@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from collections import deque
+from decimal import Decimal
 
+from trading_bot.bot import _asset_disaster_skip_reason
 from trading_bot.data_provider import BinanceUSDMClient
+from trading_bot.disaster_mode import DisasterConfig, DisasterDetector
+from trading_bot.models import MarketMetrics
 from trading_bot.operational import IncidentAlerter, SystemdNotifier
 
 
@@ -34,3 +38,21 @@ def test_binance_rate_limit_counter_prunes_old_events(monkeypatch) -> None:
     client._record_rate_limit_event()
 
     assert client.recent_rate_limit_count(window_sec=300) == 0
+
+
+def test_asset_disaster_skip_reason_does_not_mutate_global_disaster_state() -> None:
+    config = DisasterConfig(cascade_price_move_pct=5.0, cascade_funding_rate_threshold=0.003)
+    detector = DisasterDetector(config)
+    metrics = MarketMetrics(
+        symbol="MUSDT",
+        quote_volume_24h=Decimal("100000000"),
+        spread_bps=Decimal("2"),
+        top_book_liquidity_usdt=Decimal("1000000"),
+        funding_rate=Decimal("-0.022"),
+    )
+
+    reason = _asset_disaster_skip_reason("MUSDT", metrics, -6.6, config)
+
+    assert reason is not None
+    assert "skipping symbol only" in reason
+    assert detector.blocks_new_entries is False

@@ -484,6 +484,11 @@
   - Готово: `TREND_FOLLOWING` переведен в `trend_following_edge_research_v5`: для shadow возвращена research-гибкость v3 по momentum/volume/ATR/OI/RS, но hard toxic order-flow flags и target-liquidity checks сохранены.
   - Готово: минусовые shadow-кандидаты переведены в diagnostic-only для shadow-paper: они продолжают давать `SHADOW_SIGNAL`/rejection evidence, но не открывают новые виртуальные сделки до отдельной переработки.
   - Условие принятия: через 48-72 часа проверить, что новые shadow-paper открытия идут преимущественно по `TREND_FOLLOWING`, `VWAP_REVERSION` или чистому `SQZ-DYN`, а не по отрицательным бакетам.
+- `[x]` P7-11 Per-symbol disaster guard вместо глобального стопа от одной монеты.
+  - Причина: live audit после P7-10 показал, что `MUSDT` с движением `-6.6%` за 15 минут переводил общий `DisasterDetector` в `critical`, из-за чего весь бот блокировал новые входы на 5 минут и повторял цикл.
+  - Готово: per-symbol spread/liquidity/funding/cascade anomalies теперь дают `skip this asset only`, не мутируя глобальный disaster state.
+  - Глобальный disaster оставлен для API/WebSocket/серии потерь/общих аварий; рыночная аномалия одной монеты больше не выключает весь universe.
+  - Условие принятия: при следующей монете с каскадом в логах должен появляться `Asset disaster check: пропуск SYMBOL`, но остальные символы цикла должны продолжать анализироваться.
 
 ## Отложено до условия
 

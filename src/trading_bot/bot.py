@@ -68,6 +68,37 @@ def _disaster_config_from_app_config(config: AppConfig) -> DisasterConfig:
     )
 
 
+def _asset_disaster_skip_reason(
+    symbol: str,
+    metrics: Any,
+    price_move_15m_pct: float | None,
+    config: DisasterConfig,
+) -> str | None:
+    if metrics is not None:
+        spread_bps = getattr(metrics, "spread_bps", None)
+        if spread_bps is not None and float(spread_bps) > config.max_spread_bps_disaster:
+            return f"asset spread anomaly: {float(spread_bps):.1f} bps > {config.max_spread_bps_disaster:.1f}"
+
+        liquidity = getattr(metrics, "top_book_liquidity_usdt", None)
+        if liquidity is not None and float(liquidity) < config.min_liquidity_usdt:
+            return f"asset liquidity anomaly: ${float(liquidity):.0f} < ${config.min_liquidity_usdt:.0f}"
+
+        funding_rate = getattr(metrics, "funding_rate", None)
+        if funding_rate is not None and abs(float(funding_rate)) > config.cascade_funding_rate_threshold:
+            return (
+                f"asset funding cascade risk: {float(funding_rate):+.4f} "
+                f"for {symbol}, skipping symbol only"
+            )
+
+    if price_move_15m_pct is not None and abs(price_move_15m_pct) > config.cascade_price_move_pct:
+        return (
+            f"asset liquidation cascade risk: {price_move_15m_pct:+.1f}% in 15m "
+            f"for {symbol}, skipping symbol only"
+        )
+
+    return None
+
+
 class TradingBot:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -350,15 +381,15 @@ class TradingBot:
                 if prev > 0:
                     price_move_15m = (last - prev) / prev * 100
 
-            asset_disaster = await self.disaster.check(
-                spread_bps=float(asset.metrics.spread_bps) if asset.metrics else None,
-                liquidity_usdt=float(asset.metrics.top_book_liquidity_usdt) if asset.metrics else None,
-                funding_rate=float(asset.metrics.funding_rate) if asset.metrics and asset.metrics.funding_rate else None,
-                price_move_15m_pct=price_move_15m,
+            asset_disaster_reason = _asset_disaster_skip_reason(
+                asset.symbol,
+                asset.metrics,
+                price_move_15m,
+                self.disaster.config,
             )
-            if self.disaster.blocks_new_entries:
-                logger.warning("Disaster check: пропуск %s — уровень %s", asset.symbol, asset_disaster.value)
-                break
+            if asset_disaster_reason:
+                logger.warning("Asset disaster check: пропуск %s — %s", asset.symbol, asset_disaster_reason)
+                continue
 
             self.corr_filter.update(asset.symbol, candles_1h)
             shadow_signals = self.strategy.generate_shadow(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
