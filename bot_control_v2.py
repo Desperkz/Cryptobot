@@ -2283,7 +2283,15 @@ def build_monthly_target_report(
         })
 
     rows.sort(key=lambda item: (item["projected_monthly_return_pct"], item["closed_clusters"]), reverse=True)
-    viable = [row for row in rows if row["status"] in {"ON_TRACK", "WATCH_SAMPLE", "IMPROVE_OR_SCALE"}]
+    viable = [
+        row
+        for row in rows
+        if row["status"] in {"ON_TRACK", "IMPROVE_OR_SCALE"}
+        and "low_sample" not in row["blockers"]
+        and row["avg_r"] > 0
+        and row["profit_factor"] >= 1.20
+    ]
+    watch_sample = [row for row in rows if row["status"] == "WATCH_SAMPLE"]
     combined_projected = sum(row["projected_monthly_return_pct"] for row in viable)
     if not viable:
         recommendations.append("No strategy currently has positive enough evidence to support scaling toward the monthly target.")
@@ -2291,6 +2299,8 @@ def build_monthly_target_report(
         recommendations.append("SQUEEZE_BREAKOUT needs positive post-P5 Avg R before increasing risk or leverage.")
     if any(row["mode"] == "shadow" and row["status"] == "WATCH_SAMPLE" for row in rows):
         recommendations.append("Shadow winners need more closed clusters before promotion; do not scale from a spike.")
+    if watch_sample:
+        recommendations.append("WATCH_SAMPLE projections are excluded from the target summary until the sample is large enough.")
     if combined_projected < target_monthly_return_pct:
         recommendations.append("The current viable strategy mix is below target; improve Avg R first, then consider frequency/risk.")
 

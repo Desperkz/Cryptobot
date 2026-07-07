@@ -1555,6 +1555,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 }
 
 STRATEGY_LOGIC_VERSIONS = {
+    "SQUEEZE_BREAKOUT": "sqz_structure_break_gate_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_confirmed_release_v2",
     "TREND_PULLBACK": "tpb_profitable_bucket_v3",
@@ -1847,6 +1848,7 @@ def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None
     risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
 
     if strategy in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
+        reasons = {str(reason) for reason in order_flow.get("reasons") or []}
         hard_flags = {
             "taker_flow_against",
             "aggressive_delta_against",
@@ -1878,6 +1880,11 @@ def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None
             risk_flags=risk_flags,
         ):
             return "SQZ_RETEST", f"{strategy} blocked: no retest and release is not strong enough."
+        if strategy == "SQUEEZE_BREAKOUT" and "structure_break_aligned" not in reasons:
+            return (
+                "STRUCTURE_BREAK",
+                "SQUEEZE_BREAKOUT blocked: missing 15m structure-break confirmation.",
+            )
 
     if strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if "adverse_liquidity_nearby" in risk_flags:

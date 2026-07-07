@@ -15,6 +15,7 @@ def signal(
     state: str = "release",
     timing: str = "release_followthrough",
     breakout_atr: str = "1.20",
+    reasons: list[str] | None = None,
 ) -> Signal:
     return Signal(
         symbol="BTCUSDT",
@@ -30,6 +31,7 @@ def signal(
             "order_flow": {
                 "alignment": alignment,
                 "score": score,
+                "reasons": reasons if reasons is not None else ["structure_break_aligned"],
                 "risk_flags": flags or [],
             },
             "relative_strength": {"alignment": relative_strength},
@@ -97,6 +99,21 @@ def test_squeeze_allows_strong_clean_release_without_retest() -> None:
             breakout_atr="1.80",
         )
     ) is None
+
+
+def test_squeeze_blocks_without_structure_break_confirmation() -> None:
+    rejected = _order_flow_entry_rejection_reason(
+        signal(
+            "SQUEEZE_BREAKOUT",
+            alignment="aligned",
+            score="0.72",
+            reasons=["taker_flow_aligned", "book_imbalance_aligned", "aggressive_delta_aligned"],
+        )
+    )
+
+    assert rejected is not None
+    assert rejected[0] == "STRUCTURE_BREAK"
+    assert "structure-break confirmation" in rejected[1]
 
 
 def test_squeeze_blocks_absorption_against_even_with_aligned_flow() -> None:
