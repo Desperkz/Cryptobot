@@ -478,7 +478,17 @@ class TradingBot:
                 await self._record_ml_feature_snapshot(signal, "REJECTED_MR_EXPECTANCY_GATE", reason)
                 continue
             oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
-            filter_decision = self.entry_filter.allow_signal(signal, btc_4h_change, adaptive_thresholds, oi_chg)
+            symbol_4h_change = _symbol_4h_change_pct(
+                candles_4h,
+                self.config.market_filters.symbol_4h_trend_lookback_bars,
+            )
+            filter_decision = self.entry_filter.allow_signal(
+                signal,
+                btc_4h_change,
+                adaptive_thresholds,
+                oi_chg,
+                symbol_4h_change_pct=symbol_4h_change,
+            )
             if filter_decision.allowed:
                 active_pos = await self.positions.active_positions()
                 corr_reason = await self._refresh_realtime_correlation(signal.symbol, active_pos)
@@ -1391,6 +1401,20 @@ class TradingBot:
                     "Emergency stop is active: open orders were cancelled, "
                     "but live positions were left open because emergency_close_positions_in_live=false."
                 )
+
+
+def _symbol_4h_change_pct(candles_4h: list, lookback_bars: int) -> Decimal | None:
+    """Относительное изменение закрытия за lookback_bars 4h-свечей (доля, не %)."""
+    if not candles_4h or lookback_bars <= 0 or len(candles_4h) <= lookback_bars:
+        return None
+    try:
+        last = Decimal(str(candles_4h[-1].close))
+        base = Decimal(str(candles_4h[-1 - lookback_bars].close))
+    except Exception:
+        return None
+    if base <= 0:
+        return None
+    return (last - base) / base
 
 
 def _optional_decimal(value: object) -> Decimal | None:

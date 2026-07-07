@@ -183,6 +183,15 @@ market_filters:
   high_confidence_squeeze_min_confidence: 0.80
   high_confidence_squeeze_allowed_hours: [0, 1, 2]
   use_self_learning_filters: true
+  # Контртрендовый фильтр (фикс июль-2026): шорты дали -57 USD при лонгах +54
+  # в shadow — бот системно шортил растущий рынок. Зеркально block_longs_when_btc_weak.
+  counter_trend_filter_enabled: true
+  block_shorts_when_btc_strong: true
+  btc_4h_min_rise_pct_for_short_block: 0.015   # BTC +1.5% за 4h -> шорты заблокированы
+  symbol_4h_trend_filter_enabled: true
+  symbol_4h_trend_lookback_bars: 12            # тренд символа за 12 x 4h = 2 суток
+  symbol_4h_max_rise_pct_for_short: 0.03       # символ +3% за 2 суток -> шорт против тренда запрещён
+  symbol_4h_max_drop_pct_for_long: -0.03       # символ -3% за 2 суток -> лонг против тренда запрещён
 
 risk:
   risk_per_trade_pct: 0.02
@@ -264,57 +273,63 @@ trade_management:
   user_stream_stale_after_sec: 20
   user_stream_reconnect_backoff_sec: 5
   rest_reconciliation_when_stale: true
+  # Фикс июль-2026: старый профиль (TP1 0.6R на 45% объёма) давал потолок
+  # выигрыша ~0.85R при полном лоссе -1R — система обязана терять при
+  # winrate < 54%. Первый тейк не раньше 1.0R и меньшей долей.
   partial_take_profits:
     - name: "TP1"
-      reward_risk: 0.6
-      fraction: 0.45
+      reward_risk: 1.0
+      fraction: 0.30
       move_stop_to_breakeven: true
     - name: "TP2"
-      reward_risk: 1.1
-      fraction: 0.35
+      reward_risk: 1.6
+      fraction: 0.30
       activate_trailing: true
     - name: "RUNNER"
-      reward_risk: 1.6
-      fraction: 0.20
+      reward_risk: 2.2
+      fraction: 0.40
       activate_trailing: true
   strategy_exit_profiles:
+    # Фикс июль-2026: BE переносим уже после TP1, а не TP2. По факту paper:
+    # 4 сделки «частичный тейк -> стоп» закрылись в среднем -0.54R; с BE после
+    # TP1 такой исход становится ~+0.23R. TP2 до 1.6R доходил редко.
     SQUEEZE_BREAKOUT:
       - name: "TP1"
         reward_risk: 1.0
         fraction: 0.25
+        move_stop_to_breakeven: true
       - name: "TP2"
         reward_risk: 1.6
         fraction: 0.35
-        move_stop_to_breakeven: true
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 2.3
+        reward_risk: 2.2
         fraction: 0.40
         activate_trailing: true
     SQUEEZE_BREAKOUT_DYNAMIC:
       - name: "TP1"
         reward_risk: 1.0
         fraction: 0.25
+        move_stop_to_breakeven: true
       - name: "TP2"
         reward_risk: 1.7
         fraction: 0.35
-        move_stop_to_breakeven: true
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 2.4
+        reward_risk: 2.3
         fraction: 0.40
         activate_trailing: true
     SQUEEZE_BREAKOUT_DYNAMIC_UPD:
       - name: "TP1"
         reward_risk: 1.0
         fraction: 0.25
+        move_stop_to_breakeven: true
       - name: "TP2"
         reward_risk: 1.7
         fraction: 0.35
-        move_stop_to_breakeven: true
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 2.4
+        reward_risk: 2.3
         fraction: 0.40
         activate_trailing: true
     TREND_PULLBACK:

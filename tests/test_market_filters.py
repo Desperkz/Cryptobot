@@ -132,3 +132,49 @@ def test_self_learning_blocks_bad_segment() -> None:
     thresholds = {"blocked_symbol_hours": ["ETHUSDT@12UTC"]}
 
     assert entry_filter.allow_signal(signal(Direction.LONG, hour="12"), Decimal("0.01"), thresholds).allowed is False
+
+
+def test_counter_trend_filter_blocks_shorts_when_btc_strong() -> None:
+    entry_filter = MarketEntryFilter(filter_config())
+
+    decision = entry_filter.allow_signal(signal(Direction.SHORT), Decimal("0.02"))
+    assert decision.allowed is False
+    assert "short entries blocked" in decision.reason
+
+    assert entry_filter.allow_signal(signal(Direction.LONG), Decimal("0.02")).allowed is True
+    assert entry_filter.allow_signal(signal(Direction.SHORT), Decimal("0.005")).allowed is True
+
+
+def test_counter_trend_filter_blocks_entries_against_symbol_4h_trend() -> None:
+    entry_filter = MarketEntryFilter(filter_config())
+
+    short_against_uptrend = entry_filter.allow_signal(
+        signal(Direction.SHORT), Decimal("0.0"), symbol_4h_change_pct=Decimal("0.05")
+    )
+    assert short_against_uptrend.allowed is False
+    assert "counter-trend short blocked" in short_against_uptrend.reason
+
+    long_against_downtrend = entry_filter.allow_signal(
+        signal(Direction.LONG), Decimal("0.0"), symbol_4h_change_pct=Decimal("-0.05")
+    )
+    assert long_against_downtrend.allowed is False
+    assert "counter-trend long blocked" in long_against_downtrend.reason
+
+    assert entry_filter.allow_signal(
+        signal(Direction.SHORT), Decimal("0.0"), symbol_4h_change_pct=Decimal("-0.05")
+    ).allowed is True
+    assert entry_filter.allow_signal(
+        signal(Direction.LONG), Decimal("0.0"), symbol_4h_change_pct=Decimal("0.05")
+    ).allowed is True
+
+
+def test_counter_trend_filter_can_be_disabled() -> None:
+    config = filter_config()
+    config = MarketFilterConfig(
+        **{**config.__dict__, "counter_trend_filter_enabled": False}
+    )
+    entry_filter = MarketEntryFilter(config)
+
+    assert entry_filter.allow_signal(
+        signal(Direction.SHORT), Decimal("0.05"), symbol_4h_change_pct=Decimal("0.10")
+    ).allowed is True

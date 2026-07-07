@@ -38,6 +38,8 @@ SLIPPAGE_BPS = Decimal(os.getenv("PAPER_SLIPPAGE_BPS", "5.0"))
 FUNDING_BPS_PER_8H = Decimal(os.getenv("PAPER_FUNDING_BPS_PER_8H", "1.0"))
 BREAKEVEN_OFFSET_BPS = Decimal(os.getenv("PAPER_BREAKEVEN_OFFSET_BPS", "2.0"))
 TRAILING_CALLBACK_RATE_PCT = Decimal(os.getenv("PAPER_TRAILING_CALLBACK_RATE_PCT", "0.4"))
+TRAILING_ATR_MULTIPLIER = Decimal(os.getenv("PAPER_TRAILING_ATR_MULTIPLIER", "1.0"))
+TRAILING_CALLBACK_MAX_PCT = Decimal(os.getenv("PAPER_TRAILING_CALLBACK_MAX_PCT", "2.0"))
 PESSIMISTIC_INTRABAR = os.getenv("PAPER_PESSIMISTIC_INTRABAR", "1").strip().lower() not in {"0", "false", "no"}
 SQLITE_TIMEOUT_SEC = float(os.getenv("PAPER_SQLITE_TIMEOUT_SEC", "30"))
 SQLITE_BUSY_TIMEOUT_MS = int(os.getenv("PAPER_SQLITE_BUSY_TIMEOUT_MS", "30000"))
@@ -747,15 +749,39 @@ def _breakeven_price(direction: str, entry: Decimal, metadata: dict) -> Decimal:
     return entry - offset if direction == "SHORT" else entry + offset
 
 
+def _metadata_atr_pct(metadata: dict) -> Decimal | None:
+    for container in (metadata.get("signal_metadata"), metadata):
+        if not isinstance(container, dict):
+            continue
+        raw = container.get("atr_pct")
+        if raw in (None, "", "None"):
+            continue
+        try:
+            value = Decimal(str(raw))
+        except Exception:
+            continue
+        if value > 0:
+            return value
+    return None
+
+
 def _trailing_callback_rate(metadata: dict) -> Decimal:
     protection = metadata.get("protection") or {}
     raw = protection.get("trailing_callback_rate_pct") or metadata.get("trailing_callback_rate_pct")
+    configured = TRAILING_CALLBACK_RATE_PCT
     if raw not in (None, "", "None"):
         try:
-            return Decimal(str(raw))
+            configured = Decimal(str(raw))
         except Exception:
-            pass
-    return TRAILING_CALLBACK_RATE_PCT
+            configured = TRAILING_CALLBACK_RATE_PCT
+    # Фикс: фиксированный колбэк 0.3–0.4% при стопе ~1×ATR (0.6–1.2%) выбивался
+    # рыночным шумом — победители в среднем закрывались на +0.73R при плановом
+    # RR≈2. Масштабируем колбэк от ATR входа, но не уже настроенного значения.
+    atr_pct = _metadata_atr_pct(metadata)
+    if atr_pct is not None:
+        atr_scaled = atr_pct * TRAILING_ATR_MULTIPLIER
+        return max(configured, min(atr_scaled, TRAILING_CALLBACK_MAX_PCT))
+    return configured
 
 
 def _apply_trailing_stop(direction: str, snapshot: MarketSnapshot, stop_loss: Decimal, metadata: dict) -> tuple[Decimal, bool]:
@@ -821,6 +847,10 @@ async def check_positions() -> None:
             risk_amount = Decimal(str(pos.get("risk_amount") or "0"))
             realized_pnl = Decimal(str(pos.get("realized_pnl") or "0"))
             metadata = _metadata(pos.get("metadata"))
+            # Фиксируем исходный стоп до любых модификаций (BE-перенос,
+            # трейлинг): колонка stop_loss в БД перезаписывается, из-за чего
+            # ретроспективный расчёт RR по истории даёт мусор (RR "298").
+            metadata.setdefault("original_stop_loss", str(pos["stop_loss"]))
             opened_at = pos.get("created_at")
 
             snapshot = await get_market_snapshot(client, symbol)
@@ -911,6 +941,10 @@ async def check_shadow_positions() -> None:
             risk_amount = Decimal(str(pos.get("risk_amount") or "0"))
             realized_pnl = Decimal(str(pos.get("realized_pnl") or "0"))
             metadata = _metadata(pos.get("metadata"))
+            # Фиксируем исходный стоп до любых модификаций (BE-перенос,
+            # трейлинг): колонка stop_loss в БД перезаписывается, из-за чего
+            # ретроспективный расчёт RR по истории даёт мусор (RR "298").
+            metadata.setdefault("original_stop_loss", str(pos["stop_loss"]))
             opened_at = pos.get("created_at")
 
             snapshot = await get_market_snapshot(client, symbol)

@@ -35,6 +35,7 @@ class MarketEntryFilter:
         btc_4h_change: Decimal | None,
         self_learning_thresholds: dict[str, Any] | None = None,
         oi_change_pct: Decimal | None = None,
+        symbol_4h_change_pct: Decimal | None = None,
     ) -> FilterDecision:
         if self.config.btc_4h_drop_filter_enabled and btc_4h_change is not None:
             btc_weak = btc_4h_change <= self.config.btc_4h_max_drop_pct
@@ -42,6 +43,11 @@ class MarketEntryFilter:
                 return FilterDecision(False, f"BTC 4h change {btc_4h_change:.2%} below filter.")
             if btc_weak and self.config.block_longs_when_btc_weak and signal.direction == Direction.LONG:
                 return FilterDecision(False, f"BTC 4h change {btc_4h_change:.2%}; long entries blocked.")
+
+        if self.config.counter_trend_filter_enabled:
+            decision = self._counter_trend_decision(signal, btc_4h_change, symbol_4h_change_pct)
+            if not decision.allowed:
+                return decision
 
         if self.config.use_open_interest_filter and oi_change_pct is not None:
             if oi_change_pct <= self.config.oi_drop_cascade_pct:
@@ -59,6 +65,48 @@ class MarketEntryFilter:
             if not decision.allowed:
                 return decision
 
+        return FilterDecision(True)
+
+    def _counter_trend_decision(
+        self,
+        signal: Signal,
+        btc_4h_change: Decimal | None,
+        symbol_4h_change_pct: Decimal | None,
+    ) -> FilterDecision:
+        """Блокирует входы против тренда старшего таймфрейма.
+
+        Мотивация (реальная статистика paper-торговли май–июль 2026):
+        шорты дали −57 USD при лонгах +54 USD в shadow и −30 из −38 USD
+        убытка в paper — все стратегии систематически шортили растущий
+        рынок. Фильтр зеркален существующему block_longs_when_btc_weak.
+        """
+        if (
+            self.config.block_shorts_when_btc_strong
+            and btc_4h_change is not None
+            and signal.direction == Direction.SHORT
+            and btc_4h_change >= self.config.btc_4h_min_rise_pct_for_short_block
+        ):
+            return FilterDecision(
+                False,
+                f"BTC 4h change {btc_4h_change:.2%} is strong; short entries blocked.",
+            )
+        if self.config.symbol_4h_trend_filter_enabled and symbol_4h_change_pct is not None:
+            if (
+                signal.direction == Direction.SHORT
+                and symbol_4h_change_pct >= self.config.symbol_4h_max_rise_pct_for_short
+            ):
+                return FilterDecision(
+                    False,
+                    f"Symbol 4h trend {symbol_4h_change_pct:.2%} is up; counter-trend short blocked.",
+                )
+            if (
+                signal.direction == Direction.LONG
+                and symbol_4h_change_pct <= self.config.symbol_4h_max_drop_pct_for_long
+            ):
+                return FilterDecision(
+                    False,
+                    f"Symbol 4h trend {symbol_4h_change_pct:.2%} is down; counter-trend long blocked.",
+                )
         return FilterDecision(True)
 
     def _session_override_allowed(self, signal: Signal, hour: int | None) -> bool:

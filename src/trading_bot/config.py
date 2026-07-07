@@ -245,6 +245,15 @@ class MarketFilterConfig:
     high_confidence_squeeze_session_override: bool = False
     high_confidence_squeeze_min_confidence: Decimal = Decimal("0.80")
     high_confidence_squeeze_allowed_hours: set[int] = field(default_factory=lambda: {0, 1, 2})
+    # Симметричный контртрендовый фильтр: блокируем шорты в растущем рынке
+    # (зеркально существующему block_longs_when_btc_weak).
+    counter_trend_filter_enabled: bool = True
+    btc_4h_min_rise_pct_for_short_block: Decimal = Decimal("0.015")
+    block_shorts_when_btc_strong: bool = True
+    symbol_4h_trend_filter_enabled: bool = True
+    symbol_4h_trend_lookback_bars: int = 12
+    symbol_4h_max_rise_pct_for_short: Decimal = Decimal("0.03")
+    symbol_4h_max_drop_pct_for_long: Decimal = Decimal("-0.03")
 
 
 @dataclass(frozen=True)
@@ -968,6 +977,27 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                     [0, 1],
                 )
             },
+            counter_trend_filter_enabled=bool(
+                raw.get("market_filters", {}).get("counter_trend_filter_enabled", True)
+            ),
+            btc_4h_min_rise_pct_for_short_block=to_decimal(
+                raw.get("market_filters", {}).get("btc_4h_min_rise_pct_for_short_block", "0.015")
+            ),
+            block_shorts_when_btc_strong=bool(
+                raw.get("market_filters", {}).get("block_shorts_when_btc_strong", True)
+            ),
+            symbol_4h_trend_filter_enabled=bool(
+                raw.get("market_filters", {}).get("symbol_4h_trend_filter_enabled", True)
+            ),
+            symbol_4h_trend_lookback_bars=int(
+                raw.get("market_filters", {}).get("symbol_4h_trend_lookback_bars", 12)
+            ),
+            symbol_4h_max_rise_pct_for_short=to_decimal(
+                raw.get("market_filters", {}).get("symbol_4h_max_rise_pct_for_short", "0.03")
+            ),
+            symbol_4h_max_drop_pct_for_long=to_decimal(
+                raw.get("market_filters", {}).get("symbol_4h_max_drop_pct_for_long", "-0.03")
+            ),
         ),
         risk=RiskConfig(
             risk_per_trade_pct=to_decimal(raw["risk"]["risk_per_trade_pct"]),

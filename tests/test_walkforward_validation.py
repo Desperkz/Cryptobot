@@ -102,7 +102,7 @@ def test_walkforward_builds_runtime_exit_profile_targets() -> None:
     targets = walkforward._partial_targets_for_signal("BTCUSDT", signal, Decimal("10"), cfg)
 
     assert [target["name"] for target in targets] == ["TP1", "TP2", "RUNNER"]
-    assert [target["price"] for target in targets] == [Decimal("105.00000000"), Decimal("108.00000000"), Decimal("111.50000000")]
+    assert [target["price"] for target in targets] == [Decimal("105.00000000"), Decimal("108.00000000"), Decimal("111.00000000")]
 
 
 def test_walkforward_loads_market_metrics_from_csv(tmp_path: Path) -> None:
