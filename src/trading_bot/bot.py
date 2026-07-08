@@ -350,7 +350,9 @@ class TradingBot:
         btc_4h_change = await self._btc_4h_change()
         recent_trades = await self.db.recent_trades(10_000)
         adaptive_thresholds = (
-            self.self_learning.adaptive_thresholds(recent_trades)
+            self.self_learning.adaptive_thresholds(
+                _trades_since_stats_epoch(recent_trades, self.config.analytics.stats_epoch)
+            )
             if self.config.market_filters.use_self_learning_filters
             else {}
         )
@@ -503,9 +505,10 @@ class TradingBot:
                 try:
                     _strat = signal.metadata.get("strategy", "UNKNOWN") if signal.metadata else "UNKNOWN"
                     _ftype = "CORRELATION" if "Corr(" in filter_decision.reason else (
+                        "COUNTER_TREND" if ("counter-trend" in filter_decision.reason or "short entries blocked" in filter_decision.reason) else (
                         "OI" if "OI " in filter_decision.reason else (
                         "UTC" if "UTC hour" in filter_decision.reason else (
-                        "BTC_DROP" if "BTC 4h" in filter_decision.reason else "OTHER")))
+                        "BTC_DROP" if "BTC 4h" in filter_decision.reason else "OTHER"))))
                     await self.db.insert_filter_rejection(
                         symbol=signal.symbol,
                         direction=signal.direction.value,
@@ -704,6 +707,13 @@ class TradingBot:
                         self.telegram.risk_warning,
                     )
                 await self.telegram.api_error(str(exc))
+
+        regime_summary = self.regime.pop_verdict_summary()
+        if regime_summary:
+            summary_text = ", ".join(
+                f"{name}={count}" for name, count in sorted(regime_summary.items(), key=lambda kv: -kv[1])
+            )
+            logger.info("Regime detector verdicts this cycle: %s", summary_text)
 
     def _annotate_signal_mode(self, signal: Signal, strategy_mode: str, shadow_only: bool = False) -> Signal:
         strategy = _signal_strategy(signal)
@@ -1401,6 +1411,36 @@ class TradingBot:
                     "Emergency stop is active: open orders were cancelled, "
                     "but live positions were left open because emergency_close_positions_in_live=false."
                 )
+
+
+def _trades_since_stats_epoch(trades: list[dict[str, Any]], epoch: str | None) -> list[dict[str, Any]]:
+    """Отсекает закрытые сделки старше эпохи статистики.
+
+    Правила self-learning не должны выводиться из сделок, совершённых до
+    изменения торговой логики: «плохие» сегменты старой конфигурации не
+    характеризуют новую. Сделки, открытые до эпохи и закрытые уже после
+    деплоя, тоже исключаются: иначе старые paper-позиции станут гибридными
+    AFTER-сделками и загрязнят обучение.
+    """
+    if not epoch:
+        return trades
+    epoch_dt = _parse_datetime_utc(epoch)
+    if epoch_dt is None:
+        logger.warning("analytics.stats_epoch не разобран: %r — фильтр не применён.", epoch)
+        return trades
+    filtered: list[dict[str, Any]] = []
+    for trade in trades:
+        status = str(trade.get("status") or "").upper()
+        created_at = _parse_datetime_utc(trade.get("created_at") or trade.get("opened_at"))
+        closed_at = _parse_datetime_utc(trade.get("closed_at"))
+        if created_at is not None and created_at < epoch_dt:
+            continue
+        if closed_at is not None and closed_at < epoch_dt:
+            continue
+        if status == "CLOSED" and created_at is None and closed_at is None:
+            continue
+        filtered.append(trade)
+    return filtered
 
 
 def _symbol_4h_change_pct(candles_4h: list, lookback_bars: int) -> Decimal | None:

@@ -10,8 +10,25 @@ from trading_bot.strategy_engine.indicators import atr, closes, ema
 class MarketRegimeDetector:
     def __init__(self, config: StrategyConfig) -> None:
         self.config = config
+        # Диагностика: распределение вердиктов за цикл. Нужна, чтобы понять,
+        # почему режимно-зависимые стратегии (TREND_PULLBACK и др.) молчат:
+        # например, HIGH_VOLATILITY проверяется раньше EMA-стека и может
+        # перекрывать тренд.
+        self._verdict_counts: dict[str, int] = {}
+
+    def pop_verdict_summary(self) -> dict[str, int]:
+        """Возвращает и обнуляет накопленное распределение вердиктов."""
+        summary = dict(self._verdict_counts)
+        self._verdict_counts = {}
+        return summary
 
     def detect(self, candles_4h: list[Candle]) -> RegimeSnapshot:
+        snapshot = self._detect(candles_4h)
+        key = snapshot.regime.value if hasattr(snapshot.regime, "value") else str(snapshot.regime)
+        self._verdict_counts[key] = self._verdict_counts.get(key, 0) + 1
+        return snapshot
+
+    def _detect(self, candles_4h: list[Candle]) -> RegimeSnapshot:
         if len(candles_4h) < self.config.ema_slow + 5:
             return RegimeSnapshot(MarketRegime.UNKNOWN, Decimal("0"), Decimal("0"), Decimal("0"), "not enough 4h data")
 

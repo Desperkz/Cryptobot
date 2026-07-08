@@ -784,6 +784,47 @@ def _trailing_callback_rate(metadata: dict) -> Decimal:
     return configured
 
 
+EXCURSION_PERSIST_STEP_R = Decimal(os.getenv("PAPER_EXCURSION_PERSIST_STEP_R", "0.1"))
+
+
+def _update_excursions(direction: str, entry: Decimal, snapshot: MarketSnapshot, metadata: dict) -> bool:
+    """Обновляет MFE/MAE (максимальную благоприятную/неблагоприятную экскурсию) в R.
+
+    Это данные для проектирования выходов: «как далеко сделки ходят в мою
+    сторону до разворота». Без них структура тейков подбирается вслепую.
+    Возвращает True, если значение выросло на EXCURSION_PERSIST_STEP_R и
+    metadata стоит записать в БД (пишем ступенчато, чтобы не молотить SQLite
+    каждый цикл по каждой позиции).
+    """
+    try:
+        original_sl = Decimal(str(metadata.get("original_stop_loss")))
+    except Exception:
+        return False
+    stop_dist = abs(entry - original_sl)
+    if stop_dist <= 0:
+        return False
+    if direction == "LONG":
+        fav = (snapshot.high - entry) / stop_dist
+        adv = (entry - snapshot.low) / stop_dist
+    else:
+        fav = (entry - snapshot.low) / stop_dist
+        adv = (snapshot.high - entry) / stop_dist
+    fav = max(fav, Decimal("0"))
+    adv = max(adv, Decimal("0"))
+
+    changed = False
+    for key, value in (("mfe_r", fav), ("mae_r", adv)):
+        try:
+            prev = Decimal(str(metadata.get(key, "0")))
+        except Exception:
+            prev = Decimal("0")
+        if value > prev:
+            metadata[key] = str(value.quantize(Decimal("0.001")))
+            if value - prev >= EXCURSION_PERSIST_STEP_R or prev == 0:
+                changed = True
+    return changed
+
+
 def _apply_trailing_stop(direction: str, snapshot: MarketSnapshot, stop_loss: Decimal, metadata: dict) -> tuple[Decimal, bool]:
     if not metadata.get("trailing_active"):
         return stop_loss, False
@@ -858,8 +899,9 @@ async def check_positions() -> None:
                 continue
             snapshot = _snapshot_for_trade_lifetime(snapshot, opened_at)
 
+            excursions_changed = _update_excursions(direction, entry, snapshot, metadata)
             sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
-            if trailing_changed:
+            if trailing_changed or excursions_changed:
                 try:
                     conn = _connect_db()
                     conn.execute(
@@ -868,7 +910,8 @@ async def check_positions() -> None:
                     )
                     conn.commit()
                     conn.close()
-                    logger.info("🔁 %s #%d trailing SL обновлен: %s", symbol, trade_id, sl)
+                    if trailing_changed:
+                        logger.info("🔁 %s #%d trailing SL обновлен: %s", symbol, trade_id, sl)
                 except Exception as e:
                     logger.error("Ошибка обновления trailing SL #%d: %s", trade_id, e)
 
@@ -952,8 +995,9 @@ async def check_shadow_positions() -> None:
                 continue
             snapshot = _snapshot_for_trade_lifetime(snapshot, opened_at)
 
+            excursions_changed = _update_excursions(direction, entry, snapshot, metadata)
             sl, trailing_changed = _apply_trailing_stop(direction, snapshot, sl, metadata)
-            if trailing_changed:
+            if trailing_changed or excursions_changed:
                 try:
                     conn = _connect_db()
                     ensure_shadow_trades_table(conn)
@@ -963,7 +1007,8 @@ async def check_shadow_positions() -> None:
                     )
                     conn.commit()
                     conn.close()
-                    logger.info("SHADOW 🔁 %s #%d trailing SL обновлен: %s", symbol, trade_id, sl)
+                    if trailing_changed:
+                        logger.info("SHADOW 🔁 %s #%d trailing SL обновлен: %s", symbol, trade_id, sl)
                 except Exception as e:
                     logger.error("Shadow trailing update error #%d: %s", trade_id, e)
 

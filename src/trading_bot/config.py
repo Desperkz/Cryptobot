@@ -404,6 +404,10 @@ class AnalyticsConfig:
     rsi_bucket_size: int = 4
     atr_bucket_size_pct: Decimal = Decimal("0.4")
     bad_segment_expectancy_r: Decimal = Decimal("-0.10")
+    # Эпоха статистики: self-learning учитывает только сделки, закрытые после
+    # этой даты (ISO, например "2026-07-08"). Ставится в день деплоя изменений
+    # логики, чтобы правила не выводились из сделок старой конфигурации.
+    stats_epoch: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1145,6 +1149,7 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             rsi_bucket_size=int(raw["analytics"].get("rsi_bucket_size", 4)),
             atr_bucket_size_pct=to_decimal(raw["analytics"].get("atr_bucket_size_pct", "0.4")),
             bad_segment_expectancy_r=to_decimal(raw["analytics"].get("bad_segment_expectancy_r", "-0.10")),
+            stats_epoch=(str(raw["analytics"]["stats_epoch"]) if raw["analytics"].get("stats_epoch") else None),
         ),
         database=DatabaseConfig(**raw["database"]),
         telegram=TelegramConfig(**raw["telegram"]),
