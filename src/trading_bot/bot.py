@@ -778,6 +778,7 @@ class TradingBot:
         shadow_signal = _annotate_shadow_order_flow_gate(
             shadow_signal,
             strict_rejection_reason=strict_context_rejection,
+            execution_rejection_reason=context_rejection,
             enforced=enforce_order_flow,
             overridden=bool(strict_context_rejection and context_rejection is None and not enforce_order_flow),
         )
@@ -1726,6 +1727,7 @@ def _annotate_shadow_order_flow_gate(
     signal: Signal,
     *,
     strict_rejection_reason: str | None,
+    execution_rejection_reason: str | None,
     enforced: bool,
     overridden: bool,
 ) -> Signal:
@@ -1737,6 +1739,8 @@ def _annotate_shadow_order_flow_gate(
             "would_block": strict_rejection_reason is not None,
             "would_block_reason": strict_rejection_reason,
             "overridden_for_research": overridden,
+            "execution_eligible": execution_rejection_reason is None,
+            "structural_rejection_reason": execution_rejection_reason,
         },
     }
     return replace(signal, metadata=metadata)

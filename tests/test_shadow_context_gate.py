@@ -169,6 +169,7 @@ def test_shadow_order_flow_observation_is_persistable_in_signal_metadata() -> No
     marked = _annotate_shadow_order_flow_gate(
         signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="against")),
         strict_rejection_reason="SQZ-DYN shadow blocked: order-flow is against breakout.",
+        execution_rejection_reason=None,
         enforced=False,
         overridden=True,
     )
@@ -178,6 +179,8 @@ def test_shadow_order_flow_observation_is_persistable_in_signal_metadata() -> No
         "would_block": True,
         "would_block_reason": "SQZ-DYN shadow blocked: order-flow is against breakout.",
         "overridden_for_research": True,
+        "execution_eligible": True,
+        "structural_rejection_reason": None,
     }
 
 
