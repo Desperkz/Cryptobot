@@ -101,6 +101,9 @@ strategy:
     MOMENTUM_CONTINUATION: shadow
     RANGE_GRID: shadow
     TREND_FOLLOWING: shadow
+  # Shadow records candidates that strict order-flow would reject, tagged in metadata.
+  # Paper keeps its order-flow gate unchanged.
+  shadow_order_flow_hard_gate: false
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

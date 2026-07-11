@@ -766,6 +766,21 @@ class TradingBot:
 
     async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
         shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
+        strict_context_rejection = _shadow_candidate_context_rejection_reason(
+            shadow_signal,
+            enforce_order_flow=True,
+        )
+        enforce_order_flow = self.config.strategy.shadow_order_flow_hard_gate
+        context_rejection = _shadow_candidate_context_rejection_reason(
+            shadow_signal,
+            enforce_order_flow=enforce_order_flow,
+        )
+        shadow_signal = _annotate_shadow_order_flow_gate(
+            shadow_signal,
+            strict_rejection_reason=strict_context_rejection,
+            enforced=enforce_order_flow,
+            overridden=bool(strict_context_rejection and context_rejection is None and not enforce_order_flow),
+        )
         logger.info(
             "Shadow signal recorded: %s %s strategy=%s confidence=%s",
             shadow_signal.symbol,
@@ -796,7 +811,6 @@ class TradingBot:
                 diagnostic_only_reason,
             )
             return
-        context_rejection = _shadow_candidate_context_rejection_reason(shadow_signal)
         if context_rejection:
             logger.info(
                 "Shadow paper context rejected for %s %s: %s",
@@ -810,6 +824,18 @@ class TradingBot:
                 context_rejection,
             )
             return
+        if strict_context_rejection and not enforce_order_flow:
+            logger.info(
+                "Shadow paper OF gate observed, not enforced for %s %s: %s",
+                _signal_strategy(shadow_signal),
+                shadow_signal.symbol,
+                strict_context_rejection,
+            )
+            await self._record_ml_feature_snapshot(
+                shadow_signal,
+                "SHADOW_ORDER_FLOW_GATE_OBSERVED",
+                strict_context_rejection,
+            )
         await self._open_shadow_paper_trade(shadow_signal, filters)
 
     async def _open_shadow_paper_trade(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
@@ -1696,7 +1722,31 @@ def _is_strong_clean_squeeze_release(
     )
 
 
-def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
+def _annotate_shadow_order_flow_gate(
+    signal: Signal,
+    *,
+    strict_rejection_reason: str | None,
+    enforced: bool,
+    overridden: bool,
+) -> Signal:
+    """Keep the counterfactual OF decision with every virtual shadow entry."""
+    metadata = {
+        **dict(signal.metadata or {}),
+        "shadow_order_flow_gate": {
+            "enforced": enforced,
+            "would_block": strict_rejection_reason is not None,
+            "would_block_reason": strict_rejection_reason,
+            "overridden_for_research": overridden,
+        },
+    }
+    return replace(signal, metadata=metadata)
+
+
+def _shadow_candidate_context_rejection_reason(
+    signal: Signal,
+    *,
+    enforce_order_flow: bool = True,
+) -> str | None:
     strategy = _signal_strategy(signal)
     if strategy not in {
         "SQUEEZE_BREAKOUT_DYNAMIC",
@@ -1729,13 +1779,14 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "adverse_liquidity_nearby",
         }
         retest_confirmed = bool(metadata.get("squeeze_retest_confirmed"))
-        if alignment == "against":
-            return "SQZ-DYN shadow blocked: order-flow is against breakout."
-        if risk_flags.intersection(hard_flags):
-            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
-            return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
-        if "absorption_against" in risk_flags:
-            return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
+        if enforce_order_flow:
+            if alignment == "against":
+                return "SQZ-DYN shadow blocked: order-flow is against breakout."
+            if risk_flags.intersection(hard_flags):
+                flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+                return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
+            if "absorption_against" in risk_flags:
+                return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
         rs_alignment = _relative_strength_alignment(signal)
         if rs_alignment != "aligned":
             return (
@@ -1751,24 +1802,29 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
                 oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
             if oi_change is None:
                 return "SQZ-DYN-UPD shadow blocked: missing open-interest confirmation."
-        if not retest_confirmed and not _is_strong_clean_squeeze_release(
-            signal,
-            alignment=alignment,
-            score=score,
-            risk_flags=risk_flags,
-        ):
-            return "SQZ-DYN shadow blocked: no retest and release is not strong enough."
-        if alignment == "mixed" and score < Decimal("0.50"):
-            return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
-        if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
-            return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
-        if alignment == "aligned" and score < Decimal("0.55"):
-            return f"SQZ-DYN shadow blocked: aligned flow is too weak, score {score:.2f}."
+        if not retest_confirmed:
+            if not enforce_order_flow:
+                return "SQZ-DYN shadow blocked: retest is required for the baseline sample."
+            if not _is_strong_clean_squeeze_release(
+                signal,
+                alignment=alignment,
+                score=score,
+                risk_flags=risk_flags,
+            ):
+                return "SQZ-DYN shadow blocked: no retest and release is not strong enough."
+        if enforce_order_flow:
+            if alignment == "mixed" and score < Decimal("0.50"):
+                return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
+            if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
+                return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
+            if alignment == "aligned" and score < Decimal("0.55"):
+                return f"SQZ-DYN shadow blocked: aligned flow is too weak, score {score:.2f}."
     elif strategy == "LIQUIDITY_SWEEP_REVERSAL":
-        if "adverse_liquidity_nearby" in risk_flags:
-            return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
-        if alignment == "against" or score < Decimal("0.65"):
-            return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
+        if enforce_order_flow:
+            if "adverse_liquidity_nearby" in risk_flags:
+                return "LSR shadow blocked: adverse liquidity remains nearby after the sweep."
+            if alignment == "against" or score < Decimal("0.65"):
+                return f"LSR shadow blocked: order-flow score {score:.2f} is not strong enough after sweep."
     elif strategy == "TREND_PULLBACK":
         hard_flags = {
             "adverse_liquidity_nearby",
@@ -1778,14 +1834,15 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "structure_break_against",
             "liquidation_cascade",
         }
-        if risk_flags.intersection(hard_flags):
-            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
-            return f"TPB shadow blocked: hostile continuation flow ({flags})."
-        if alignment != "aligned":
-            return f"TPB shadow blocked: profitable bucket requires aligned order-flow, got {alignment}."
-        min_score = Decimal("0.68") if signal.direction == Direction.SHORT else Decimal("0.62")
-        if score < min_score:
-            return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
+        if enforce_order_flow:
+            if risk_flags.intersection(hard_flags):
+                flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+                return f"TPB shadow blocked: hostile continuation flow ({flags})."
+            if alignment != "aligned":
+                return f"TPB shadow blocked: profitable bucket requires aligned order-flow, got {alignment}."
+            min_score = Decimal("0.68") if signal.direction == Direction.SHORT else Decimal("0.62")
+            if score < min_score:
+                return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
         rs_alignment = ""
         rs_score: Decimal | None = None
@@ -1819,13 +1876,14 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "liquidation_cascade",
             "absorption_against",
         }
-        if risk_flags.intersection(hard_flags):
-            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
-            return f"MOM shadow blocked: hostile momentum flow ({flags})."
-        if alignment != "aligned":
-            return f"MOM shadow blocked: continuation requires aligned order-flow, got {alignment}."
-        if score < Decimal("0.78"):
-            return f"MOM shadow blocked: order-flow score {score:.2f} below 0.78."
+        if enforce_order_flow:
+            if risk_flags.intersection(hard_flags):
+                flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+                return f"MOM shadow blocked: hostile momentum flow ({flags})."
+            if alignment != "aligned":
+                return f"MOM shadow blocked: continuation requires aligned order-flow, got {alignment}."
+            if score < Decimal("0.78"):
+                return f"MOM shadow blocked: order-flow score {score:.2f} below 0.78."
         rs_alignment = _relative_strength_alignment(signal)
         rs_score = _relative_strength_score(signal)
         if rs_alignment != "aligned":
@@ -1844,27 +1902,29 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "structure_break_against",
             "aggressive_delta_against",
         }
-        if risk_flags.intersection(dangerous_flags):
-            flags = ",".join(sorted(risk_flags))
-            return f"{strategy} shadow blocked: dangerous liquidity context ({flags})."
-        min_score = Decimal("0.45") if strategy == "VWAP_REVERSION" else Decimal("0.40")
-        if alignment == "against" or score < min_score:
-            return f"{strategy} shadow blocked: order-flow is not clean enough for reversion, score {score:.2f}."
+        if enforce_order_flow:
+            if risk_flags.intersection(dangerous_flags):
+                flags = ",".join(sorted(risk_flags))
+                return f"{strategy} shadow blocked: dangerous liquidity context ({flags})."
+            min_score = Decimal("0.45") if strategy == "VWAP_REVERSION" else Decimal("0.40")
+            if alignment == "against" or score < min_score:
+                return f"{strategy} shadow blocked: order-flow is not clean enough for reversion, score {score:.2f}."
     elif strategy == "RANGE_GRID":
         dangerous_flags = {
             "structure_break_against",
             "absorption_against",
             "liquidation_cascade",
         }
-        if risk_flags.intersection(dangerous_flags):
-            flags = ",".join(sorted(risk_flags))
-            return f"GRID shadow blocked: dangerous range-edge flow ({flags})."
-        if alignment == "against":
-            return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
-        if alignment == "mixed" and score < Decimal("0.42"):
-            return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
-        if alignment == "aligned" and score < Decimal("0.30"):
-            return f"GRID shadow blocked: aligned order-flow is too weak for range fade, score {score:.2f}."
+        if enforce_order_flow:
+            if risk_flags.intersection(dangerous_flags):
+                flags = ",".join(sorted(risk_flags))
+                return f"GRID shadow blocked: dangerous range-edge flow ({flags})."
+            if alignment == "against":
+                return f"GRID shadow blocked: order-flow is against range fade with score {score:.2f}."
+            if alignment == "mixed" and score < Decimal("0.42"):
+                return f"GRID shadow blocked: mixed order-flow is too weak for range fade, score {score:.2f}."
+            if alignment == "aligned" and score < Decimal("0.30"):
+                return f"GRID shadow blocked: aligned order-flow is too weak for range fade, score {score:.2f}."
     elif strategy == "TREND_FOLLOWING":
         hard_flags = {
             "taker_flow_against",
@@ -1873,11 +1933,12 @@ def _shadow_candidate_context_rejection_reason(signal: Signal) -> str | None:
             "structure_break_against",
             "liquidation_cascade",
         }
-        if risk_flags.intersection(hard_flags):
-            flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
-            return f"TF shadow blocked: hostile trend-following flow ({flags})."
-        if alignment == "against" and score < Decimal("0.40"):
-            return f"TF shadow blocked: trend continuation needs strong aligned order-flow, got {alignment} {score:.2f}."
+        if enforce_order_flow:
+            if risk_flags.intersection(hard_flags):
+                flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
+                return f"TF shadow blocked: hostile trend-following flow ({flags})."
+            if alignment == "against" and score < Decimal("0.40"):
+                return f"TF shadow blocked: trend continuation needs strong aligned order-flow, got {alignment} {score:.2f}."
         relative_strength = metadata.get("relative_strength")
         rs_alignment = ""
         if isinstance(relative_strength, dict):

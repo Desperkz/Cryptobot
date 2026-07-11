@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from trading_bot.bot import (
+    _annotate_shadow_order_flow_gate,
     _shadow_candidate_context_rejection_reason,
     _shadow_paper_diagnostic_only_reason,
     _shadow_strategy_loss_control_reason,
@@ -143,6 +144,41 @@ def test_sqz_dynamic_shadow_blocks_order_flow_against_breakout() -> None:
 
     assert reason is not None
     assert "against breakout" in reason
+
+
+def test_sqz_dynamic_shadow_records_opposed_flow_when_gate_is_observe_only() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC",
+        order_flow(alignment="against", score="0.18", flags=["taker_flow_against"]),
+        relative_strength={"alignment": "aligned"},
+        metadata={"squeeze_retest_confirmed": True},
+    )
+
+    strict_reason = _shadow_candidate_context_rejection_reason(candidate)
+    observe_only_reason = _shadow_candidate_context_rejection_reason(
+        candidate,
+        enforce_order_flow=False,
+    )
+
+    assert strict_reason is not None
+    assert "against breakout" in strict_reason
+    assert observe_only_reason is None
+
+
+def test_shadow_order_flow_observation_is_persistable_in_signal_metadata() -> None:
+    marked = _annotate_shadow_order_flow_gate(
+        signal("SQUEEZE_BREAKOUT_DYNAMIC", order_flow(alignment="against")),
+        strict_rejection_reason="SQZ-DYN shadow blocked: order-flow is against breakout.",
+        enforced=False,
+        overridden=True,
+    )
+
+    assert marked.metadata["shadow_order_flow_gate"] == {
+        "enforced": False,
+        "would_block": True,
+        "would_block_reason": "SQZ-DYN shadow blocked: order-flow is against breakout.",
+        "overridden_for_research": True,
+    }
 
 
 def test_sqz_dynamic_shadow_requires_retest_for_mixed_flow() -> None:

@@ -128,6 +128,7 @@ class StrategyConfig:
     max_abs_funding_rate: Decimal
     enabled_strategies: list[str] = field(default_factory=lambda: ["TREND_FOLLOWING"])
     strategy_modes: dict[str, str] = field(default_factory=dict)
+    shadow_order_flow_hard_gate: bool = False
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -813,6 +814,7 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 _strategy_name(name): str(mode).strip().lower()
                 for name, mode in raw["strategy"].get("strategy_modes", {}).items()
             },
+            shadow_order_flow_hard_gate=bool(raw["strategy"].get("shadow_order_flow_hard_gate", False)),
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),
             mean_reversion_rsi_overbought=to_decimal(raw["strategy"].get("mean_reversion_rsi_overbought", "72")),
