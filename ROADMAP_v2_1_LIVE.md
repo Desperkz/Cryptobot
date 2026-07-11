@@ -1,6 +1,6 @@
 # Дорожная карта готовности Bot v2.1 к live
 
-Обновлено: 2026-07-02
+Обновлено: 2026-07-11
 
 Легенда статусов:
 - `[x]` выполнено и проверено локально
@@ -232,6 +232,12 @@
   - Готово: `/rejection-stats` считает `SHADOW_RISK` и `SHADOW_COOLDOWN`, поэтому журнал больше не выглядит пустым, пока shadow strategies фильтруются.
   - Готово: dashboard badges/styles отдельно отображают shadow rejection types.
   - Готово: `/rejections` также показывает свежие `STRATEGY_DIAGNOSTIC` snapshots как `DIAGNOSTIC`, чтобы журнал отражал текущие причины отсутствия входов, а не только hard risk rejects.
+- `[x]` P4-12A Перевести order-flow для shadow из hard gate в измеряемую гипотезу.
+  - Причина: shadow-signals фиксировались, но не создавали virtual trades из-за тех же OF-ограничений, что применяются к paper; поэтому невозможно проверить ценность самого OF-фильтра.
+  - Готово: `strategy.shadow_order_flow_hard_gate=false` оставляет strict OF-gate для paper неизменным, но не отменяет shadow-entry только из-за OF.
+  - Готово: signal и shadow-trade metadata хранят `shadow_order_flow_gate`: `would_block`, reason, enforced и overridden_for_research, а ML snapshots фиксируют наблюдаемые OF-blocks.
+  - Сохраняются: стратегия-specific entry criteria, SL/TP, risk sizing, symbol+strategy duplicate guard, cooldown и shadow loss-control circuit breaker.
+  - Следующий gate: после минимум 30 закрытых shadow-trades сравнить net R/PF/DD раздельно для `would_block=true` и `would_block=false`; до этого не переносить ослабление OF в paper.
 - `[~]` P4-13 Диагностика молчащего `TREND_FOLLOWING` перед ослаблением фильтров.
   - Цель: не повышать частоту вслепую, а сначала понять, какой именно фильтр режет стратегию: regime/structure, edge, order-flow, volume, entry-confirmation, ATR или funding.
   - Готово: `TREND_FOLLOWING` получил диагностический `evaluate()` и пишет `STRATEGY_DIAGNOSTIC` snapshots через общий router, когда сигнал не проходит.
