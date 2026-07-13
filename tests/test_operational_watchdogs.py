@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from decimal import Decimal
 
-from trading_bot.bot import _asset_disaster_skip_reason
+from trading_bot.bot import TradingBot, _asset_disaster_skip_reason
 from trading_bot.data_provider import BinanceUSDMClient
-from trading_bot.disaster_mode import DisasterConfig, DisasterDetector
+from trading_bot.disaster_mode import DisasterConfig, DisasterDetector, DisasterLevel
 from trading_bot.models import MarketMetrics
 from trading_bot.operational import IncidentAlerter, SystemdNotifier
 
@@ -56,3 +57,47 @@ def test_asset_disaster_skip_reason_does_not_mutate_global_disaster_state() -> N
     assert reason is not None
     assert "skipping symbol only" in reason
     assert detector.blocks_new_entries is False
+
+
+class _HealthyBinanceProbe:
+    async def ping(self) -> dict:
+        return {}
+
+
+class _FailedBinanceProbe:
+    async def ping(self) -> dict:
+        raise RuntimeError("temporary Binance outage")
+
+
+def test_critical_api_outage_recovers_after_health_probe() -> None:
+    detector = DisasterDetector(
+        DisasterConfig(api_max_consecutive_failures=3, recovery_cooldown_sec=0),
+    )
+    for _ in range(3):
+        detector.record_api_failure()
+
+    assert asyncio.run(detector.check()) is DisasterLevel.CRITICAL
+
+    bot = TradingBot.__new__(TradingBot)
+    bot.binance = _HealthyBinanceProbe()
+    bot.disaster = detector
+
+    assert asyncio.run(bot._probe_disaster_recovery()) is True
+    assert asyncio.run(detector.check()) is DisasterLevel.NONE
+    assert detector.blocks_new_entries is False
+
+
+def test_failed_disaster_health_probe_keeps_entry_blocked() -> None:
+    detector = DisasterDetector(
+        DisasterConfig(api_max_consecutive_failures=3, recovery_cooldown_sec=0),
+    )
+    for _ in range(3):
+        detector.record_api_failure()
+    assert asyncio.run(detector.check()) is DisasterLevel.CRITICAL
+
+    bot = TradingBot.__new__(TradingBot)
+    bot.binance = _FailedBinanceProbe()
+    bot.disaster = detector
+
+    assert asyncio.run(bot._probe_disaster_recovery()) is False
+    assert asyncio.run(detector.check()) is DisasterLevel.CRITICAL

@@ -311,6 +311,12 @@ class TradingBot:
         await self._check_operational_incidents()
 
         # ── Disaster Mode ────────────────────────────────────────────────────
+        # A CRITICAL API outage otherwise prevents the normal cycle from ever
+        # reaching a successful Binance call, leaving the in-memory counter
+        # permanently above the recovery threshold. Probe before re-evaluating
+        # the detector; this does not fetch market data or permit an entry.
+        if self.disaster.blocks_new_entries and not self.disaster.requires_position_close:
+            await self._probe_disaster_recovery()
         disaster_level = await self.disaster.check()
         if self.disaster.requires_position_close:
             await self._close_all_positions("emergency disaster mode")
@@ -1317,6 +1323,24 @@ class TradingBot:
                     f"Daily realized drawdown reached {daily_loss_pct:.2%}; approaching risk limit.",
                     self.telegram.risk_warning,
                 )
+
+    async def _probe_disaster_recovery(self) -> bool:
+        """Record a fresh Binance health result while entries are blocked.
+
+        The detector's API failure counter is process-local. Without this probe,
+        a critical API outage blocks the code path that normally records a
+        successful request, so automatic recovery can never begin.
+        """
+        try:
+            await self.binance.ping()
+        except Exception as exc:
+            self.disaster.record_api_failure()
+            logger.warning("Disaster recovery API probe failed; entry block remains: %s", exc)
+            return False
+
+        self.disaster.record_api_success()
+        logger.info("Disaster recovery API probe succeeded; re-evaluating safeguards.")
+        return True
 
     async def _refresh_realtime_correlation(self, symbol: str, active_positions: list[Position]) -> str | None:
         if not self.config.risk.realtime_correlation_enabled or not active_positions:
