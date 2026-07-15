@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from trading_bot.config import AppConfig
+from trading_bot.config import AppConfig, StrategyConfig
 from trading_bot.data_provider import BinanceUSDMClient, CoinGeckoClient, MarketDataProvider
 from trading_bot.database import Database
 from trading_bot.execution import ExecutionReconciler
@@ -426,6 +426,19 @@ class TradingBot:
             signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
             await self._record_relative_strength_annotation(signal, relative_strength)
             order_flow_rejection = _order_flow_entry_rejection_reason(signal)
+            controlled_paper_signal = _controlled_paper_sqz_override(
+                signal,
+                order_flow_rejection,
+                self.config.strategy,
+            )
+            if controlled_paper_signal is not None:
+                signal = controlled_paper_signal
+                order_flow_rejection = None
+                logger.info(
+                    "Controlled SQZ paper admission: %s %s (neutral relative strength, capped risk)",
+                    signal.symbol,
+                    signal.direction.value,
+                )
             if order_flow_rejection:
                 filter_type, reason = order_flow_rejection
                 logger.info("Order-flow gate rejected %s: %s", signal.symbol, reason)
@@ -602,7 +615,10 @@ class TradingBot:
             await self.db.insert_signal(signal)
             await self.telegram.signal(signal.symbol, signal.direction.value, signal.style.value, signal.reason)
             try:
-                sizing = self._dynamic_sizing_decision(signal, effective_risk_pct)
+                controlled_risk_cap = _controlled_paper_risk_cap(signal)
+                base_risk_pct = min(effective_risk_pct, controlled_risk_cap) if controlled_risk_cap else effective_risk_pct
+                sizing = self._dynamic_sizing_decision(signal, base_risk_pct)
+                sizing = _cap_controlled_paper_sizing(sizing, controlled_risk_cap)
                 signal = self._annotate_dynamic_sizing(signal, sizing)
                 plan = self.risk.calculate_plan(
                     signal=signal,
@@ -1744,6 +1760,75 @@ def _is_strong_clean_squeeze_release(
         and alignment == "aligned"
         and score >= Decimal("0.72")
         and not risk_flags
+    )
+
+
+def _controlled_paper_sqz_override(
+    signal: Signal,
+    rejection: tuple[str, str] | None,
+    config: StrategyConfig,
+) -> Signal | None:
+    """Admit one narrowly defined SQZ paper experiment without weakening safety gates."""
+    if not config.squeeze_controlled_paper_enabled or _signal_strategy(signal) != "SQUEEZE_BREAKOUT":
+        return None
+    if rejection is None or rejection[0] != "RELATIVE_STRENGTH":
+        return None
+
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = _optional_decimal(order_flow.get("score")) or Decimal("0")
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    reasons = {str(reason) for reason in order_flow.get("reasons") or []}
+
+    # Only neutral RS is relaxed. Missing benchmark or an asset moving against
+    # the trade remains a hard stop, as do all adverse order-flow flags.
+    if _relative_strength_alignment(signal) != "neutral":
+        return None
+    if alignment != "aligned" or score < config.squeeze_controlled_paper_min_order_flow_score:
+        return None
+    if risk_flags or "structure_break_aligned" not in reasons:
+        return None
+    retest_confirmed = bool((signal.metadata or {}).get("squeeze_retest_confirmed"))
+    if not retest_confirmed and not _is_strong_clean_squeeze_release(
+        signal,
+        alignment=alignment,
+        score=score,
+        risk_flags=risk_flags,
+    ):
+        return None
+
+    metadata = {
+        **dict(signal.metadata or {}),
+        "controlled_paper": {
+            "bucket": "sqz_relative_strength_neutral_v1",
+            "relaxed_gate": "RELATIVE_STRENGTH",
+            "relative_strength_alignment": "neutral",
+            "order_flow_score": str(score),
+            "risk_cap_pct": str(config.squeeze_controlled_paper_risk_cap_pct),
+        },
+    }
+    return replace(signal, metadata=metadata)
+
+
+def _controlled_paper_risk_cap(signal: Signal) -> Decimal | None:
+    metadata = signal.metadata or {}
+    payload = metadata.get("controlled_paper") if isinstance(metadata, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    return _optional_decimal(payload.get("risk_cap_pct"))
+
+
+def _cap_controlled_paper_sizing(
+    sizing: DynamicSizingDecision,
+    risk_cap_pct: Decimal | None,
+) -> DynamicSizingDecision:
+    if risk_cap_pct is None or sizing.risk_pct <= risk_cap_pct:
+        return sizing
+    return replace(
+        sizing,
+        risk_pct=risk_cap_pct,
+        cap_risk_pct=min(sizing.cap_risk_pct, risk_cap_pct),
+        reasons=(*sizing.reasons, f"controlled_paper_risk_cap={risk_cap_pct}"),
     )
 
 

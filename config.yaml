@@ -104,6 +104,12 @@ strategy:
   # Shadow records candidates that strict order-flow would reject, tagged in metadata.
   # Paper keeps its order-flow gate unchanged.
   shadow_order_flow_hard_gate: false
+  # P7-12: controlled paper-frequency experiment. Only a clean SQZ with
+  # neutral (not unknown/against) relative strength may pass this one gate;
+  # hostile OF, no-retest/weak release and missing structure-break stay blocked.
+  squeeze_controlled_paper_enabled: true
+  squeeze_controlled_paper_min_order_flow_score: 0.65
+  squeeze_controlled_paper_risk_cap_pct: 0.005
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

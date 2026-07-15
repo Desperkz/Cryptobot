@@ -495,6 +495,12 @@
   - Готово: per-symbol spread/liquidity/funding/cascade anomalies теперь дают `skip this asset only`, не мутируя глобальный disaster state.
   - Глобальный disaster оставлен для API/WebSocket/серии потерь/общих аварий; рыночная аномалия одной монеты больше не выключает весь universe.
   - Условие принятия: при следующей монете с каскадом в логах должен появляться `Asset disaster check: пропуск SYMBOL`, но остальные символы цикла должны продолжать анализироваться.
+- `[x]` P7-12 Controlled paper-frequency experiment для SQZ.
+  - Причина: после возвращения API бот снова сканирует рынок, но регулярная paper-линия SQZ почти не получает кандидатов; увеличивать общий риск ради статистики нельзя.
+  - Готово: создан отдельный SQZ bucket `sqz_relative_strength_neutral_v1`. Он снимает только требование `relative_strength=aligned` для `neutral`; `unknown` и `against` остаются заблокированными.
+  - Готово: admission возможен только при `aligned` order-flow с score >= `0.65`, без risk flags, с `structure_break_aligned` и retest (либо очень сильным clean release). Поздние, hostile и слабые входы не попадают в experiment.
+  - Готово: каждая такая сделка сохраняет `controlled_paper` metadata с причиной, score и risk cap; фактический риск ограничен сверху `0.5%` капитала.
+  - Условие принятия: после `20` закрытых clusters или `14` дней сравнить bucket c обычным SQZ отдельно по post-cost Avg R, PF, DD и доле stop-loss. Отключить раньше при `10` clusters и Avg R <= `-0.20` либо при bucket drawdown хуже `-3R`.
 
 ## Отложено до условия
 
