@@ -49,8 +49,8 @@ STRATEGY_GATE_DEFAULTS = {
     "max_drawdown": float(os.getenv("STRATEGY_GATE_MAX_DRAWDOWN", "-10")),
 }
 SCORECARD_CLUSTER_WINDOW_MINUTES = int(os.getenv("SCORECARD_CLUSTER_WINDOW_MINUTES", "60"))
-SCORECARD_CACHE_SECONDS = float(os.getenv("SCORECARD_CACHE_SECONDS", "10"))
-SCORECARD_DIAGNOSTIC_LIMIT = int(os.getenv("SCORECARD_DIAGNOSTIC_LIMIT", "5000"))
+SCORECARD_CACHE_SECONDS = float(os.getenv("SCORECARD_CACHE_SECONDS", "30"))
+SCORECARD_DIAGNOSTIC_LIMIT = int(os.getenv("SCORECARD_DIAGNOSTIC_LIMIT", "1500"))
 SHADOW_GATE_DEFAULTS = {
     "min_closed_trades": int(os.getenv("SHADOW_GATE_MIN_CLOSED_TRADES", "30")),
     "min_sample_age_days": float(os.getenv("SHADOW_GATE_MIN_SAMPLE_AGE_DAYS", "3")),
@@ -59,8 +59,9 @@ SHADOW_GATE_DEFAULTS = {
     "min_avg_r": float(os.getenv("SHADOW_GATE_MIN_AVG_R", "0")),
     "max_drawdown": float(os.getenv("SHADOW_GATE_MAX_DRAWDOWN", "-10")),
 }
-_SCORECARD_CACHE_LOCK = threading.Lock()
+_SCORECARD_CACHE_CONDITION = threading.Condition()
 _SCORECARD_CACHE: dict[str, Any] = {"expires_at": 0.0, "data": None}
+_SCORECARD_BUILDING = False
 ALLOCATOR_WEIGHT_CAPS = {
     "CORE_CANDIDATE": float(os.getenv("ALLOCATOR_CORE_CAP_PCT", "60")),
     "CHAMPION_WATCH": float(os.getenv("ALLOCATOR_CHAMPION_WATCH_CAP_PCT", "45")),
@@ -242,6 +243,17 @@ def ensure_shadow_trades_table(conn: sqlite3.Connection) -> None:
             metadata TEXT NOT NULL
         )
     """)
+
+
+def ensure_dashboard_indexes(conn: sqlite3.Connection) -> None:
+    """Create the index used by bounded dashboard diagnostics queries."""
+    if not table_exists(conn, "ml_feature_snapshots"):
+        return
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ml_feature_snapshots_decision_id
+        ON ml_feature_snapshots(decision, id DESC)
+    """)
+    conn.commit()
 
 
 def table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -2842,11 +2854,24 @@ def _summarize_order_flow(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def api_strategy_scorecard() -> dict:
-    now_monotonic = time.monotonic()
-    with _SCORECARD_CACHE_LOCK:
+    global _SCORECARD_BUILDING
+    with _SCORECARD_CACHE_CONDITION:
+        now_monotonic = time.monotonic()
         cached = _SCORECARD_CACHE.get("data")
         if cached is not None and now_monotonic < float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0):
             return cached
+        if _SCORECARD_BUILDING:
+            # A concurrent dashboard widget is already refreshing this aggregate.
+            # A slightly stale scorecard is preferable to starting duplicate DB scans.
+            if cached is not None:
+                return cached
+            while _SCORECARD_BUILDING:
+                _SCORECARD_CACHE_CONDITION.wait()
+            cached = _SCORECARD_CACHE.get("data")
+            expires_at = float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0)
+            if cached is not None and time.monotonic() < expires_at:
+                return cached
+        _SCORECARD_BUILDING = True
 
     try:
         conn = get_db()
@@ -2929,12 +2954,16 @@ def api_strategy_scorecard() -> dict:
             "shadow_loaded": len(shadow_diagnostics),
             "note": "recent diagnostics only to keep dashboard memory bounded",
         }
-        with _SCORECARD_CACHE_LOCK:
+        with _SCORECARD_CACHE_CONDITION:
             _SCORECARD_CACHE["data"] = scorecard
             _SCORECARD_CACHE["expires_at"] = time.monotonic() + SCORECARD_CACHE_SECONDS
         return scorecard
     except Exception as e:
         return {"error": str(e)}
+    finally:
+        with _SCORECARD_CACHE_CONDITION:
+            _SCORECARD_BUILDING = False
+            _SCORECARD_CACHE_CONDITION.notify_all()
 
 
 def api_order_flow(limit: int = 200) -> dict:
@@ -3242,6 +3271,14 @@ if __name__ == "__main__":
         raise SystemExit("Refusing to expose Bot Control API without BOT_CONTROL_TOKEN in MAINNET_LIVE.")
     if public_bind_without_token and not ALLOW_UNSAFE_PUBLIC:
         raise SystemExit("Refusing to bind Bot Control API outside localhost without BOT_CONTROL_TOKEN.")
+    try:
+        conn = get_db()
+        try:
+            ensure_dashboard_indexes(conn)
+        finally:
+            conn.close()
+    except sqlite3.OperationalError as exc:
+        print(f"Dashboard index setup skipped: {exc}")
     print(f"Bot v2 Control API запущен на {HOST}:{PORT}")
     start_watchdog_thread("bot-control-v2-1 running")
     ControlHTTPServer((HOST, PORT), Handler).serve_forever()

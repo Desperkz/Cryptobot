@@ -18,6 +18,24 @@ def test_control_api_has_request_timeout() -> None:
     assert bot_control_v2.CONTROL_REQUEST_TIMEOUT_SECONDS > 0
 
 
+def test_dashboard_indexes_cover_bounded_diagnostics_query() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE ml_feature_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision TEXT NOT NULL
+        )
+    """)
+
+    bot_control_v2.ensure_dashboard_indexes(conn)
+
+    indexes = {
+        row[1]
+        for row in conn.execute("PRAGMA index_list('ml_feature_snapshots')").fetchall()
+    }
+    assert "idx_ml_feature_snapshots_decision_id" in indexes
+
+
 def test_service_status_uses_timeout_and_cache(monkeypatch) -> None:
     bot_control_v2._SERVICE_STATUS_CACHE.clear()
     calls = []

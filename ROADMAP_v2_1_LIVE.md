@@ -501,6 +501,11 @@
   - Готово: admission возможен только при `aligned` order-flow с score >= `0.65`, без risk flags, с `structure_break_aligned` и retest (либо очень сильным clean release). Поздние, hostile и слабые входы не попадают в experiment.
   - Готово: каждая такая сделка сохраняет `controlled_paper` metadata с причиной, score и risk cap; фактический риск ограничен сверху `0.5%` капитала.
   - Условие принятия: после `20` закрытых clusters или `14` дней сравнить bucket c обычным SQZ отдельно по post-cost Avg R, PF, DD и доле stop-loss. Отключить раньше при `10` clusters и Avg R <= `-0.20` либо при bucket drawdown хуже `-3R`.
+- `[x]` P7-13 Ускорить загрузку аналитики стратегий в dashboard.
+  - Причина: холодный запрос `/strategy-scorecard` сканировал около `380k` строк `ml_feature_snapshots` и занимал примерно `4.2s`; одновременно dashboard вызывает scorecard, allocator и monthly target, которые используют одну агрегацию.
+  - Готово: добавлен SQLite-индекс `(decision, id DESC)`, кэш увеличен с `10` до `30` секунд, а singleflight-кэш исключает параллельные повторные расчеты.
+  - Готово: окно operational diagnostics уменьшено с `5000` до `1500` строк на срез; исторические сделки, PnL и scorecard-гейты не урезаются.
+  - Критерий: cold load `< 1s` на текущей БД, cached load `< 0.1s`; изменения не влияют на торговый execution pipeline.
 
 ## Отложено до условия
 
