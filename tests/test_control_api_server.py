@@ -4,6 +4,8 @@ import json
 import sqlite3
 import socketserver
 import subprocess
+import threading
+import time
 
 import bot_control_v2
 
@@ -34,6 +36,45 @@ def test_dashboard_indexes_cover_bounded_diagnostics_query() -> None:
         for row in conn.execute("PRAGMA index_list('ml_feature_snapshots')").fetchall()
     }
     assert "idx_ml_feature_snapshots_decision_id" in indexes
+
+
+def test_scorecard_serves_stale_snapshot_while_refreshing(monkeypatch) -> None:
+    stale = {"generated_at": "old"}
+    fresh = {"generated_at": "new"}
+    started = threading.Event()
+    release = threading.Event()
+    original_cache = dict(bot_control_v2._SCORECARD_CACHE)
+    original_building = bot_control_v2._SCORECARD_BUILDING
+
+    def fake_build() -> dict:
+        started.set()
+        assert release.wait(timeout=1)
+        return fresh
+
+    monkeypatch.setattr(bot_control_v2, "_build_strategy_scorecard", fake_build)
+    try:
+        with bot_control_v2._SCORECARD_CACHE_CONDITION:
+            bot_control_v2._SCORECARD_CACHE.update({"data": stale, "expires_at": 0.0})
+            bot_control_v2._SCORECARD_BUILDING = False
+
+        assert bot_control_v2.api_strategy_scorecard() is stale
+        assert started.wait(timeout=1)
+        release.set()
+
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            with bot_control_v2._SCORECARD_CACHE_CONDITION:
+                if bot_control_v2._SCORECARD_CACHE["data"] is fresh and not bot_control_v2._SCORECARD_BUILDING:
+                    break
+            time.sleep(0.01)
+        assert bot_control_v2._SCORECARD_CACHE["data"] is fresh
+        assert bot_control_v2._SCORECARD_BUILDING is False
+    finally:
+        release.set()
+        with bot_control_v2._SCORECARD_CACHE_CONDITION:
+            bot_control_v2._SCORECARD_CACHE.clear()
+            bot_control_v2._SCORECARD_CACHE.update(original_cache)
+            bot_control_v2._SCORECARD_BUILDING = original_building
 
 
 def test_service_status_uses_timeout_and_cache(monkeypatch) -> None:

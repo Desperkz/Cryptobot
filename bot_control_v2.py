@@ -2860,26 +2860,7 @@ def _summarize_order_flow(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def api_strategy_scorecard() -> dict:
-    global _SCORECARD_BUILDING
-    with _SCORECARD_CACHE_CONDITION:
-        now_monotonic = time.monotonic()
-        cached = _SCORECARD_CACHE.get("data")
-        if cached is not None and now_monotonic < float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0):
-            return cached
-        if _SCORECARD_BUILDING:
-            # A concurrent dashboard widget is already refreshing this aggregate.
-            # A slightly stale scorecard is preferable to starting duplicate DB scans.
-            if cached is not None:
-                return cached
-            while _SCORECARD_BUILDING:
-                _SCORECARD_CACHE_CONDITION.wait()
-            cached = _SCORECARD_CACHE.get("data")
-            expires_at = float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0)
-            if cached is not None and time.monotonic() < expires_at:
-                return cached
-        _SCORECARD_BUILDING = True
-
+def _build_strategy_scorecard() -> dict:
     try:
         conn = get_db()
         ensure_shadow_trades_table(conn)
@@ -2961,16 +2942,49 @@ def api_strategy_scorecard() -> dict:
             "shadow_loaded": len(shadow_diagnostics),
             "note": "recent diagnostics only to keep dashboard memory bounded",
         }
-        with _SCORECARD_CACHE_CONDITION:
-            _SCORECARD_CACHE["data"] = scorecard
-            _SCORECARD_CACHE["expires_at"] = time.monotonic() + SCORECARD_CACHE_SECONDS
         return scorecard
     except Exception as e:
         return {"error": str(e)}
+
+
+def _refresh_strategy_scorecard_cache() -> dict:
+    global _SCORECARD_BUILDING
+    try:
+        scorecard = _build_strategy_scorecard()
+        if "error" not in scorecard:
+            with _SCORECARD_CACHE_CONDITION:
+                _SCORECARD_CACHE["data"] = scorecard
+                _SCORECARD_CACHE["expires_at"] = time.monotonic() + SCORECARD_CACHE_SECONDS
+        return scorecard
     finally:
         with _SCORECARD_CACHE_CONDITION:
             _SCORECARD_BUILDING = False
             _SCORECARD_CACHE_CONDITION.notify_all()
+
+
+def api_strategy_scorecard() -> dict:
+    global _SCORECARD_BUILDING
+    with _SCORECARD_CACHE_CONDITION:
+        now_monotonic = time.monotonic()
+        cached = _SCORECARD_CACHE.get("data")
+        expires_at = float(_SCORECARD_CACHE.get("expires_at", 0.0) or 0.0)
+        if cached is not None and now_monotonic < expires_at:
+            return cached
+        if _SCORECARD_BUILDING:
+            # Return the previous analytics snapshot while another request refreshes it.
+            if cached is not None:
+                return cached
+            while _SCORECARD_BUILDING:
+                _SCORECARD_CACHE_CONDITION.wait()
+            cached = _SCORECARD_CACHE.get("data")
+            if cached is not None:
+                return cached
+        _SCORECARD_BUILDING = True
+        if cached is not None:
+            threading.Thread(target=_refresh_strategy_scorecard_cache, daemon=True).start()
+            return cached
+
+    return _refresh_strategy_scorecard_cache()
 
 
 def api_order_flow(limit: int = 200) -> dict:
@@ -3288,4 +3302,5 @@ if __name__ == "__main__":
         print(f"Dashboard index setup skipped: {exc}")
     print(f"Bot v2 Control API запущен на {HOST}:{PORT}")
     start_watchdog_thread("bot-control-v2-1 running")
+    threading.Thread(target=api_strategy_scorecard, daemon=True).start()
     ControlHTTPServer((HOST, PORT), Handler).serve_forever()
