@@ -994,15 +994,22 @@ def build_strategy_scorecard(
         item["rejections_by_type"][filter_type] = item["rejections_by_type"].get(filter_type, 0) + 1
 
     for signal in signals:
-        strategy = _strategy_from_trade(signal)
+        # Parse the signal envelope once.  The scorecard can contain tens of
+        # thousands of signals, so repeatedly decoding identical JSON dominates
+        # a cold dashboard refresh.
+        metadata = _parse_metadata(_row_get(signal, "metadata", {}))
+        signal_metadata = metadata.get("signal_metadata")
+        if not isinstance(signal_metadata, dict):
+            signal_metadata = metadata
+        strategy = str(signal_metadata.get("strategy") or "UNKNOWN")
         item = bucket(strategy)
         item["signals_total"] += 1
-        if _strategy_mode_from_row(signal, strategy_modes) == "shadow":
+        mode = str(signal_metadata.get("strategy_mode") or strategy_modes.get(strategy, "unknown")).lower()
+        if mode == "shadow":
             item["shadow_signals"] += 1
         confidence = _to_float(_row_get(signal, "confidence"), None)
         if confidence is not None:
             item["signal_confidences"].append(confidence)
-        metadata = _parse_metadata(_row_get(signal, "metadata", {}))
         confluence = _to_float(metadata.get("mr_confluence"), None)
         if confluence is None:
             confluence = _to_float(metadata.get("trend_pullback_confluence"), None)
