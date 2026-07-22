@@ -92,6 +92,7 @@ strategy:
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
     SQUEEZE_BREAKOUT_DYNAMIC: shadow
+    SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS: shadow
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: shadow
     MEAN_REVERSION: paper
     TREND_PULLBACK: shadow
@@ -110,6 +111,11 @@ strategy:
   squeeze_controlled_paper_enabled: true
   squeeze_controlled_paper_min_order_flow_score: 0.65
   squeeze_controlled_paper_risk_cap_pct: 0.005
+  # Исследовательский shadow-бакет: neutral RS допускается только после retest
+  # и чистого aligned order flow. Не открывает paper/live позиции.
+  squeeze_dynamic_neutral_shadow_enabled: true
+  squeeze_dynamic_neutral_shadow_min_order_flow_score: 0.65
+  squeeze_dynamic_neutral_shadow_risk_cap_pct: 0.0025
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

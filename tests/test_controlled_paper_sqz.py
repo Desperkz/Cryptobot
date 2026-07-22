@@ -1,16 +1,22 @@
+from dataclasses import replace
 from decimal import Decimal
 
 from trading_bot.bot import (
+    _cap_controlled_shadow_sizing,
+    _controlled_shadow_sqz_dynamic_neutral_override,
     _cap_controlled_paper_sizing,
     _controlled_paper_sqz_override,
     _order_flow_entry_rejection_reason,
+    _shadow_candidate_context_rejection_reason,
+    _shadow_execution_strategy,
+    _trade_strategy,
 )
 from trading_bot.config import StrategyConfig
 from trading_bot.models import Direction, Signal, TradingStyle
 from trading_bot.risk_manager.dynamic_sizing import DynamicSizingDecision
 
 
-def _config(*, enabled: bool = True) -> StrategyConfig:
+def _config(*, enabled: bool = True, neutral_shadow_enabled: bool = False) -> StrategyConfig:
     return StrategyConfig(
         ema_fast=20,
         ema_mid=50,
@@ -28,6 +34,9 @@ def _config(*, enabled: bool = True) -> StrategyConfig:
         squeeze_controlled_paper_enabled=enabled,
         squeeze_controlled_paper_min_order_flow_score=Decimal("0.65"),
         squeeze_controlled_paper_risk_cap_pct=Decimal("0.005"),
+        squeeze_dynamic_neutral_shadow_enabled=neutral_shadow_enabled,
+        squeeze_dynamic_neutral_shadow_min_order_flow_score=Decimal("0.65"),
+        squeeze_dynamic_neutral_shadow_risk_cap_pct=Decimal("0.0025"),
     )
 
 
@@ -111,3 +120,52 @@ def test_controlled_paper_caps_risk_after_dynamic_sizing() -> None:
     assert capped.risk_pct == Decimal("0.005")
     assert capped.cap_risk_pct == Decimal("0.005")
     assert "controlled_paper_risk_cap=0.005" in capped.reasons
+
+
+def test_controlled_shadow_sqz_dyn_neutral_rs_is_separate_clean_retest_bucket() -> None:
+    base = _signal()
+    dynamic = replace(base, metadata={**base.metadata, "strategy": "SQUEEZE_BREAKOUT_DYNAMIC"})
+
+    admitted = _controlled_shadow_sqz_dynamic_neutral_override(
+        dynamic,
+        _config(neutral_shadow_enabled=True),
+    )
+
+    assert admitted.metadata["controlled_shadow"]["bucket"] == "sqz_dyn_neutral_rs_retest_v1"
+    assert _shadow_execution_strategy(admitted) == "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS"
+    assert _shadow_candidate_context_rejection_reason(admitted, enforce_order_flow=False) is None
+    execution_strategy = _shadow_execution_strategy(admitted)
+    stored_signal_metadata = {**admitted.metadata, "strategy": execution_strategy}
+    assert _trade_strategy({"metadata": {"signal_metadata": stored_signal_metadata}}) == execution_strategy
+
+
+def test_controlled_shadow_sqz_dyn_keeps_dirty_or_against_candidates_blocked() -> None:
+    base = _signal(relative_strength="against")
+    dynamic = replace(base, metadata={**base.metadata, "strategy": "SQUEEZE_BREAKOUT_DYNAMIC"})
+
+    admitted = _controlled_shadow_sqz_dynamic_neutral_override(
+        dynamic,
+        _config(neutral_shadow_enabled=True),
+    )
+
+    assert "controlled_shadow" not in admitted.metadata
+    assert _shadow_candidate_context_rejection_reason(admitted, enforce_order_flow=False) is not None
+
+
+def test_controlled_shadow_sqz_dyn_caps_risk_at_quarter_percent() -> None:
+    sizing = DynamicSizingDecision(
+        strategy="SQUEEZE_BREAKOUT_DYNAMIC",
+        risk_pct=Decimal("0.008"),
+        leverage=3,
+        base_risk_pct=Decimal("0.005"),
+        raw_risk_pct=Decimal("0.008"),
+        multiplier=Decimal("1.6"),
+        cap_risk_pct=Decimal("0.02"),
+        reasons=("test",),
+    )
+
+    capped = _cap_controlled_shadow_sizing(sizing, Decimal("0.0025"))
+
+    assert capped.risk_pct == Decimal("0.0025")
+    assert capped.cap_risk_pct == Decimal("0.0025")
+    assert "controlled_shadow_risk_cap=0.0025" in capped.reasons

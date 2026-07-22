@@ -107,6 +107,7 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     assert cfg.strategy.execution_strategies(TradingMode.MAINNET_LIVE) == []
     assert cfg.strategy.shadow_strategies() == [
         "SQUEEZE_BREAKOUT_DYNAMIC",
+        "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS",
         "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
         "TREND_PULLBACK",
         "LIQUIDITY_SWEEP_REVERSAL",

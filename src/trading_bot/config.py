@@ -135,6 +135,9 @@ class StrategyConfig:
     squeeze_controlled_paper_enabled: bool = False
     squeeze_controlled_paper_min_order_flow_score: Decimal = Decimal("0.65")
     squeeze_controlled_paper_risk_cap_pct: Decimal = Decimal("0.005")
+    squeeze_dynamic_neutral_shadow_enabled: bool = False
+    squeeze_dynamic_neutral_shadow_min_order_flow_score: Decimal = Decimal("0.65")
+    squeeze_dynamic_neutral_shadow_risk_cap_pct: Decimal = Decimal("0.0025")
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -582,6 +585,23 @@ class AppConfig:
                 raise ConfigError(
                     "strategy.squeeze_controlled_paper_min_order_flow_score must be within (0, 1]."
                 )
+        if self.strategy.squeeze_dynamic_neutral_shadow_enabled:
+            if not (
+                Decimal("0")
+                < self.strategy.squeeze_dynamic_neutral_shadow_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.squeeze_dynamic_neutral_shadow_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.squeeze_dynamic_neutral_shadow_min_order_flow_score
+                <= Decimal("1")
+            ):
+                raise ConfigError(
+                    "strategy.squeeze_dynamic_neutral_shadow_min_order_flow_score must be within (0, 1]."
+                )
         if (
             self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
             and self.risk.risk_per_trade_pct > Decimal("0.02")
@@ -838,6 +858,15 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ),
             squeeze_controlled_paper_risk_cap_pct=to_decimal(
                 raw["strategy"].get("squeeze_controlled_paper_risk_cap_pct", "0.005")
+            ),
+            squeeze_dynamic_neutral_shadow_enabled=bool(
+                raw["strategy"].get("squeeze_dynamic_neutral_shadow_enabled", False)
+            ),
+            squeeze_dynamic_neutral_shadow_min_order_flow_score=to_decimal(
+                raw["strategy"].get("squeeze_dynamic_neutral_shadow_min_order_flow_score", "0.65")
+            ),
+            squeeze_dynamic_neutral_shadow_risk_cap_pct=to_decimal(
+                raw["strategy"].get("squeeze_dynamic_neutral_shadow_risk_cap_pct", "0.0025")
             ),
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),

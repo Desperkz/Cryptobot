@@ -89,6 +89,17 @@ STRATEGY_PROMOTION_POLICIES = {
         "min_post_p5_clusters": STRATEGY_GATE_DEFAULTS["min_closed_trades"],
         "notes": ["Separate SQZ challenger; never auto-promote over the champion."],
     },
+    "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS": {
+        "tier": "RESEARCH",
+        "allowed_modes": ["shadow"],
+        "paper_promotion": "REQUIRE_SEPARATE_SHADOW_BUCKET_REVIEW",
+        "live_promotion": "BLOCKED_UNTIL_PAPER_PROVEN",
+        "min_post_p5_clusters": SHADOW_GATE_DEFAULTS["min_closed_trades"],
+        "notes": [
+            "Neutral relative-strength SQZ-DYN retests are a separate 0.25% shadow bucket.",
+            "Never merge its evidence with base SQZ-DYN or the paper champion.",
+        ],
+    },
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": {
         "tier": "CHALLENGER",
         "allowed_modes": ["shadow"],

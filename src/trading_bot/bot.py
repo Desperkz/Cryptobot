@@ -788,6 +788,10 @@ class TradingBot:
 
     async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
         shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
+        shadow_signal = _controlled_shadow_sqz_dynamic_neutral_override(
+            shadow_signal,
+            self.config.strategy,
+        )
         strict_context_rejection = _shadow_candidate_context_rejection_reason(
             shadow_signal,
             enforce_order_flow=True,
@@ -862,7 +866,18 @@ class TradingBot:
         await self._open_shadow_paper_trade(shadow_signal, filters)
 
     async def _open_shadow_paper_trade(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
-        strategy = _signal_strategy(signal)
+        source_strategy = _signal_strategy(signal)
+        strategy = _shadow_execution_strategy(signal)
+        policy_signal = signal
+        if strategy != source_strategy:
+            policy_signal = replace(
+                signal,
+                metadata={
+                    **dict(signal.metadata or {}),
+                    "source_strategy": source_strategy,
+                    "strategy": strategy,
+                },
+            )
         if not signal.is_tradeable:
             return
         if signal.stop_loss is None or signal.take_profit is None:
@@ -873,7 +888,7 @@ class TradingBot:
                 return
             shadow_history = await self.db.recent_shadow_trades(limit=500)
             reentry_reason = _strategy_reentry_policy_reason(
-                signal=signal,
+                signal=policy_signal,
                 trades=shadow_history,
                 cooldown_minutes=self.config.risk.strategy_reentry_cooldown_minutes,
                 winning_cooldown_minutes=self.config.risk.strategy_reentry_winning_cooldown_minutes,
@@ -889,7 +904,7 @@ class TradingBot:
                 )
                 return
             series_reason = _sqz_dynamic_upd_series_rejection_reason(
-                signal=signal,
+                signal=policy_signal,
                 trades=shadow_history,
                 window_minutes=90,
                 max_same_direction_trades=2,
@@ -903,7 +918,7 @@ class TradingBot:
                 )
                 return
             loss_control_reason = _shadow_strategy_loss_control_reason(
-                signal=signal,
+                signal=policy_signal,
                 trades=shadow_history,
                 window_hours=168,
                 min_closed_trades=2,
@@ -934,6 +949,7 @@ class TradingBot:
             self.config.risk.risk_per_trade_pct,
             strategy_mode="shadow",
         )
+        sizing = _cap_controlled_shadow_sizing(sizing, _controlled_shadow_risk_cap(signal))
         signal = self._annotate_dynamic_sizing(signal, sizing)
         plan_metadata: dict[str, Any] = {
             "equity_used": str(equity),
@@ -984,7 +1000,17 @@ class TradingBot:
                 taker_fee_bps=self.config.risk.taker_fee_bps,
                 slippage_bps=self.config.risk.slippage_bps,
             )
-            shadow_signal = replace(signal, entry_price=Decimal(str(shadow_entry_order["avgPrice"])))
+            shadow_signal = replace(
+                signal,
+                entry_price=Decimal(str(shadow_entry_order["avgPrice"])),
+                metadata={
+                    **dict(signal.metadata or {}),
+                    "source_strategy": source_strategy,
+                    "strategy": strategy,
+                    "strategy_logic_version": _strategy_logic_version(strategy)
+                    or (signal.metadata or {}).get("strategy_logic_version"),
+                },
+            )
             await self.db.insert_shadow_trade(
                 signal=shadow_signal,
                 strategy=strategy,
@@ -996,8 +1022,8 @@ class TradingBot:
                     "shadow_only": True,
                     "shadow_paper": True,
                     "source": "shadow_signal",
-                    "signal_reason": signal.reason,
-                    "signal_metadata": dict(signal.metadata or {}),
+                    "signal_reason": shadow_signal.reason,
+                    "signal_metadata": dict(shadow_signal.metadata or {}),
                     "entry_order": shadow_entry_order,
                     "execution": OrderManager._execution_metadata(shadow_entry_order, quantity),
                     **plan_metadata,
@@ -1013,7 +1039,7 @@ class TradingBot:
                 equity,
             )
             await self._record_ml_feature_snapshot(
-                signal,
+                shadow_signal,
                 "SHADOW_PAPER_OPENED",
                 "virtual shadow-paper trade opened; no real/paper order attempted",
             )
@@ -1688,6 +1714,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT": "sqz_structure_break_gate_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
+    "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS": "sqz_dyn_neutral_rs_shadow_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_confirmed_release_v2",
     "TREND_PULLBACK": "tpb_profitable_bucket_v3",
     "LIQUIDITY_SWEEP_REVERSAL": "lsr_research_gate_v2",
@@ -1832,6 +1859,93 @@ def _cap_controlled_paper_sizing(
     )
 
 
+def _controlled_shadow_sqz_dynamic_neutral_override(
+    signal: Signal,
+    config: StrategyConfig,
+) -> Signal:
+    """Create an isolated shadow sample for clean SQZ-DYN neutral-RS retests."""
+    if (
+        not config.squeeze_dynamic_neutral_shadow_enabled
+        or _signal_strategy(signal) != "SQUEEZE_BREAKOUT_DYNAMIC"
+        or _relative_strength_alignment(signal) != "neutral"
+    ):
+        return signal
+
+    metadata = signal.metadata or {}
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = _optional_decimal(order_flow.get("score")) or Decimal("0")
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    reasons = {str(reason) for reason in order_flow.get("reasons") or []}
+    retest_confirmed = bool(metadata.get("squeeze_retest_confirmed"))
+
+    if (
+        alignment != "aligned"
+        or score < config.squeeze_dynamic_neutral_shadow_min_order_flow_score
+        or risk_flags
+        or "structure_break_aligned" not in reasons
+        or not retest_confirmed
+    ):
+        return signal
+
+    return replace(
+        signal,
+        metadata={
+            **dict(metadata),
+            "controlled_shadow": {
+                "bucket": "sqz_dyn_neutral_rs_retest_v1",
+                "strategy_bucket": "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS",
+                "source_strategy": "SQUEEZE_BREAKOUT_DYNAMIC",
+                "relaxed_gate": "RELATIVE_STRENGTH",
+                "relative_strength_alignment": "neutral",
+                "order_flow_score": str(score),
+                "risk_cap_pct": str(config.squeeze_dynamic_neutral_shadow_risk_cap_pct),
+            },
+            "strategy_logic_version": "sqz_dyn_neutral_rs_shadow_v1",
+        },
+    )
+
+
+def _is_controlled_shadow_sqz_dynamic_neutral(signal: Signal) -> bool:
+    metadata = signal.metadata or {}
+    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
+    return bool(
+        isinstance(payload, dict)
+        and payload.get("bucket") == "sqz_dyn_neutral_rs_retest_v1"
+        and payload.get("strategy_bucket") == "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS"
+    )
+
+
+def _shadow_execution_strategy(signal: Signal) -> str:
+    metadata = signal.metadata or {}
+    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
+    if isinstance(payload, dict) and payload.get("strategy_bucket"):
+        return str(payload["strategy_bucket"])
+    return _signal_strategy(signal)
+
+
+def _controlled_shadow_risk_cap(signal: Signal) -> Decimal | None:
+    metadata = signal.metadata or {}
+    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    return _optional_decimal(payload.get("risk_cap_pct"))
+
+
+def _cap_controlled_shadow_sizing(
+    sizing: DynamicSizingDecision,
+    risk_cap_pct: Decimal | None,
+) -> DynamicSizingDecision:
+    if risk_cap_pct is None or sizing.risk_pct <= risk_cap_pct:
+        return sizing
+    return replace(
+        sizing,
+        risk_pct=risk_cap_pct,
+        cap_risk_pct=min(sizing.cap_risk_pct, risk_cap_pct),
+        reasons=(*sizing.reasons, f"controlled_shadow_risk_cap={risk_cap_pct}"),
+    )
+
+
 def _annotate_shadow_order_flow_gate(
     signal: Signal,
     *,
@@ -1901,7 +2015,7 @@ def _shadow_candidate_context_rejection_reason(
             if "absorption_against" in risk_flags:
                 return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
         rs_alignment = _relative_strength_alignment(signal)
-        if rs_alignment != "aligned":
+        if rs_alignment != "aligned" and not _is_controlled_shadow_sqz_dynamic_neutral(signal):
             return (
                 "SQZ-DYN shadow blocked: relative-strength confirmation is "
                 f"{rs_alignment or 'missing'}."

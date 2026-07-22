@@ -507,6 +507,11 @@
   - Готово: control API прогревает scorecard при старте; после истечения TTL dashboard получает предыдущий snapshot сразу, а новый строится в фоне.
   - Готово: окно operational diagnostics уменьшено с `5000` до `1500` строк на срез; исторические сделки, PnL и scorecard-гейты не урезаются.
   - Критерий: после стартового прогрева и при обычном обновлении dashboard response `< 0.1s`; тяжелая агрегация не блокирует UI и не влияет на trading execution pipeline.
+- `[x]` P7-14 Контролируемое расширение SQZ-DYN shadow после анализа отказов.
+  - Причина: за 24 часа бот записал `701` shadow-сигнал, но большинство `SHADOW_PAPER_REJECTED_CONTEXT` были не safety-gates, а diagnostics-only для отключенных отрицательных стратегий. Реальный SQZ-DYN поток блокировали retest, relative strength и недельный loss-control.
+  - Готово: добавлен отдельный shadow-бакет `SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS`; он допускает только `neutral` RS при confirmed retest, aligned order-flow >= `0.65`, отсутствии любых OF risk flags и `structure_break_aligned`.
+  - Готово: риск ограничен `0.25%`; у бакета отдельные re-entry и loss-control серии, поэтому старая просадка base SQZ-DYN не маскирует новую гипотезу. Paper SQZ, base SQZ-DYN и diagnostics-only стратегии не ослабляются.
+  - Условие принятия: после `30` закрытых bucket-кластеров сравнить post-cost Avg R, PF, DD и loss-rate с base SQZ-DYN. При `10` кластерах и Avg R <= `-0.20` либо DD хуже `-3R` выключить bucket.
 
 ## Отложено до условия
 
