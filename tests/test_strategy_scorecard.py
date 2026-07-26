@@ -953,6 +953,25 @@ def test_promotion_policy_blocks_research_strategy_even_when_shadow_gate_promote
     assert policy["live_review_allowed"] is False
 
 
+def test_measurement_policy_collects_evidence_without_live_promotion() -> None:
+    row = {
+        "strategy": "SQUEEZE_BREAKOUT_OF_MEASURE",
+        "strategy_mode": "paper",
+        "gate": {"status": "WATCH"},
+        "shadow_gate": {"status": "TESTING", "promotion_candidate": False},
+        "shadow_paper": {"closed_trades": 0},
+        "post_p5_evidence": {"closed_trade_clusters": 12},
+    }
+
+    policy = apply_strategy_promotion_policy(row)
+
+    assert policy["tier"] == "MEASUREMENT"
+    assert policy["action"] == "COLLECT_MEASUREMENT_EVIDENCE"
+    assert policy["paper_review_allowed"] is False
+    assert policy["live_review_allowed"] is False
+    assert any("150 closed clusters" in reason for reason in policy["reasons"])
+
+
 def test_weekly_research_report_ranks_and_flags_actions() -> None:
     scorecard = {
         "generated_at": "2026-05-21T00:00:00+00:00",

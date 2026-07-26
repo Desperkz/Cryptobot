@@ -879,6 +879,18 @@ def apply_strategy_promotion_policy(row: dict[str, Any]) -> dict[str, Any]:
             action = "KEEP_LIMITED_PAPER_OR_DEMOTE_REVIEW"
             paper_review_allowed = True
             reasons.append("paper-only strategy gate has not passed")
+    elif tier == "MEASUREMENT":
+        required = int(policy.get("min_post_p5_clusters", 150))
+        if post_p5_clusters < required:
+            action = "COLLECT_MEASUREMENT_EVIDENCE"
+            reasons.append(
+                f"isolated paper cohort needs {required} closed clusters before comparison with strict SQZ"
+            )
+        else:
+            action = "MEASUREMENT_REVIEW_REQUIRED"
+            reasons.append(
+                "measurement cohort reached its review size; compare post-cost metrics with strict SQZ before any change"
+            )
     elif tier == "SHADOW_REVIEW":
         if shadow_promotable:
             action = "HUMAN_REVIEW_FOR_PAPER"
