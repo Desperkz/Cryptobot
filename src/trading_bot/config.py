@@ -457,6 +457,8 @@ class DatabaseConfig:
 class TelegramConfig:
     enabled: bool
     send_daily_report_utc: str
+    cohort_report_enabled: bool = True
+    cohort_report_interval_sec: int = 900
 
 
 @dataclass(frozen=True)

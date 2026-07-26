@@ -136,6 +136,17 @@ class Database:
                 metadata TEXT NOT NULL
             )
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS operational_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shadow_trades_strategy_status_closed
+            ON shadow_trades(strategy, status, closed_at, id)
+        """)
         await conn.commit()
 
     async def insert_signal(self, signal: Any) -> None:
@@ -228,6 +239,44 @@ class Database:
 
     async def recent_shadow_trades(self, limit: int = 50) -> list[dict[str, Any]]:
         return await self._fetch_all("SELECT * FROM shadow_trades ORDER BY id DESC LIMIT ?", (limit,))
+
+    async def closed_shadow_trades_by_strategies(
+        self,
+        strategies: list[str],
+        closed_after: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not strategies:
+            return []
+        placeholders = ",".join("?" for _ in strategies)
+        query = (
+            "SELECT id, strategy, risk_amount, r_multiple, realized_pnl, created_at, closed_at "
+            "FROM shadow_trades WHERE status='CLOSED' AND strategy IN ("
+            f"{placeholders})"
+        )
+        params: list[Any] = list(strategies)
+        if closed_after:
+            query += " AND closed_at >= ?"
+            params.append(_sqlite_timestamp(closed_after))
+        query += " ORDER BY closed_at ASC, id ASC"
+        return await self._fetch_all(query, tuple(params))
+
+    async def load_operational_state(self, key: str) -> str | None:
+        conn = self._require_conn()
+        async with conn.execute("SELECT value FROM operational_state WHERE key=?", (key,)) as cursor:
+            row = await cursor.fetchone()
+        return str(row["value"]) if row else None
+
+    async def save_operational_state(self, key: str, value: str) -> None:
+        conn = self._require_conn()
+        await conn.execute(
+            """
+            INSERT INTO operational_state(key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP
+            """,
+            (key, value),
+        )
+        await conn.commit()
 
     async def recent_trades(self, limit: int = 50) -> list[dict[str, Any]]:
         return await self._fetch_all("SELECT * FROM trades ORDER BY id DESC LIMIT ?", (limit,))
@@ -467,3 +516,7 @@ def _r_multiple(realized_pnl: str, risk_amount: Any) -> str:
         return str(Decimal(str(realized_pnl)) / risk)
     except (InvalidOperation, ValueError):
         return "0"
+
+
+def _sqlite_timestamp(value: str) -> str:
+    return value.replace("T", " ").replace("Z", "").replace("+00:00", "")

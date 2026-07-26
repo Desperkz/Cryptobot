@@ -526,6 +526,13 @@
   - Готово: `/strategy-scorecard` получает отдельные policy rows `MEASUREMENT_SHADOW`; `scripts/edge_report.py` сравнивает каждую когорту со `SQZ_STRICT_CONTROL_SHADOW` в одинаковой виртуальной модели исполнения.
   - Условие принятия: interim review на `50` закрытых virtual trades, human review на `100`; никакой automatic promotion в paper/live. Сначала сравнить expectancy, CI, payoff, DD и долю полных стопов с strict virtual control.
 
+- `[x]` P7-17 Автоматические контрольные точки для SQZ-исследований.
+  - Причина: когорты P7-15/P7-16 должны сравниваться на единых порогах, а не по случайному PnL одной сделки или вручную открытой таблице.
+  - Готово: бот раз в `900` секунд читает только закрытые сделки SQZ research-веток после `analytics.stats_epoch`, используя отдельный индекс SQLite.
+  - Готово: Telegram присылает единичный отчет на порогах `20/50/100` shadow-сделок и `20/150` сделок paper bucket: Avg R, приближенный 95% CI, PF, drawdown в R, долю полных стопов и сравнение с virtual strict control.
+  - Готово: отправленные milestones хранятся в `operational_state`, поэтому restart не вызывает повторный спам. При пропуске нескольких порогов отправляется только самый высокий, а ранние фиксируются как уже наблюденные.
+  - Ограничение: отчет только информирует. Он не меняет gates, allocation, risk, режим стратегии или promotion status. Убыточный paper bucket на 20 сделках получает `STOP_REVIEW` для человеческого решения, не auto-disable.
+
 ## Отложено до условия
 
 - `[ ]` D-01 Перевести `TREND_PULLBACK` из shadow в paper-trial.

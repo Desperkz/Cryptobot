@@ -16,7 +16,7 @@ from trading_bot.data_provider import BinanceUSDMClient, CoinGeckoClient, Market
 from trading_bot.database import Database
 from trading_bot.execution import ExecutionReconciler
 from trading_bot.execution.reconciler import restart_recovery_evidence
-from trading_bot.analytics import SelfLearningEngine
+from trading_bot.analytics import SQZCohortMilestoneReporter, SelfLearningEngine
 from trading_bot.market_regime_detector import MarketRegimeDetector
 from trading_bot.market_universe import MarketUniverseBuilder
 from trading_bot.market_filters import MarketEntryFilter
@@ -164,6 +164,13 @@ class TradingBot:
             chat_id=config.secrets.telegram_chat_id,
             enabled=config.telegram.enabled,
         )
+        self.sqz_cohort_reporter = SQZCohortMilestoneReporter(
+            self.db,
+            self.telegram,
+            stats_epoch=config.analytics.stats_epoch,
+            enabled=config.telegram.cohort_report_enabled,
+            check_interval_sec=config.telegram.cohort_report_interval_sec,
+        )
         self.supervisor.set_warning_callback(self.telegram.risk_warning)
         self.supervisor.set_trade_closed_callback(self._mark_trade_closed)
         self.disaster = DisasterDetector(
@@ -278,6 +285,13 @@ class TradingBot:
             state.pnl_date_utc or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         )
 
+    async def _report_sqz_cohort_milestones(self, recent_trades: list[dict[str, Any]]) -> None:
+        try:
+            await self.sqz_cohort_reporter.maybe_report(recent_trades)
+        except Exception:
+            # Research telemetry must never hold up the execution cycle.
+            logger.exception("P7-17 SQZ cohort milestone reporting failed.")
+
     async def run_forever(self) -> None:
         await self.start()
         self._watchdog_stop = False
@@ -355,6 +369,7 @@ class TradingBot:
         equity = await self.current_equity_usdt()
         btc_4h_change = await self._btc_4h_change()
         recent_trades = await self.db.recent_trades(10_000)
+        await self._report_sqz_cohort_milestones(recent_trades)
         adaptive_thresholds = (
             self.self_learning.adaptive_thresholds(
                 _trades_since_stats_epoch(recent_trades, self.config.analytics.stats_epoch)

@@ -51,6 +51,19 @@ class Database:
     async def recent_shadow_trades(self, limit: int = 50) -> list[dict[str, Any]]:
         return await self._impl.recent_shadow_trades(limit)
 
+    async def closed_shadow_trades_by_strategies(
+        self,
+        strategies: list[str],
+        closed_after: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return await self._impl.closed_shadow_trades_by_strategies(strategies, closed_after)
+
+    async def load_operational_state(self, key: str) -> str | None:
+        return await self._impl.load_operational_state(key)
+
+    async def save_operational_state(self, key: str, value: str) -> None:
+        await self._impl.save_operational_state(key, value)
+
     async def recent_trades(self, limit: int = 50) -> list[dict[str, Any]]:
         return await self._impl.recent_trades(limit)
 

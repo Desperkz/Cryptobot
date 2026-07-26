@@ -85,6 +85,11 @@ class PostgresDatabase:
                     pnl_date_utc TEXT,
                     updated_at TIMESTAMPTZ DEFAULT now()
                 );
+                CREATE TABLE IF NOT EXISTS operational_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                );
                 """
             )
             await conn.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ")
@@ -101,6 +106,12 @@ class PostgresDatabase:
                     filter_type TEXT NOT NULL,
                     reason TEXT NOT NULL
                 );
+                """
+            )
+            await conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_shadow_trades_strategy_status_closed
+                ON shadow_trades(strategy, status, closed_at, id)
                 """
             )
             await conn.execute(
@@ -208,6 +219,46 @@ class PostgresDatabase:
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM shadow_trades ORDER BY id DESC LIMIT $1", limit)
         return [dict(row) for row in rows]
+
+    async def closed_shadow_trades_by_strategies(
+        self,
+        strategies: list[str],
+        closed_after: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not strategies:
+            return []
+        pool = self._require_pool()
+        query = (
+            "SELECT id, strategy, risk_amount, r_multiple, realized_pnl, created_at, closed_at "
+            "FROM shadow_trades WHERE status='CLOSED' AND strategy = ANY($1::text[])"
+        )
+        params: list[Any] = [strategies]
+        if closed_after:
+            query += " AND closed_at >= $2::timestamptz"
+            params.append(closed_after)
+        query += " ORDER BY closed_at ASC, id ASC"
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+        return [dict(row) for row in rows]
+
+    async def load_operational_state(self, key: str) -> str | None:
+        pool = self._require_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT value FROM operational_state WHERE key=$1", key)
+        return str(row["value"]) if row else None
+
+    async def save_operational_state(self, key: str, value: str) -> None:
+        pool = self._require_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO operational_state(key, value, updated_at)
+                VALUES ($1, $2, now())
+                ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()
+                """,
+                key,
+                value,
+            )
 
     async def recent_trades(self, limit: int = 50) -> list[dict[str, Any]]:
         pool = self._require_pool()

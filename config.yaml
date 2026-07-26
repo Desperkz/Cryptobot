@@ -508,6 +508,9 @@ database:
 telegram:
   enabled: true
   send_daily_report_utc: "21:00"
+  # P7-17: research-only SQZ cohort milestones. Does not alter trading.
+  cohort_report_enabled: true
+  cohort_report_interval_sec: 900
 
 web:
   host: "0.0.0.0"
