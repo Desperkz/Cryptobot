@@ -99,6 +99,12 @@ strategy:
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
     SQUEEZE_BREAKOUT_OF_MEASURE: paper
+    SQZ_STRICT_CONTROL_SHADOW: shadow
+    SQZ_OF_AGAINST_SHADOW: shadow
+    SQZ_OF_HOSTILE_SHADOW: shadow
+    SQZ_OF_ABSORPTION_SHADOW: shadow
+    SQZ_RS_NEUTRAL_SHADOW: shadow
+    SQZ_NO_RETEST_SHADOW: shadow
     SQUEEZE_BREAKOUT_DYNAMIC: shadow
     SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS: shadow
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: shadow
@@ -124,6 +130,10 @@ strategy:
   squeeze_order_flow_measurement_enabled: true
   squeeze_order_flow_measurement_min_score: 0.30
   squeeze_order_flow_measurement_risk_cap_pct: 0.005
+  # P7-16: six parallel virtual SQZ cohorts identify one gate at a time.
+  # They share neither portfolio capacity nor automatic promotion rights.
+  squeeze_gate_cohort_shadow_enabled: true
+  squeeze_gate_cohort_shadow_risk_cap_pct: 0.005
   # P7-12: controlled paper-frequency experiment. Only a clean SQZ with
   # neutral (not unknown/against) relative strength may pass this one gate;
   # hostile OF, no-retest/weak release and missing structure-break stay blocked.
@@ -489,7 +499,7 @@ analytics:
   # сделок, закрытых после этой даты. Ставь дату деплоя изменений логики,
   # иначе блокировки символов/часов выводятся из сделок СТАРОЙ конфигурации.
   # null = использовать всю историю (старое поведение).
-  stats_epoch: "2026-07-26T02:57:44+00:00"
+  stats_epoch: "2026-07-26T03:11:47+00:00"
 
 database:
   url: "sqlite+aiosqlite:///data/trading_bot.sqlite3"

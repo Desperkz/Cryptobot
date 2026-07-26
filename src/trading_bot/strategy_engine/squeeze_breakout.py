@@ -565,5 +565,8 @@ class SqueezeBreakoutStrategy:
                 "atr_pct": str(atr_pct),
                 "rr": str(rr),
                 "hour_utc": str((candles_1h[-1].close_time // 3_600_000) % 24),
+                # Stable identity for parallel shadow cohorts created from
+                # this exact 15m SQZ opportunity.
+                "signal_bar_close_time": candles_15m[-1].close_time,
             },
         )

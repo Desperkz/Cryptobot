@@ -14,6 +14,7 @@ Outputs:
      assumption -- R distributions are strongly bimodal).
   2. Required sample size to prove the observed edge.
   3. SQZ cohort comparison: strict control vs the isolated weak-mixed OF bucket.
+  4. Parallel SQZ shadow gate cohorts against a strict virtual control.
   4. Feasibility check of the monthly return target against observed frequency.
 """
 
@@ -54,10 +55,12 @@ def _required_n(expectancy: float, sigma: float) -> int | None:
     return math.ceil((Z95 * sigma / expectancy) ** 2)
 
 
-def _load_trades(db_path: Path, epoch: str | None) -> list[dict]:
+def _load_closed_rows(db_path: Path, table: str, epoch: str | None) -> list[dict]:
+    if table not in {"trades", "shadow_trades"}:
+        raise ValueError(f"unsupported table: {table}")
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
-    query = "SELECT * FROM trades WHERE status = 'CLOSED'"
+    query = f"SELECT * FROM {table} WHERE status = 'CLOSED'"
     params: list = []
     if epoch:
         query += " AND closed_at >= ?"
@@ -65,6 +68,14 @@ def _load_trades(db_path: Path, epoch: str | None) -> list[dict]:
     rows = [dict(row) for row in con.execute(query, params)]
     con.close()
     return rows
+
+
+def _load_trades(db_path: Path, epoch: str | None) -> list[dict]:
+    return _load_closed_rows(db_path, "trades", epoch)
+
+
+def _load_shadow_trades(db_path: Path, epoch: str | None) -> list[dict]:
+    return _load_closed_rows(db_path, "shadow_trades", epoch)
 
 
 def _r_values(trades: list[dict]) -> list[float]:
@@ -128,6 +139,7 @@ def main() -> None:
     args = parser.parse_args()
 
     trades = _load_trades(args.db, args.epoch)
+    shadow_trades = _load_shadow_trades(args.db, args.epoch)
     if not trades:
         print("No closed trades found for the requested window.")
         return
@@ -153,6 +165,25 @@ def main() -> None:
         _describe("SQZ_STRICT_CONTROL", strict_sqz),
         _describe("SQZ_WEAK_MIXED_MEASURE", weak_mixed_sqz),
     ]
+
+    shadow_cohort_names = [
+        "SQZ_STRICT_CONTROL_SHADOW",
+        "SQZ_OF_AGAINST_SHADOW",
+        "SQZ_OF_HOSTILE_SHADOW",
+        "SQZ_OF_ABSORPTION_SHADOW",
+        "SQZ_RS_NEUTRAL_SHADOW",
+        "SQZ_NO_RETEST_SHADOW",
+    ]
+    shadow_sqz_gate_cohorts = []
+    for cohort_name in shadow_cohort_names:
+        values = [
+            r_value[0]
+            for trade in shadow_trades
+            if _trade_strategy(trade) == cohort_name
+            for r_value in [_r_values([trade])]
+            if r_value
+        ]
+        shadow_sqz_gate_cohorts.append(_describe(cohort_name, values))
 
     # --- Target feasibility ----------------------------------------------
     stamps = []
@@ -187,6 +218,7 @@ def main() -> None:
         "epoch": args.epoch,
         "overall": overall,
         "sqz_control_vs_measurement": sqz_cohorts,
+        "shadow_sqz_gate_cohorts": shadow_sqz_gate_cohorts,
         "target_feasibility": feasibility,
     }
 
@@ -213,6 +245,17 @@ def main() -> None:
             f"CI=[{block['ci95_low']:+.3f}, {block['ci95_high']:+.3f}]"
         )
     print("  -> The weak-mixed bucket is paper-only; compare it to strict SQZ only on adequate n.")
+    print()
+    print("=== SQZ SHADOW GATE COHORTS ===")
+    for block in shadow_sqz_gate_cohorts:
+        if block["trades"] == 0:
+            print(f"  {block['label']:<29}: no data")
+            continue
+        print(
+            f"  {block['label']:<29}: n={block['trades']:<4} E[R]={block['expectancy_r']:+.3f} "
+            f"CI=[{block['ci95_low']:+.3f}, {block['ci95_high']:+.3f}]"
+        )
+    print("  -> Virtual-execution research only: compare each relaxed gate with SQZ_STRICT_CONTROL_SHADOW.")
     print()
     print("=== TARGET FEASIBILITY ===")
     print(f"  Observed frequency : {feasibility['observed_trades_per_month']} trades/month")

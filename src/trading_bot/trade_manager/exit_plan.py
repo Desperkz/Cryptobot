@@ -86,7 +86,9 @@ class ExitPlanBuilder:
 
     def _targets_for_signal(self, signal: Signal) -> list[PartialTakeProfitConfig]:
         metadata = signal.metadata or {}
-        strategy = str(metadata.get("strategy") or "").strip().upper()
+        strategy = str(
+            metadata.get("exit_profile_strategy") or metadata.get("strategy") or ""
+        ).strip().upper()
         if strategy:
             profile = self.config.strategy_exit_profiles.get(strategy)
             if profile:

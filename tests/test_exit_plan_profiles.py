@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -76,6 +77,22 @@ def test_squeeze_uses_runner_friendly_exit_profile() -> None:
     assert [target.quantity for target in targets] == [Decimal("2.500"), Decimal("3.500"), Decimal("4.000")]
     assert [target.reward_risk for target in targets] == [Decimal("1.0"), Decimal("1.6"), Decimal("2.3")]
     assert protection.breakeven_after_target == "TP2"
+
+
+def test_shadow_squeeze_cohort_reuses_strict_squeeze_exit_profile() -> None:
+    builder = ExitPlanBuilder(trade_management_config())
+    cohort_signal = signal("SQZ_OF_AGAINST_SHADOW")
+    cohort_signal = replace(
+        cohort_signal,
+        metadata={
+            **cohort_signal.metadata,
+            "exit_profile_strategy": "SQUEEZE_BREAKOUT",
+        },
+    )
+
+    targets = builder.build_targets(cohort_signal, Decimal("10"), filters())
+
+    assert [target.reward_risk for target in targets] == [Decimal("1.0"), Decimal("1.6"), Decimal("2.3")]
 
 
 def test_unknown_strategy_falls_back_to_default_exit_profile() -> None:

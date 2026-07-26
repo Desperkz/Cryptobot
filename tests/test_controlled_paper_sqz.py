@@ -11,6 +11,7 @@ from trading_bot.bot import (
     _squeeze_order_flow_measurement_override,
     _shadow_candidate_context_rejection_reason,
     _shadow_execution_strategy,
+    _sqz_gate_cohort_shadow_variants,
     _trade_strategy,
 )
 from trading_bot.config import StrategyConfig
@@ -49,6 +50,8 @@ def _config(
         squeeze_dynamic_neutral_shadow_enabled=neutral_shadow_enabled,
         squeeze_dynamic_neutral_shadow_min_order_flow_score=Decimal("0.65"),
         squeeze_dynamic_neutral_shadow_risk_cap_pct=Decimal("0.0025"),
+        squeeze_gate_cohort_shadow_enabled=True,
+        squeeze_gate_cohort_shadow_risk_cap_pct=Decimal("0.005"),
     )
 
 
@@ -263,3 +266,32 @@ def test_controlled_shadow_sqz_dyn_caps_risk_at_quarter_percent() -> None:
     assert capped.risk_pct == Decimal("0.0025")
     assert capped.cap_risk_pct == Decimal("0.0025")
     assert "controlled_shadow_risk_cap=0.0025" in capped.reasons
+
+
+def test_sqz_gate_cohorts_relax_exactly_one_gate_and_keep_source_identity() -> None:
+    strict, strict_gates, strict_safety = _sqz_gate_cohort_shadow_variants(_signal(relative_strength="aligned"), _config())
+    assert strict_gates == []
+    assert strict_safety == []
+    assert _shadow_execution_strategy(strict[0]) == "SQZ_STRICT_CONTROL_SHADOW"
+    assert strict[0].metadata["exit_profile_strategy"] == "SQUEEZE_BREAKOUT"
+
+    against = _signal(relative_strength="aligned")
+    against = replace(against, metadata={**against.metadata, "order_flow": {**against.metadata["order_flow"], "alignment": "against"}})
+    variants, gates, safety = _sqz_gate_cohort_shadow_variants(against, _config())
+    assert gates == ["OF_AGAINST"]
+    assert safety == []
+    assert _shadow_execution_strategy(variants[0]) == "SQZ_OF_AGAINST_SHADOW"
+    assert variants[0].metadata["measurement_shadow"]["gate_vector"] == ["OF_AGAINST"]
+
+
+def test_sqz_gate_cohorts_do_not_mix_relaxed_or_permanent_safety_gates() -> None:
+    mixed = _signal(relative_strength="neutral", retest=False)
+    variants, gates, safety = _sqz_gate_cohort_shadow_variants(mixed, _config())
+    assert variants == []
+    assert gates == ["RS_NEUTRAL", "SQZ_RETEST_OR_STRONG_RELEASE"]
+    assert safety == []
+
+    unsafe = _signal(relative_strength="aligned", flags=["liquidation_cascade"])
+    variants, _gates, safety = _sqz_gate_cohort_shadow_variants(unsafe, _config())
+    assert variants == []
+    assert safety == ["liquidation_cascade"]

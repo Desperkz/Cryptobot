@@ -365,9 +365,7 @@ class TradingBot:
         effective_risk_pct = self.kelly.risk_pct(recent_trades)
 
         for asset in assets:
-            if await self.positions.has_position_for_symbol(asset.symbol):
-                logger.info("Active %s position exists; skipping same-symbol entry.", asset.symbol)
-                continue
+            has_active_position = await self.positions.has_position_for_symbol(asset.symbol)
 
             try:
                 candles_15m, candles_1h, candles_4h = await asyncio.gather(
@@ -425,6 +423,13 @@ class TradingBot:
             await self._record_order_flow_annotation(signal, annotation)
             signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
             await self._record_relative_strength_annotation(signal, relative_strength)
+            await self._record_sqz_gate_cohort_shadows(signal, asset.filters)
+            if has_active_position:
+                logger.info(
+                    "Active %s position exists; strict paper entry skipped after shadow diagnostics.",
+                    asset.symbol,
+                )
+                continue
             order_flow_rejection = _order_flow_entry_rejection_reason(
                 signal, self.config.strategy
             )
@@ -880,8 +885,44 @@ class TradingBot:
             )
         await self._open_shadow_paper_trade(shadow_signal, filters)
 
+    async def _record_sqz_gate_cohort_shadows(
+        self,
+        signal: Signal,
+        filters: SymbolFilters | None = None,
+    ) -> None:
+        """Measure one SQZ admission gate at a time without touching paper flow."""
+        variants, gate_vector, safety_rejections = _sqz_gate_cohort_shadow_variants(
+            signal,
+            self.config.strategy,
+        )
+        if _signal_strategy(signal) != "SQUEEZE_BREAKOUT":
+            return
+
+        source_cluster_id = _sqz_source_cluster_id(signal)
+        summary = {
+            "source_cluster_id": source_cluster_id,
+            "gate_vector": gate_vector,
+            "safety_rejections": safety_rejections,
+            "cohorts": [_shadow_execution_strategy(item) for item in variants],
+        }
+        await self._record_ml_feature_snapshot(
+            signal,
+            "SQZ_SHADOW_COHORT_EVALUATED",
+            json.dumps(summary, ensure_ascii=False, sort_keys=True),
+        )
+        if not variants:
+            return
+
+        shadow_history = await self.db.recent_shadow_trades(limit=1_000)
+        for variant in variants:
+            strategy = _shadow_execution_strategy(variant)
+            if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+                continue
+            await self._record_shadow_signal(variant, filters)
+
     async def _open_shadow_paper_trade(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
-        source_strategy = _signal_strategy(signal)
+        metadata = signal.metadata or {}
+        source_strategy = str(metadata.get("strategy_source") or _signal_strategy(signal))
         strategy = _shadow_execution_strategy(signal)
         policy_signal = signal
         if strategy != source_strategy:
@@ -901,54 +942,64 @@ class TradingBot:
             if await self.db.has_open_shadow_trade(signal.symbol, strategy):
                 logger.info("Shadow paper %s %s already open; skipping duplicate.", strategy, signal.symbol)
                 return
-            shadow_history = await self.db.recent_shadow_trades(limit=500)
-            reentry_reason = _strategy_reentry_policy_reason(
-                signal=policy_signal,
-                trades=shadow_history,
-                cooldown_minutes=self.config.risk.strategy_reentry_cooldown_minutes,
-                winning_cooldown_minutes=self.config.risk.strategy_reentry_winning_cooldown_minutes,
-                scale_in_enabled=False,
-                max_scale_ins_per_symbol_strategy=0,
-            )
-            if reentry_reason:
-                logger.info("Shadow paper %s %s re-entry blocked: %s", strategy, signal.symbol, reentry_reason)
-                await self._record_ml_feature_snapshot(
-                    signal,
-                    "SHADOW_PAPER_REJECTED_COOLDOWN",
-                    reentry_reason,
-                )
+            shadow_history = await self.db.recent_shadow_trades(limit=1_000)
+            measurement_payload = _measurement_shadow_payload(signal)
+            source_cluster_id = str(measurement_payload.get("source_cluster_id") or "")
+            if measurement_payload and _measurement_shadow_source_seen(
+                shadow_history,
+                strategy,
+                source_cluster_id,
+            ):
+                logger.info("Shadow measurement %s already recorded source %s.", strategy, source_cluster_id)
                 return
-            series_reason = _sqz_dynamic_upd_series_rejection_reason(
-                signal=policy_signal,
-                trades=shadow_history,
-                window_minutes=90,
-                max_same_direction_trades=2,
-            )
-            if series_reason:
-                logger.info("Shadow paper %s %s series blocked: %s", strategy, signal.symbol, series_reason)
-                await self._record_ml_feature_snapshot(
-                    signal,
-                    "SHADOW_PAPER_REJECTED_CONTEXT",
-                    series_reason,
+            if not measurement_payload:
+                reentry_reason = _strategy_reentry_policy_reason(
+                    signal=policy_signal,
+                    trades=shadow_history,
+                    cooldown_minutes=self.config.risk.strategy_reentry_cooldown_minutes,
+                    winning_cooldown_minutes=self.config.risk.strategy_reentry_winning_cooldown_minutes,
+                    scale_in_enabled=False,
+                    max_scale_ins_per_symbol_strategy=0,
                 )
-                return
-            loss_control_reason = _shadow_strategy_loss_control_reason(
-                signal=policy_signal,
-                trades=shadow_history,
-                window_hours=168,
-                min_closed_trades=2,
-                max_total_r=Decimal("-1.50"),
-                max_loss_count=2,
-                loss_count_max_total_r=Decimal("-1.00"),
-            )
-            if loss_control_reason:
-                logger.info("Shadow paper %s %s loss-control blocked: %s", strategy, signal.symbol, loss_control_reason)
-                await self._record_ml_feature_snapshot(
-                    signal,
-                    "SHADOW_PAPER_REJECTED_LOSS_CONTROL",
-                    loss_control_reason,
+                if reentry_reason:
+                    logger.info("Shadow paper %s %s re-entry blocked: %s", strategy, signal.symbol, reentry_reason)
+                    await self._record_ml_feature_snapshot(
+                        signal,
+                        "SHADOW_PAPER_REJECTED_COOLDOWN",
+                        reentry_reason,
+                    )
+                    return
+                series_reason = _sqz_dynamic_upd_series_rejection_reason(
+                    signal=policy_signal,
+                    trades=shadow_history,
+                    window_minutes=90,
+                    max_same_direction_trades=2,
                 )
-                return
+                if series_reason:
+                    logger.info("Shadow paper %s %s series blocked: %s", strategy, signal.symbol, series_reason)
+                    await self._record_ml_feature_snapshot(
+                        signal,
+                        "SHADOW_PAPER_REJECTED_CONTEXT",
+                        series_reason,
+                    )
+                    return
+                loss_control_reason = _shadow_strategy_loss_control_reason(
+                    signal=policy_signal,
+                    trades=shadow_history,
+                    window_hours=168,
+                    min_closed_trades=2,
+                    max_total_r=Decimal("-1.50"),
+                    max_loss_count=2,
+                    loss_count_max_total_r=Decimal("-1.00"),
+                )
+                if loss_control_reason:
+                    logger.info("Shadow paper %s %s loss-control blocked: %s", strategy, signal.symbol, loss_control_reason)
+                    await self._record_ml_feature_snapshot(
+                        signal,
+                        "SHADOW_PAPER_REJECTED_LOSS_CONTROL",
+                        loss_control_reason,
+                    )
+                    return
         except Exception:
             logger.exception("Failed to check shadow paper re-entry policy for %s %s", strategy, signal.symbol)
             return
@@ -971,6 +1022,11 @@ class TradingBot:
             "risk_per_trade_pct": str(sizing.risk_pct),
             "dynamic_sizing": sizing.to_metadata(),
         }
+        measurement_payload = _measurement_shadow_payload(signal)
+        if measurement_payload:
+            plan_metadata["trade_cluster_id"] = measurement_payload.get("source_cluster_id")
+            plan_metadata["trade_cluster_sequence"] = 1
+            plan_metadata["measurement_shadow"] = measurement_payload
         if filters is not None:
             try:
                 plan = self.risk.calculate_plan(
@@ -1729,6 +1785,12 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT": "sqz_structure_break_gate_v1",
     "SQUEEZE_BREAKOUT_OF_MEASURE": "sqz_of_measure_weak_mixed_v1",
+    "SQZ_STRICT_CONTROL_SHADOW": "sqz_gate_cohort_v1",
+    "SQZ_OF_AGAINST_SHADOW": "sqz_gate_cohort_v1",
+    "SQZ_OF_HOSTILE_SHADOW": "sqz_gate_cohort_v1",
+    "SQZ_OF_ABSORPTION_SHADOW": "sqz_gate_cohort_v1",
+    "SQZ_RS_NEUTRAL_SHADOW": "sqz_gate_cohort_v1",
+    "SQZ_NO_RETEST_SHADOW": "sqz_gate_cohort_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
     "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS": "sqz_dyn_neutral_rs_shadow_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_confirmed_release_v2",
@@ -1994,20 +2056,180 @@ def _is_controlled_shadow_sqz_dynamic_neutral(signal: Signal) -> bool:
     )
 
 
+SQZ_GATE_COHORT_STRATEGIES = {
+    "SQZ_STRICT_CONTROL_SHADOW",
+    "SQZ_OF_AGAINST_SHADOW",
+    "SQZ_OF_HOSTILE_SHADOW",
+    "SQZ_OF_ABSORPTION_SHADOW",
+    "SQZ_RS_NEUTRAL_SHADOW",
+    "SQZ_NO_RETEST_SHADOW",
+}
+SQZ_COHORT_PERMANENT_SAFETY_FLAGS = {
+    "liquidation_cascade",
+    "adverse_liquidity_nearby",
+    "structure_break_against",
+}
+SQZ_COHORT_TESTABLE_HOSTILE_FLAGS = {
+    "taker_flow_against",
+    "aggressive_delta_against",
+    "book_imbalance_against",
+}
+SQZ_COHORT_RELAXED_GATE_TO_STRATEGY = {
+    "OF_AGAINST": "SQZ_OF_AGAINST_SHADOW",
+    "OF_HOSTILE": "SQZ_OF_HOSTILE_SHADOW",
+    "OF_ABSORPTION": "SQZ_OF_ABSORPTION_SHADOW",
+    "RS_NEUTRAL": "SQZ_RS_NEUTRAL_SHADOW",
+    "SQZ_RETEST_OR_STRONG_RELEASE": "SQZ_NO_RETEST_SHADOW",
+}
+
+
+def _sqz_source_cluster_id(signal: Signal) -> str:
+    metadata = signal.metadata or {}
+    close_time = metadata.get("signal_bar_close_time")
+    if close_time not in (None, ""):
+        return f"{signal.symbol}:{signal.direction.value}:{close_time}"
+    return f"{signal.symbol}:{signal.direction.value}:{signal.entry_price}:{signal.stop_loss}"
+
+
+def _sqz_gate_cohort_shadow_variants(
+    signal: Signal,
+    config: StrategyConfig,
+) -> tuple[list[Signal], list[str], list[str]]:
+    """Return independent SQZ counterfactuals with exactly one relaxed gate."""
+    if (
+        not config.squeeze_gate_cohort_shadow_enabled
+        or _signal_strategy(signal) != "SQUEEZE_BREAKOUT"
+    ):
+        return [], [], []
+
+    metadata = signal.metadata or {}
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = _optional_decimal(order_flow.get("score")) or Decimal("0")
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    reasons = {str(reason) for reason in order_flow.get("reasons") or []}
+    safety_rejections = sorted(risk_flags.intersection(SQZ_COHORT_PERMANENT_SAFETY_FLAGS))
+
+    gate_failures: list[str] = []
+    if alignment == "against":
+        gate_failures.append("OF_AGAINST")
+    hostile_flags = risk_flags.intersection(SQZ_COHORT_TESTABLE_HOSTILE_FLAGS)
+    if hostile_flags and score < config.order_flow_hostile_score_floor:
+        gate_failures.append("OF_HOSTILE")
+    if "absorption_against" in risk_flags:
+        gate_failures.append("OF_ABSORPTION")
+    if alignment == "mixed" and score < config.order_flow_mixed_score_floor:
+        gate_failures.append("OF_WEAK_MIXED_SCORE")
+
+    relative_strength = _relative_strength_alignment(signal)
+    if relative_strength == "neutral":
+        gate_failures.append("RS_NEUTRAL")
+    elif relative_strength != "aligned":
+        gate_failures.append("RS_UNALIGNED")
+
+    retest_confirmed = bool(metadata.get("squeeze_retest_confirmed"))
+    if not retest_confirmed and not _is_strong_clean_squeeze_release(
+        signal,
+        alignment=alignment,
+        score=score,
+        risk_flags=risk_flags,
+    ):
+        gate_failures.append("SQZ_RETEST_OR_STRONG_RELEASE")
+    if "structure_break_aligned" not in reasons:
+        gate_failures.append("STRUCTURE_BREAK")
+
+    if safety_rejections:
+        return [], gate_failures, safety_rejections
+
+    strategy = None
+    relaxed_gate = None
+    if not gate_failures:
+        strategy = "SQZ_STRICT_CONTROL_SHADOW"
+        relaxed_gate = "NONE_STRICT_CONTROL"
+    elif len(gate_failures) == 1:
+        relaxed_gate = gate_failures[0]
+        strategy = SQZ_COHORT_RELAXED_GATE_TO_STRATEGY.get(relaxed_gate)
+
+    if strategy is None:
+        return [], gate_failures, safety_rejections
+
+    source_cluster_id = _sqz_source_cluster_id(signal)
+    measurement_shadow = {
+        "bucket": "sqz_gate_cohort_v1",
+        "strategy_bucket": strategy,
+        "source_strategy": "SQUEEZE_BREAKOUT",
+        "source_cluster_id": source_cluster_id,
+        "relaxed_gate": relaxed_gate,
+        "gate_vector": gate_failures,
+        "risk_cap_pct": str(config.squeeze_gate_cohort_shadow_risk_cap_pct),
+        "execution_constraints": [
+            "one_open_trade_per_symbol_bucket",
+            "no_reentry_or_loss_control_suppression",
+            "no_portfolio_capacity_competition",
+        ],
+    }
+    variant = replace(
+        signal,
+        metadata={
+            **dict(metadata),
+            "strategy": strategy,
+            "strategy_mode": "shadow",
+            "strategy_source": "SQUEEZE_BREAKOUT",
+            "exit_profile_strategy": "SQUEEZE_BREAKOUT",
+            "measurement_shadow": measurement_shadow,
+            "strategy_logic_version": "sqz_gate_cohort_v1",
+        },
+    )
+    return [variant], gate_failures, safety_rejections
+
+
+def _measurement_shadow_payload(signal: Signal) -> dict[str, Any]:
+    metadata = signal.metadata or {}
+    payload = metadata.get("measurement_shadow") if isinstance(metadata, dict) else None
+    return payload if isinstance(payload, dict) else {}
+
+
+def _measurement_shadow_source_seen(
+    trades: list[dict[str, Any]],
+    strategy: str,
+    source_cluster_id: str,
+) -> bool:
+    if not source_cluster_id:
+        return False
+    for trade in trades:
+        if _trade_strategy(trade) != strategy:
+            continue
+        metadata = _trade_metadata(trade)
+        signal_metadata = metadata.get("signal_metadata")
+        payload = signal_metadata.get("measurement_shadow") if isinstance(signal_metadata, dict) else None
+        if not isinstance(payload, dict):
+            payload = metadata.get("measurement_shadow")
+        if isinstance(payload, dict) and str(payload.get("source_cluster_id") or "") == source_cluster_id:
+            return True
+    return False
+
+
 def _shadow_execution_strategy(signal: Signal) -> str:
     metadata = signal.metadata or {}
-    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
-    if isinstance(payload, dict) and payload.get("strategy_bucket"):
-        return str(payload["strategy_bucket"])
+    if isinstance(metadata, dict):
+        for key in ("measurement_shadow", "controlled_shadow"):
+            payload = metadata.get(key)
+            if isinstance(payload, dict) and payload.get("strategy_bucket"):
+                return str(payload["strategy_bucket"])
     return _signal_strategy(signal)
 
 
 def _controlled_shadow_risk_cap(signal: Signal) -> Decimal | None:
     metadata = signal.metadata or {}
-    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
-    if not isinstance(payload, dict):
+    if not isinstance(metadata, dict):
         return None
-    return _optional_decimal(payload.get("risk_cap_pct"))
+    for key in ("measurement_shadow", "controlled_shadow"):
+        payload = metadata.get(key)
+        if isinstance(payload, dict):
+            risk_cap = _optional_decimal(payload.get("risk_cap_pct"))
+            if risk_cap is not None:
+                return risk_cap
+    return None
 
 
 def _cap_controlled_shadow_sizing(

@@ -516,8 +516,15 @@
   - Причина: архивная версия measurement-mode глобально пропускала все order-flow отказы, включая `against`, absorption, relative-strength, retest и structure-break. Такая выборка не измеряет edge, а смешивает безопасные и токсичные входы.
   - Готово: основной `SQUEEZE_BREAKOUT` остаётся строгим control. Отдельный `SQUEEZE_BREAKOUT_OF_MEASURE` может принять только сигнал, отвергнутый за weak `mixed` OF score `0.30..0.45`.
   - Готово: для bucket обязательны `relative_strength=aligned`, confirmed retest, `structure_break_aligned` и отсутствие любого OF risk flag. `against`, absorption/liquidation, поздний вход и все прочие gate-отказы не ослабляются.
-  - Готово: bucket имеет отдельную strategy row, metadata, cooldown/cluster history и risk cap `0.5%`. Старая статистика не удаляется; новая эпоха analytics начинается `2026-07-26T02:57:44+00:00`.
+  - Готово: bucket имеет отдельную strategy row, metadata, cooldown/cluster history и risk cap `0.5%`. Старая статистика не удаляется; P7-16 начинает новый analytics epoch после финального deploy `2026-07-26T03:11:47+00:00`.
   - Условие принятия: после `150` закрытых clusters сравнить control и bucket по post-cost Avg R, PF, DD, stop-rate и удержанию runner. Отключить bucket раньше при `20` clusters и Avg R <= `-0.20` либо DD хуже `-3R`.
+- `[x]` P7-16 Параллельные SQZ shadow-когорты для поиска ценности entry-gates.
+  - Причина: текущий weak-mixed paper bucket корректен, но его ожидаемая частота около `5-6` сделок/мес; одной такой когорты недостаточно, чтобы быстро понять влияние остальных OF/RS/retest gates.
+  - Готово: добавлены virtual-execution когорты `SQZ_STRICT_CONTROL_SHADOW`, `SQZ_OF_AGAINST_SHADOW`, `SQZ_OF_HOSTILE_SHADOW`, `SQZ_OF_ABSORPTION_SHADOW`, `SQZ_RS_NEUTRAL_SHADOW`, `SQZ_NO_RETEST_SHADOW`.
+  - Готово: каждая virtual сделка создаётся только если не прошёл ровно один соответствующий гейт; комбинированные отказы не смешиваются в выборке. `liquidation_cascade`, `adverse_liquidity_nearby` и `structure_break_against` остаются жёстким запретом даже для shadow.
+  - Готово: все ветки используют один и тот же exit profile строгого SQZ, получают детерминированный `source_cluster_id`, не конкурируют за paper-capacity и не блокируются cooldown/loss-control от собственных прошлых результатов. Для каждой SQZ-возможности пишется `SQZ_SHADOW_COHORT_EVALUATED` с вектором gate-решений.
+  - Готово: `/strategy-scorecard` получает отдельные policy rows `MEASUREMENT_SHADOW`; `scripts/edge_report.py` сравнивает каждую когорту со `SQZ_STRICT_CONTROL_SHADOW` в одинаковой виртуальной модели исполнения.
+  - Условие принятия: interim review на `50` закрытых virtual trades, human review на `100`; никакой automatic promotion в paper/live. Сначала сравнить expectancy, CI, payoff, DD и долю полных стопов с strict virtual control.
 
 ## Отложено до условия
 
@@ -549,6 +556,10 @@
   - Почему отложено: mainnet gate уже блокирует запуск без JSON-отчёта с OOS sample/PF/expectancy/CI, но текущий CLI walk-forward не создаёт этот совместимый артефакт и частично обходит production gates.
   - Вернуться к задаче, когда: появится подготовленный исторический датасет с реальными funding/OI/delta и можно построить непересекающиеся OOS окна через тот же entry pipeline, что в production.
   - Действие при выполнении условия: добавить генератор `data/walkforward_report.json`, отражающий фактические market/UTC/BTC/order-flow/self-learning gates; не снимать mainnet block по агрегированным overlapping windows.
+- `[ ]` D-07 Отдельная shadow-когорта `STRUCTURE_BREAK` для SQZ.
+  - Почему отложено: наблюдаемая частота structure-break отказов около `2.9` в месяц, поэтому такой arm будет накапливать evidence ещё медленнее weak-mixed bucket.
+  - Вернуться к задаче, когда: появится более широкая SQZ universe/частота либо другие P7-16 когорты покажут устойчивый положительный edge и дадут основание исследовать следующий gate.
+  - Действие при выполнении условия: добавить arm с ровно одним relaxed `STRUCTURE_BREAK`, сохранив permanent toxic-flow flags и строгий виртуальный control.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

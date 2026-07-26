@@ -972,6 +972,24 @@ def test_measurement_policy_collects_evidence_without_live_promotion() -> None:
     assert any("150 closed clusters" in reason for reason in policy["reasons"])
 
 
+def test_shadow_measurement_cohort_needs_human_review_before_any_paper_discussion() -> None:
+    row = {
+        "strategy": "SQZ_OF_AGAINST_SHADOW",
+        "strategy_mode": "shadow",
+        "gate": {"status": "WATCH"},
+        "shadow_gate": {"status": "TESTING", "promotion_candidate": False},
+        "shadow_paper": {"closed_trades": 50},
+        "post_p5_evidence": {"closed_trade_clusters": 0},
+    }
+
+    policy = apply_strategy_promotion_policy(row)
+
+    assert policy["tier"] == "MEASUREMENT_SHADOW"
+    assert policy["action"] == "SHADOW_COHORT_INTERIM_REVIEW"
+    assert policy["paper_review_allowed"] is False
+    assert policy["live_review_allowed"] is False
+
+
 def test_weekly_research_report_ranks_and_flags_actions() -> None:
     scorecard = {
         "generated_at": "2026-05-21T00:00:00+00:00",

@@ -151,6 +151,10 @@ class StrategyConfig:
     squeeze_order_flow_measurement_enabled: bool = False
     squeeze_order_flow_measurement_min_score: Decimal = Decimal("0.30")
     squeeze_order_flow_measurement_risk_cap_pct: Decimal = Decimal("0.005")
+    # Parallel counterfactual SQZ cohorts. They remain shadow-only and relax
+    # exactly one non-critical gate per virtual trade.
+    squeeze_gate_cohort_shadow_enabled: bool = False
+    squeeze_gate_cohort_shadow_risk_cap_pct: Decimal = Decimal("0.005")
     # Узкий paper-эксперимент: только SQZ с нейтральной relative strength
     # после остальных чистых подтверждений. Это не ослабляет hostile-flow,
     # retest или structure-break safety gates.
@@ -632,6 +636,33 @@ class AppConfig:
                 raise ConfigError(
                     "strategy.squeeze_order_flow_measurement_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
                 )
+        if self.strategy.squeeze_gate_cohort_shadow_enabled:
+            cohort_strategies = {
+                "SQZ_STRICT_CONTROL_SHADOW",
+                "SQZ_OF_AGAINST_SHADOW",
+                "SQZ_OF_HOSTILE_SHADOW",
+                "SQZ_OF_ABSORPTION_SHADOW",
+                "SQZ_RS_NEUTRAL_SHADOW",
+                "SQZ_NO_RETEST_SHADOW",
+            }
+            incorrectly_configured = sorted(
+                strategy
+                for strategy in cohort_strategies
+                if self.strategy.mode_for_strategy(strategy) != "shadow"
+            )
+            if incorrectly_configured:
+                raise ConfigError(
+                    "squeeze_gate_cohort_shadow_enabled requires shadow mode for: "
+                    + ", ".join(incorrectly_configured)
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.squeeze_gate_cohort_shadow_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.squeeze_gate_cohort_shadow_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
         if self.strategy.squeeze_controlled_paper_enabled:
             if not (Decimal("0") < self.strategy.squeeze_controlled_paper_risk_cap_pct <= self.risk.risk_per_trade_pct):
                 raise ConfigError(
@@ -1018,6 +1049,12 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ),
             squeeze_order_flow_measurement_risk_cap_pct=to_decimal(
                 raw["strategy"].get("squeeze_order_flow_measurement_risk_cap_pct", "0.005")
+            ),
+            squeeze_gate_cohort_shadow_enabled=bool(
+                raw["strategy"].get("squeeze_gate_cohort_shadow_enabled", False)
+            ),
+            squeeze_gate_cohort_shadow_risk_cap_pct=to_decimal(
+                raw["strategy"].get("squeeze_gate_cohort_shadow_risk_cap_pct", "0.005")
             ),
             squeeze_controlled_paper_enabled=bool(
                 raw["strategy"].get("squeeze_controlled_paper_enabled", False)

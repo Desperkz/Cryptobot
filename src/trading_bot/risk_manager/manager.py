@@ -224,7 +224,9 @@ class RiskManager:
         if stop_distance <= 0:
             return None
         metadata = signal.metadata or {}
-        strategy = str(metadata.get("strategy") or "").strip().upper()
+        strategy = str(
+            metadata.get("exit_profile_strategy") or metadata.get("strategy") or ""
+        ).strip().upper()
         config = self.exit_plan_builder.config
         minimum = config.strategy_min_first_target_net_reward_risk.get(
             strategy,

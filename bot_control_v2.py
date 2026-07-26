@@ -69,6 +69,14 @@ ALLOCATOR_WEIGHT_CAPS = {
     "PROMOTION_REVIEW": float(os.getenv("ALLOCATOR_PROMOTION_REVIEW_CAP_PCT", "10")),
     "WATCH_SHADOW": float(os.getenv("ALLOCATOR_SHADOW_WATCH_CAP_PCT", "5")),
 }
+SQZ_GATE_COHORT_SHADOW_STRATEGIES = {
+    "SQZ_STRICT_CONTROL_SHADOW",
+    "SQZ_OF_AGAINST_SHADOW",
+    "SQZ_OF_HOSTILE_SHADOW",
+    "SQZ_OF_ABSORPTION_SHADOW",
+    "SQZ_RS_NEUTRAL_SHADOW",
+    "SQZ_NO_RETEST_SHADOW",
+}
 STRATEGY_PROMOTION_POLICIES = {
     "SQUEEZE_BREAKOUT": {
         "tier": "CHAMPION",
@@ -807,6 +815,20 @@ def evaluate_shadow_gate(metrics: dict[str, Any], thresholds: dict[str, Any] | N
 def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
     strategy_key = str(strategy or "UNKNOWN").upper()
     policy = STRATEGY_PROMOTION_POLICIES.get(strategy_key)
+    if policy is None and strategy_key in SQZ_GATE_COHORT_SHADOW_STRATEGIES:
+        policy = {
+            "tier": "MEASUREMENT_SHADOW",
+            "allowed_modes": ["shadow"],
+            "paper_promotion": "HUMAN_REVIEW_AFTER_100_CLOSED_COHORT_TRADES",
+            "live_promotion": "BLOCKED_MEASUREMENT_COHORT",
+            "min_shadow_trades": 100,
+            "review_milestone_trades": 50,
+            "notes": [
+                "Counterfactual SQZ cohort: only one gate is relaxed for each virtual entry.",
+                "Compare with SQZ_STRICT_CONTROL_SHADOW in the same virtual execution model.",
+                "No automatic paper or live promotion is allowed.",
+            ],
+        }
     if policy is None:
         policy = {
             "tier": "UNKNOWN",
@@ -890,6 +912,25 @@ def apply_strategy_promotion_policy(row: dict[str, Any]) -> dict[str, Any]:
             action = "MEASUREMENT_REVIEW_REQUIRED"
             reasons.append(
                 "measurement cohort reached its review size; compare post-cost metrics with strict SQZ before any change"
+            )
+    elif tier == "MEASUREMENT_SHADOW":
+        milestone = int(policy.get("review_milestone_trades", 50))
+        required = int(policy.get("min_shadow_trades", 100))
+        if shadow_closed < milestone:
+            action = "COLLECT_SHADOW_COHORT_EVIDENCE"
+            reasons.append(
+                f"counterfactual shadow cohort needs {milestone} closed trades before its interim review"
+            )
+        elif shadow_closed < required:
+            action = "SHADOW_COHORT_INTERIM_REVIEW"
+            reasons.append(
+                f"cohort reached {milestone} trades; continue to {required} before any paper discussion"
+            )
+        else:
+            action = "SHADOW_COHORT_REVIEW_REQUIRED"
+            paper_review_allowed = True
+            reasons.append(
+                "cohort reached its review size; compare only against the strict virtual SQZ control"
             )
     elif tier == "SHADOW_REVIEW":
         if shadow_promotable:
@@ -3061,7 +3102,13 @@ def api_strategy_policy() -> dict:
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "auto_promotion_enabled": False,
-        "policies": STRATEGY_PROMOTION_POLICIES,
+        "policies": {
+            **STRATEGY_PROMOTION_POLICIES,
+            **{
+                strategy: strategy_promotion_policy(strategy)
+                for strategy in sorted(SQZ_GATE_COHORT_SHADOW_STRATEGIES)
+            },
+        },
     }
 
 
