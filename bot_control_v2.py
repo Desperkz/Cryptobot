@@ -3320,7 +3320,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not path.exists():
             self._send({"error": "database not found", "path": DB_PATH}, 404)
             return
-        self._send_bytes(path.read_bytes(), "application/octet-stream")
+        # The production SQLite file can be hundreds of megabytes. Loading it
+        # with read_bytes() killed the control API through OOM during /db
+        # downloads, so stream a bounded chunk at a time instead.
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+        self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+        self.send_header("Access-Control-Allow-Headers", "Authorization, X-Bot-Control-Token, Content-Type")
+        self.end_headers()
+        try:
+            with path.open("rb") as database_file:
+                while chunk := database_file.read(1024 * 1024):
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            return
 
     def _authorized(self) -> bool:
         if not CONTROL_TOKEN:
