@@ -44,14 +44,43 @@ def cfg() -> RiskConfig:
 
 
 def test_kelly_is_capped() -> None:
-    trades = [{"r_multiple": "2"} for _ in range(30)] + [{"r_multiple": "-1"} for _ in range(10)]
+    trades = [{"r_multiple": "2"} for _ in range(40)] + [{"r_multiple": "-1"} for _ in range(15)]
     risk = KellyRiskSizer(cfg()).risk_pct(trades)
 
     assert risk == Decimal("0.03")
 
 
 def test_kelly_reduces_to_min_when_edge_is_bad() -> None:
-    trades = [{"r_multiple": "-1"} for _ in range(20)] + [{"r_multiple": "0.5"} for _ in range(5)]
+    trades = [{"r_multiple": "-1"} for _ in range(45)] + [{"r_multiple": "0.5"} for _ in range(10)]
     risk = KellyRiskSizer(cfg()).risk_pct(trades)
 
     assert risk == Decimal("0.005")
+
+
+def test_kelly_ignores_samples_that_are_too_small() -> None:
+    """Below the minimum sample the estimator must fall back to base risk.
+
+    A Kelly fraction computed from ~10 trades has a standard error larger than
+    the estimate itself; acting on it turns position sizing into noise.
+    """
+    trades = [{"r_multiple": "2"} for _ in range(20)] + [{"r_multiple": "-1"} for _ in range(5)]
+    risk = KellyRiskSizer(cfg()).risk_pct(trades)
+
+    assert risk == Decimal("0.02")  # base risk_per_trade_pct, not a Kelly result
+
+
+def test_breakeven_trades_stay_in_the_sample() -> None:
+    """Regression: R == 0 outcomes were silently dropped, inflating winrate.
+
+    Twenty wins, twenty break-evens and twenty losses is a 33% winrate, not 50%.
+    Dropping the break-evens used to make Kelly size up on a losing system.
+    """
+    trades = (
+        [{"r_multiple": "1.0", "risk_amount": "10", "realized_pnl": "10"} for _ in range(20)]
+        + [{"r_multiple": "0", "risk_amount": "10", "realized_pnl": "0"} for _ in range(20)]
+        + [{"r_multiple": "-1.0", "risk_amount": "10", "realized_pnl": "-10"} for _ in range(20)]
+    )
+    with_breakeven = KellyRiskSizer(cfg()).risk_pct(trades)
+    without_breakeven = KellyRiskSizer(cfg()).risk_pct([t for t in trades if t["r_multiple"] != "0"])
+
+    assert with_breakeven < without_breakeven

@@ -5,8 +5,10 @@ from trading_bot.bot import (
     _cap_controlled_shadow_sizing,
     _controlled_shadow_sqz_dynamic_neutral_override,
     _cap_controlled_paper_sizing,
+    _controlled_paper_risk_cap,
     _controlled_paper_sqz_override,
     _order_flow_entry_rejection_reason,
+    _squeeze_order_flow_measurement_override,
     _shadow_candidate_context_rejection_reason,
     _shadow_execution_strategy,
     _trade_strategy,
@@ -16,7 +18,12 @@ from trading_bot.models import Direction, Signal, TradingStyle
 from trading_bot.risk_manager.dynamic_sizing import DynamicSizingDecision
 
 
-def _config(*, enabled: bool = True, neutral_shadow_enabled: bool = False) -> StrategyConfig:
+def _config(
+    *,
+    enabled: bool = True,
+    neutral_shadow_enabled: bool = False,
+    measurement_enabled: bool = False,
+) -> StrategyConfig:
     return StrategyConfig(
         ema_fast=20,
         ema_mid=50,
@@ -34,6 +41,11 @@ def _config(*, enabled: bool = True, neutral_shadow_enabled: bool = False) -> St
         squeeze_controlled_paper_enabled=enabled,
         squeeze_controlled_paper_min_order_flow_score=Decimal("0.65"),
         squeeze_controlled_paper_risk_cap_pct=Decimal("0.005"),
+        order_flow_entry_gate_mode="measure",
+        order_flow_mixed_score_floor=Decimal("0.45"),
+        squeeze_order_flow_measurement_enabled=measurement_enabled,
+        squeeze_order_flow_measurement_min_score=Decimal("0.30"),
+        squeeze_order_flow_measurement_risk_cap_pct=Decimal("0.005"),
         squeeze_dynamic_neutral_shadow_enabled=neutral_shadow_enabled,
         squeeze_dynamic_neutral_shadow_min_order_flow_score=Decimal("0.65"),
         squeeze_dynamic_neutral_shadow_risk_cap_pct=Decimal("0.0025"),
@@ -120,6 +132,88 @@ def test_controlled_paper_caps_risk_after_dynamic_sizing() -> None:
     assert capped.risk_pct == Decimal("0.005")
     assert capped.cap_risk_pct == Decimal("0.005")
     assert "controlled_paper_risk_cap=0.005" in capped.reasons
+
+
+def test_of_measurement_bucket_admits_only_clean_weak_mixed_sqz() -> None:
+    signal = _signal(relative_strength="aligned", score="0.35")
+    signal = replace(
+        signal,
+        metadata={
+            **signal.metadata,
+            "order_flow": {
+                **signal.metadata["order_flow"],
+                "alignment": "mixed",
+            },
+        },
+    )
+
+    admitted = _squeeze_order_flow_measurement_override(
+        signal,
+        _order_flow_entry_rejection_reason(signal, _config(measurement_enabled=True)),
+        _config(measurement_enabled=True),
+    )
+
+    assert admitted is not None
+    assert admitted.metadata["strategy"] == "SQUEEZE_BREAKOUT_OF_MEASURE"
+    assert admitted.metadata["strategy_source"] == "SQUEEZE_BREAKOUT"
+    assert admitted.metadata["measurement_paper"]["risk_cap_pct"] == "0.005"
+    assert _controlled_paper_risk_cap(admitted) == Decimal("0.005")
+
+
+def test_of_measurement_bucket_keeps_against_flow_and_dirty_retest_blocked() -> None:
+    against = _signal(relative_strength="aligned", score="0.35")
+    against = replace(
+        against,
+        metadata={
+            **against.metadata,
+            "order_flow": {
+                **against.metadata["order_flow"],
+                "alignment": "against",
+            },
+        },
+    )
+    assert _squeeze_order_flow_measurement_override(
+        against,
+        _order_flow_entry_rejection_reason(against, _config(measurement_enabled=True)),
+        _config(measurement_enabled=True),
+    ) is None
+
+    no_retest = _signal(relative_strength="aligned", score="0.35", retest=False)
+    no_retest = replace(
+        no_retest,
+        metadata={
+            **no_retest.metadata,
+            "order_flow": {
+                **no_retest.metadata["order_flow"],
+                "alignment": "mixed",
+            },
+        },
+    )
+    assert _squeeze_order_flow_measurement_override(
+        no_retest,
+        _order_flow_entry_rejection_reason(no_retest, _config(measurement_enabled=True)),
+        _config(measurement_enabled=True),
+    ) is None
+
+
+def test_of_measurement_bucket_keeps_relative_strength_and_risk_flags_blocked() -> None:
+    signal = _signal(relative_strength="neutral", score="0.35", flags=["adverse_liquidity_nearby"])
+    signal = replace(
+        signal,
+        metadata={
+            **signal.metadata,
+            "order_flow": {
+                **signal.metadata["order_flow"],
+                "alignment": "mixed",
+            },
+        },
+    )
+
+    assert _squeeze_order_flow_measurement_override(
+        signal,
+        _order_flow_entry_rejection_reason(signal, _config(measurement_enabled=True)),
+        _config(measurement_enabled=True),
+    ) is None
 
 
 def test_controlled_shadow_sqz_dyn_neutral_rs_is_separate_clean_retest_bucket() -> None:

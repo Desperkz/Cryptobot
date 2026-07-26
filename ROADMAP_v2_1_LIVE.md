@@ -512,6 +512,12 @@
   - Готово: добавлен отдельный shadow-бакет `SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS`; он допускает только `neutral` RS при confirmed retest, aligned order-flow >= `0.65`, отсутствии любых OF risk flags и `structure_break_aligned`.
   - Готово: риск ограничен `0.25%`; у бакета отдельные re-entry и loss-control серии, поэтому старая просадка base SQZ-DYN не маскирует новую гипотезу. Paper SQZ, base SQZ-DYN и diagnostics-only стратегии не ослабляются.
   - Условие принятия: после `30` закрытых bucket-кластеров сравнить post-cost Avg R, PF, DD и loss-rate с base SQZ-DYN. При `10` кластерах и Avg R <= `-0.20` либо DD хуже `-3R` выключить bucket.
+- `[x]` P7-15 Узкий paper-эксперимент слабого mixed order-flow для SQZ.
+  - Причина: архивная версия measurement-mode глобально пропускала все order-flow отказы, включая `against`, absorption, relative-strength, retest и structure-break. Такая выборка не измеряет edge, а смешивает безопасные и токсичные входы.
+  - Готово: основной `SQUEEZE_BREAKOUT` остаётся строгим control. Отдельный `SQUEEZE_BREAKOUT_OF_MEASURE` может принять только сигнал, отвергнутый за weak `mixed` OF score `0.30..0.45`.
+  - Готово: для bucket обязательны `relative_strength=aligned`, confirmed retest, `structure_break_aligned` и отсутствие любого OF risk flag. `against`, absorption/liquidation, поздний вход и все прочие gate-отказы не ослабляются.
+  - Готово: bucket имеет отдельную strategy row, metadata, cooldown/cluster history и risk cap `0.5%`. Старая статистика не удаляется; новая эпоха analytics начинается `2026-07-26T02:57:44+00:00`.
+  - Условие принятия: после `150` закрытых clusters сравнить control и bucket по post-cost Avg R, PF, DD, stop-rate и удержанию runner. Отключить bucket раньше при `20` clusters и Avg R <= `-0.20` либо DD хуже `-3R`.
 
 ## Отложено до условия
 
@@ -539,6 +545,10 @@
   - Почему отложено: цель 10%/мес должна достигаться edge/frequency, а не увеличением риска на малой выборке.
   - Вернуться к задаче, когда: будет 60+ закрытых post-P5 clusters с PF > 1.40, Avg R > +0.20, max drawdown лучше -10% и без деградации SQZ.
   - Действие при выполнении условия: рассмотреть максимум 2.5% как отдельный controlled experiment.
+- `[ ]` D-06 Реальный non-overlapping walk-forward evidence artifact для mainnet.
+  - Почему отложено: mainnet gate уже блокирует запуск без JSON-отчёта с OOS sample/PF/expectancy/CI, но текущий CLI walk-forward не создаёт этот совместимый артефакт и частично обходит production gates.
+  - Вернуться к задаче, когда: появится подготовленный исторический датасет с реальными funding/OI/delta и можно построить непересекающиеся OOS окна через тот же entry pipeline, что в production.
+  - Действие при выполнении условия: добавить генератор `data/walkforward_report.json`, отражающий фактические market/UTC/BTC/order-flow/self-learning gates; не снимать mainnet block по агрегированным overlapping windows.
 
 ## Evidence, необходимый перед MAINNET_LIVE
 

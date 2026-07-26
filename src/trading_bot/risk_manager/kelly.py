@@ -24,8 +24,15 @@ class KellyRiskSizer:
             return base
 
         recent = trades[: self.config.kelly_lookback_trades]
-        r_values = [_r_multiple(trade) for trade in recent if _r_multiple(trade) != 0]
-        if len(r_values) < 10:
+        # ФИКС: раньше сделки с r_multiple == 0 (безубыток, выход по BE после TP1)
+        # выбрасывались из выборки. Это смещало winrate вверх и завышало Kelly:
+        # безубыток — это не «отсутствие сделки», а исход с нулевым R.
+        r_values = [_r_multiple(trade) for trade in recent]
+        r_values = [r for r in r_values if r is not None]
+        # ФИКС: минимум 10 сделок статистически бессмысленен. При sigma ~1.1R
+        # стандартная ошибка на 10 наблюдениях составляет ~0.35R, то есть оценка
+        # Kelly имеет дисперсию больше самой оценки и превращает сайзинг в шум.
+        if len(r_values) < self.config.kelly_min_sample_trades:
             return _clip(base, self.config.kelly_min_risk_pct, self.config.kelly_max_risk_pct)
 
         wins = [r for r in r_values if r > 0]
@@ -47,13 +54,20 @@ class KellyRiskSizer:
         return _clip(fractional, self.config.kelly_min_risk_pct, self.config.kelly_max_risk_pct)
 
 
-def _r_multiple(trade: dict[str, Any]) -> Decimal:
+def _r_multiple(trade: dict[str, Any]) -> Decimal | None:
+    """Return the realized R multiple, or None when it cannot be established.
+
+    A genuine break-even trade (R == 0) is a valid observation and must stay in
+    the sample. Only trades where R is unknowable are dropped.
+    """
     value = trade.get("r_multiple")
-    if value not in (None, "", "0", 0):
+    if value not in (None, ""):
         return to_decimal(value)
-    pnl = to_decimal(trade.get("realized_pnl", "0") or "0")
     risk = to_decimal(trade.get("risk_amount", "0") or "0")
-    return pnl / risk if risk > 0 else Decimal("0")
+    if risk <= 0:
+        return None
+    pnl = to_decimal(trade.get("realized_pnl", "0") or "0")
+    return pnl / risk
 
 
 def _clip(value: Decimal, lower: Decimal, upper: Decimal) -> Decimal:

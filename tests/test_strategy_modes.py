@@ -103,6 +103,7 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     assert cfg.strategy.execution_strategies(TradingMode.PAPER_TRADING) == [
         "MEAN_REVERSION",
         "SQUEEZE_BREAKOUT",
+        "SQUEEZE_BREAKOUT_OF_MEASURE",
     ]
     assert cfg.strategy.execution_strategies(TradingMode.MAINNET_LIVE) == []
     assert cfg.strategy.shadow_strategies() == [

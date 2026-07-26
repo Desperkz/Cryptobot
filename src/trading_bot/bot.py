@@ -425,7 +425,9 @@ class TradingBot:
             await self._record_order_flow_annotation(signal, annotation)
             signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
             await self._record_relative_strength_annotation(signal, relative_strength)
-            order_flow_rejection = _order_flow_entry_rejection_reason(signal)
+            order_flow_rejection = _order_flow_entry_rejection_reason(
+                signal, self.config.strategy
+            )
             controlled_paper_signal = _controlled_paper_sqz_override(
                 signal,
                 order_flow_rejection,
@@ -439,9 +441,21 @@ class TradingBot:
                     signal.symbol,
                     signal.direction.value,
                 )
+            measured_paper_signal = _squeeze_order_flow_measurement_override(
+                signal,
+                order_flow_rejection,
+                self.config.strategy,
+            )
+            if measured_paper_signal is not None:
+                signal = measured_paper_signal
+                order_flow_rejection = None
+                logger.info(
+                    "SQZ OF measurement admission: %s %s (weak mixed flow, capped risk)",
+                    signal.symbol,
+                    signal.direction.value,
+                )
             if order_flow_rejection:
                 filter_type, reason = order_flow_rejection
-                logger.info("Order-flow gate rejected %s: %s", signal.symbol, reason)
                 try:
                     await self.db.insert_filter_rejection(
                         symbol=signal.symbol,
@@ -453,6 +467,7 @@ class TradingBot:
                     )
                 except Exception:
                     pass
+                logger.info("Order-flow gate rejected %s: %s", signal.symbol, reason)
                 await self._record_ml_feature_snapshot(signal, "REJECTED_ORDER_FLOW_GATE", reason)
                 continue
             mr_context_rejection = _mean_reversion_context_rejection_reason(
@@ -1713,6 +1728,7 @@ MR_ORDER_FLOW_SEVERE_FLAGS = {
 
 STRATEGY_LOGIC_VERSIONS = {
     "SQUEEZE_BREAKOUT": "sqz_structure_break_gate_v1",
+    "SQUEEZE_BREAKOUT_OF_MEASURE": "sqz_of_measure_weak_mixed_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC": "sqz_dyn_of_retest_v2",
     "SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS": "sqz_dyn_neutral_rs_shadow_v1",
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "sqz_dyn_upd_confirmed_release_v2",
@@ -1837,12 +1853,74 @@ def _controlled_paper_sqz_override(
     return replace(signal, metadata=metadata)
 
 
+def _squeeze_order_flow_measurement_override(
+    signal: Signal,
+    rejection: tuple[str, str] | None,
+    config: StrategyConfig,
+) -> Signal | None:
+    """Create a separate paper bucket for one measurable weak-mixed OF case.
+
+    This is deliberately not a global gate bypass.  The control SQZ remains
+    strict, and the experimental bucket may relax only a low mixed OF score
+    after every independent breakout confirmation has passed.
+    """
+    if (
+        not config.squeeze_order_flow_measurement_enabled
+        or config.order_flow_entry_gate_mode != "measure"
+        or _signal_strategy(signal) != "SQUEEZE_BREAKOUT"
+        or rejection is None
+        or rejection[0] != "ORDER_FLOW"
+    ):
+        return None
+
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = _optional_decimal(order_flow.get("score")) or Decimal("0")
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    reasons = {str(reason) for reason in order_flow.get("reasons") or []}
+    retest_confirmed = bool((signal.metadata or {}).get("squeeze_retest_confirmed"))
+
+    # The only relaxed condition is the score of a mixed, otherwise clean flow.
+    # "against", any risk flag, no RS, no retest and no structure break stay
+    # hard-blocked even while this bucket is enabled.
+    if alignment != "mixed" or risk_flags:
+        return None
+    if not (config.squeeze_order_flow_measurement_min_score <= score < config.order_flow_mixed_score_floor):
+        return None
+    if _relative_strength_alignment(signal) != "aligned":
+        return None
+    if "structure_break_aligned" not in reasons or not retest_confirmed:
+        return None
+
+    metadata = {
+        **dict(signal.metadata or {}),
+        "strategy": "SQUEEZE_BREAKOUT_OF_MEASURE",
+        "strategy_mode": "paper",
+        "strategy_source": "SQUEEZE_BREAKOUT",
+        "measurement_paper": {
+            "bucket": "sqz_of_measure_weak_mixed_v1",
+            "source_strategy": "SQUEEZE_BREAKOUT",
+            "relaxed_gate": "ORDER_FLOW_WEAK_MIXED_SCORE",
+            "order_flow_alignment": alignment,
+            "order_flow_score": str(score),
+            "risk_cap_pct": str(config.squeeze_order_flow_measurement_risk_cap_pct),
+        },
+        "strategy_logic_version": "sqz_of_measure_weak_mixed_v1",
+    }
+    return replace(signal, metadata=metadata)
+
+
 def _controlled_paper_risk_cap(signal: Signal) -> Decimal | None:
     metadata = signal.metadata or {}
-    payload = metadata.get("controlled_paper") if isinstance(metadata, dict) else None
-    if not isinstance(payload, dict):
+    if not isinstance(metadata, dict):
         return None
-    return _optional_decimal(payload.get("risk_cap_pct"))
+    for key in ("controlled_paper", "measurement_paper"):
+        payload = metadata.get(key)
+        if isinstance(payload, dict):
+            risk_cap = _optional_decimal(payload.get("risk_cap_pct"))
+            if risk_cap is not None:
+                return risk_cap
+    return None
 
 
 def _cap_controlled_paper_sizing(
@@ -2189,7 +2267,10 @@ def _shadow_candidate_context_rejection_reason(
     return None
 
 
-def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None:
+def _order_flow_entry_rejection_reason(
+    signal: Signal,
+    strategy_config: "StrategyConfig | None" = None,
+) -> tuple[str, str] | None:
     strategy = _signal_strategy(signal)
     order_flow = _order_flow_metadata(signal)
     if not order_flow:
@@ -2198,6 +2279,13 @@ def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None
     alignment = str(order_flow.get("alignment") or "mixed")
     score = Decimal(str(order_flow.get("score") or "0"))
     risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+
+    hostile_floor = (
+        strategy_config.order_flow_hostile_score_floor if strategy_config is not None else Decimal("0.70")
+    )
+    mixed_floor = (
+        strategy_config.order_flow_mixed_score_floor if strategy_config is not None else Decimal("0.45")
+    )
 
     if strategy in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
         reasons = {str(reason) for reason in order_flow.get("reasons") or []}
@@ -2211,12 +2299,12 @@ def _order_flow_entry_rejection_reason(signal: Signal) -> tuple[str, str] | None
         }
         if alignment == "against":
             return "ORDER_FLOW", f"{strategy} blocked: order-flow is against breakout."
-        if risk_flags.intersection(hard_flags) and score < Decimal("0.70"):
+        if risk_flags.intersection(hard_flags) and score < hostile_floor:
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return "ORDER_FLOW", f"{strategy} blocked: hostile breakout flow ({flags}), score {score:.2f}."
         if "absorption_against" in risk_flags:
             return "ORDER_FLOW", f"{strategy} blocked: absorption against breakout, score {score:.2f}."
-        if alignment == "mixed" and score < Decimal("0.45"):
+        if alignment == "mixed" and score < mixed_floor:
             return "ORDER_FLOW", f"{strategy} blocked: weak mixed order-flow score {score:.2f}."
         rs_alignment = _relative_strength_alignment(signal)
         if rs_alignment != "aligned":

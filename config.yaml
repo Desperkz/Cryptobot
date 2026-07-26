@@ -15,6 +15,13 @@ safety:
   required_mainnet_confirmation: "I_UNDERSTAND_MAINNET_RISK"
   production_unlock_file: "data/production_unlock.json"
   require_backtest_approval_for_mainnet: true
+  # ФИКС: mainnet больше не открывается по голому флагу в JSON.
+  require_walkforward_report_for_mainnet: true
+  walkforward_report_path: "data/walkforward_report.json"
+  walkforward_max_report_age_days: 45
+  min_walkforward_out_of_sample_trades: 150
+  min_walkforward_profit_factor: 1.20
+  min_walkforward_expectancy_r: 0.10
   require_paper_approval_for_mainnet: true
   max_mainnet_risk_per_trade_pct: 0.0025
   max_mainnet_concurrent_positions: 1
@@ -91,6 +98,7 @@ strategy:
   enabled_strategies: ["MEAN_REVERSION", "SQUEEZE_BREAKOUT"]  # SQZ/MR execute; retuned candidates are shadow-only
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
+    SQUEEZE_BREAKOUT_OF_MEASURE: paper
     SQUEEZE_BREAKOUT_DYNAMIC: shadow
     SQUEEZE_BREAKOUT_DYNAMIC_NEUTRAL_RS: shadow
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: shadow
@@ -105,6 +113,17 @@ strategy:
   # Shadow records candidates that strict order-flow would reject, tagged in metadata.
   # Paper keeps its order-flow gate unchanged.
   shadow_order_flow_hard_gate: false
+  # Измерение OF не ослабляет champion-SQZ. Только отдельный paper bucket
+  # принимает слабый mixed-flow и лишь после сохранённых retest, структуры и RS.
+  # Через 150+ сделок сравни bucket с контрольным SQZ в scripts/edge_report.py.
+  order_flow_entry_gate_mode: "measure"
+  order_flow_hostile_score_floor: 0.70
+  order_flow_mixed_score_floor: 0.45
+  # Measurement bucket отклоняет все risk_flags, этот список оставлен для аудита.
+  order_flow_always_hard_flags: ["liquidation_cascade"]
+  squeeze_order_flow_measurement_enabled: true
+  squeeze_order_flow_measurement_min_score: 0.30
+  squeeze_order_flow_measurement_risk_cap_pct: 0.005
   # P7-12: controlled paper-frequency experiment. Only a clean SQZ with
   # neutral (not unknown/against) relative strength may pass this one gate;
   # hostile OF, no-retest/weak release and missing structure-break stay blocked.
@@ -197,7 +216,7 @@ market_filters:
   high_confidence_squeeze_session_override: true
   high_confidence_squeeze_min_confidence: 0.80
   high_confidence_squeeze_allowed_hours: [0, 1, 2]
-  use_self_learning_filters: true
+  use_self_learning_filters: false  # выключено на время замороженного окна измерения
   # Контртрендовый фильтр (фикс июль-2026): шорты дали -57 USD при лонгах +54
   # в shadow — бот системно шортил растущий рынок. Зеркально block_longs_when_btc_weak.
   counter_trend_filter_enabled: true
@@ -209,11 +228,11 @@ market_filters:
   symbol_4h_max_drop_pct_for_long: -0.03       # символ -3% за 2 суток -> лонг против тренда запрещён
 
 risk:
-  risk_per_trade_pct: 0.02
+  risk_per_trade_pct: 0.005   # фиксированный риск на время измерения
   aggressive_risk_threshold_pct: 0.05
   max_concurrent_positions: 4
   max_leverage: 5
-  default_leverage: 3
+  default_leverage: 2
   max_daily_loss_pct: 0.06
   cooldown_after_losses: 2
   cooldown_minutes: 120
@@ -237,22 +256,28 @@ risk:
   funding_impact_holding_hours: 8
   liquidation_buffer_pct: 0.03
   require_liquidation_check_in_live: true
-  adaptive_kelly_enabled: true
+  # ФИКС: два независимых адаптивных слоя (Kelly + dynamic_sizing) гоняли
+  # фактический риск от 0.3% до 2.0% — разброс 6.7x. При этом R-мультипликаторы
+  # и долларовый PnL переставали быть связаны. На время набора статистики
+  # сайзинг заморожен: фиксированный риск, фиксированное плечо.
+  adaptive_kelly_enabled: false
   kelly_lookback_trades: 50
+  kelly_min_sample_trades: 50   # было хардкодом 10 — статистический мусор
   kelly_fraction: 0.50
   kelly_min_risk_pct: 0.005
   kelly_max_risk_pct: 0.03
-  dynamic_sizing_enabled: true
+  dynamic_sizing_enabled: false   # заморожено до набора 150 сделок
   dynamic_sizing_min_risk_pct: 0.003
   dynamic_sizing_max_risk_pct: 0.025
   dynamic_sizing_shadow_max_risk_pct: 0.020
   dynamic_sizing_high_confidence: 0.82
   dynamic_sizing_elite_confidence: 0.90
-  dynamic_leverage_enabled: true
+  dynamic_leverage_enabled: false # заморожено до набора 150 сделок
   dynamic_leverage_min: 1
   dynamic_leverage_max: 5
   dynamic_strategy_risk_multipliers:
     SQUEEZE_BREAKOUT: 1.00          # champion: can reduce weak entries, but cannot over-risk current paper line
+    SQUEEZE_BREAKOUT_OF_MEASURE: 1.00 # separate A/B bucket; explicit cap remains 0.5%
     SQUEEZE_BREAKOUT_DYNAMIC: 0.65  # challenger: research sizing until clean OF/retest edge is proven
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.65 # challenger copy with near-liquidity/no-retest and cluster guards
     MEAN_REVERSION: 0.65
@@ -265,6 +290,7 @@ risk:
     TREND_FOLLOWING: 0.60
   dynamic_strategy_max_risk_pct:
     SQUEEZE_BREAKOUT: 0.020
+    SQUEEZE_BREAKOUT_OF_MEASURE: 0.005
     SQUEEZE_BREAKOUT_DYNAMIC: 0.012
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.012
     MEAN_REVERSION: 0.014
@@ -309,6 +335,21 @@ trade_management:
     # 4 сделки «частичный тейк -> стоп» закрылись в среднем -0.54R; с BE после
     # TP1 такой исход становится ~+0.23R. TP2 до 1.6R доходил редко.
     SQUEEZE_BREAKOUT:
+      - name: "TP1"
+        reward_risk: 1.0
+        fraction: 0.25
+        move_stop_to_breakeven: true
+      - name: "TP2"
+        reward_risk: 1.6
+        fraction: 0.35
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 2.2
+        fraction: 0.40
+        activate_trailing: true
+    # Keep exits identical to the strict SQZ control.  The experiment changes
+    # only the weak-mixed OF admission rule.
+    SQUEEZE_BREAKOUT_OF_MEASURE:
       - name: "TP1"
         reward_risk: 1.0
         fraction: 0.25
@@ -400,6 +441,7 @@ trade_management:
   min_first_target_net_reward_risk: 0.20
   strategy_min_first_target_net_reward_risk:
     SQUEEZE_BREAKOUT: 0.55
+    SQUEEZE_BREAKOUT_OF_MEASURE: 0.55
     SQUEEZE_BREAKOUT_DYNAMIC: 0.60
     SQUEEZE_BREAKOUT_DYNAMIC_UPD: 0.60
 
@@ -434,16 +476,20 @@ analytics:
   min_trades_for_adaptation: 30
   min_expectancy_r: 0.05
   min_winrate: 0.42
-  disable_symbol_after_bad_trades: 20
-  segment_min_trades: 12
+  # ФИКС: при sigma ~1.1R стандартная ошибка на 12 сделках равна 0.32R —
+  # порог -0.10R лежал глубоко внутри шума, и бот блокировал сегменты за
+  # невезение (43 отказа по «ATR bucket 0.8-1.2%» на такой основе).
+  # Новые пороги: сегмент должен быть плохим статистически, а не случайно.
+  disable_symbol_after_bad_trades: 80
+  segment_min_trades: 60
   rsi_bucket_size: 4
   atr_bucket_size_pct: 0.4
-  bad_segment_expectancy_r: -0.10
-  # Эпоха статистики (фикс июль-2026): self-learning выводит правила только из
+  bad_segment_expectancy_r: -0.35
+  # Эпоха статистики (measurement SQZ, 26 июля 2026): self-learning выводит правила только из
   # сделок, закрытых после этой даты. Ставь дату деплоя изменений логики,
   # иначе блокировки символов/часов выводятся из сделок СТАРОЙ конфигурации.
   # null = использовать всю историю (старое поведение).
-  stats_epoch: "2026-07-08T06:16:58+00:00"
+  stats_epoch: "2026-07-26T02:57:44+00:00"
 
 database:
   url: "sqlite+aiosqlite:///data/trading_bot.sqlite3"

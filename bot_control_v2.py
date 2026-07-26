@@ -81,6 +81,18 @@ STRATEGY_PROMOTION_POLICIES = {
             "Do not replace the current SQZ line with challenger variants without separate evidence.",
         ],
     },
+    "SQUEEZE_BREAKOUT_OF_MEASURE": {
+        "tier": "MEASUREMENT",
+        "allowed_modes": ["paper"],
+        "paper_promotion": "ACTIVE_COHORT_COMPARISON_150_CLOSED_TRADES",
+        "live_promotion": "BLOCKED_MEASUREMENT_BUCKET",
+        "min_post_p5_clusters": 150,
+        "notes": [
+            "Separate weak-mixed order-flow SQZ bucket; strict SQZ remains the control.",
+            "Only retest, structure-break and relative-strength-confirmed entries are admitted.",
+            "Do not merge or promote this evidence until the 150-trade cohort review.",
+        ],
+    },
     "SQUEEZE_BREAKOUT_DYNAMIC": {
         "tier": "CHALLENGER",
         "allowed_modes": ["shadow"],

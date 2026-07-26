@@ -46,6 +46,16 @@ class SafetyConfig:
     required_mainnet_confirmation: str = "I_UNDERSTAND_MAINNET_RISK"
     production_unlock_file: str = "data/production_unlock.json"
     require_backtest_approval_for_mainnet: bool = True
+    # ФИКС: раньше mainnet открывался по голому флагу backtest_approved: true
+    # в JSON, а CLI-команда `backtest` гоняла naive EMA-смоук-тест, который не
+    # имеет отношения к торгуемым стратегиям. Теперь требуется артефакт
+    # walk-forward отчёта по РЕАЛЬНО включённым стратегиям.
+    require_walkforward_report_for_mainnet: bool = True
+    walkforward_report_path: str = "data/walkforward_report.json"
+    walkforward_max_report_age_days: int = 45
+    min_walkforward_out_of_sample_trades: int = 150
+    min_walkforward_profit_factor: Decimal = Decimal("1.20")
+    min_walkforward_expectancy_r: Decimal = Decimal("0.10")
     require_paper_approval_for_mainnet: bool = True
     max_mainnet_risk_per_trade_pct: Decimal = Decimal("0.02")
     max_mainnet_concurrent_positions: int = 1
@@ -129,6 +139,18 @@ class StrategyConfig:
     enabled_strategies: list[str] = field(default_factory=lambda: ["TREND_FOLLOWING"])
     strategy_modes: dict[str, str] = field(default_factory=dict)
     shadow_order_flow_hard_gate: bool = False
+    # Режим OF-измерения. В "measure" только отдельный SQZ bucket может
+    # обойти слабый mixed-flow; retest, структура, relative strength и hostile
+    # flow всегда остаются жёсткими. Глобального bypass здесь нет.
+    order_flow_entry_gate_mode: str = "strict"
+    order_flow_hostile_score_floor: Decimal = Decimal("0.70")
+    order_flow_mixed_score_floor: Decimal = Decimal("0.45")
+    # Совместимый конфигурационный список для аудита. Новый measurement bucket
+    # не принимает сигнал ни с одним risk flag.
+    order_flow_always_hard_flags: list[str] = field(default_factory=lambda: ["liquidation_cascade"])
+    squeeze_order_flow_measurement_enabled: bool = False
+    squeeze_order_flow_measurement_min_score: Decimal = Decimal("0.30")
+    squeeze_order_flow_measurement_risk_cap_pct: Decimal = Decimal("0.005")
     # Узкий paper-эксперимент: только SQZ с нейтральной relative strength
     # после остальных чистых подтверждений. Это не ослабляет hostile-flow,
     # retest или structure-break safety gates.
@@ -297,6 +319,7 @@ class RiskConfig:
     max_funding_impact_bps: Decimal = Decimal("8.0")
     funding_impact_holding_hours: Decimal = Decimal("8")
     adaptive_kelly_enabled: bool = True
+    kelly_min_sample_trades: int = 50
     kelly_lookback_trades: int = 50
     kelly_fraction: Decimal = Decimal("0.5")
     kelly_min_risk_pct: Decimal = Decimal("0.005")
@@ -576,6 +599,39 @@ class AppConfig:
             raise ConfigError("default_leverage cannot exceed max_leverage.")
         if self.risk.max_concurrent_positions < 1:
             raise ConfigError("max_concurrent_positions must be >= 1.")
+        if self.strategy.order_flow_entry_gate_mode not in {"strict", "measure"}:
+            raise ConfigError(
+                "strategy.order_flow_entry_gate_mode must be strict or measure; global OF bypass is disabled."
+            )
+        if not (Decimal("0") < self.strategy.order_flow_hostile_score_floor <= Decimal("1")):
+            raise ConfigError("strategy.order_flow_hostile_score_floor must be within (0, 1].")
+        if not (Decimal("0") < self.strategy.order_flow_mixed_score_floor <= Decimal("1")):
+            raise ConfigError("strategy.order_flow_mixed_score_floor must be within (0, 1].")
+        if self.strategy.squeeze_order_flow_measurement_enabled:
+            if self.strategy.order_flow_entry_gate_mode != "measure":
+                raise ConfigError(
+                    "squeeze_order_flow_measurement_enabled requires order_flow_entry_gate_mode=measure."
+                )
+            if self.strategy.mode_for_strategy("SQUEEZE_BREAKOUT_OF_MEASURE") != "paper":
+                raise ConfigError(
+                    "SQUEEZE_BREAKOUT_OF_MEASURE must be configured as paper while measurement is enabled."
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.squeeze_order_flow_measurement_min_score
+                < self.strategy.order_flow_mixed_score_floor
+            ):
+                raise ConfigError(
+                    "strategy.squeeze_order_flow_measurement_min_score must be positive and below order_flow_mixed_score_floor."
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.squeeze_order_flow_measurement_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.squeeze_order_flow_measurement_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
         if self.strategy.squeeze_controlled_paper_enabled:
             if not (Decimal("0") < self.strategy.squeeze_controlled_paper_risk_cap_pct <= self.risk.risk_per_trade_pct):
                 raise ConfigError(
@@ -682,10 +738,97 @@ class AppConfig:
             raise ConfigError("MAINNET_LIVE blocked: production unlock confirmation mismatch.")
         if self.safety.require_backtest_approval_for_mainnet and not payload.get("backtest_approved"):
             raise ConfigError("MAINNET_LIVE blocked: backtest approval is missing.")
+        if self.safety.require_walkforward_report_for_mainnet:
+            self._validate_walkforward_report()
         if self.safety.require_paper_approval_for_mainnet and not payload.get("paper_trading_approved"):
             raise ConfigError("MAINNET_LIVE blocked: paper-trading approval is missing.")
         if not payload.get("human_approved_by"):
             raise ConfigError("MAINNET_LIVE blocked: human_approved_by is required in production unlock.")
+
+    def _validate_walkforward_report(self) -> None:
+        """Require walk-forward evidence for the strategies that will actually trade.
+
+        The previous gate accepted a bare ``backtest_approved: true`` flag, while
+        the only automated backtest in the CLI was a naive EMA smoke test that
+        never touches SQUEEZE_BREAKOUT or MEAN_REVERSION. A safety gate that can
+        be satisfied without evidence about the deployed strategies is decoration,
+        not safety.
+        """
+        import json
+        from datetime import datetime, timedelta, timezone
+
+        path = Path(self.safety.walkforward_report_path)
+        if not path.exists():
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: missing walk-forward report {path}. "
+                "Generate it with the approved non-overlapping production-pipeline walk-forward workflow first."
+            )
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"MAINNET_LIVE blocked: invalid walk-forward report JSON: {exc}.") from exc
+
+        generated_at = report.get("generated_at")
+        if not generated_at:
+            raise ConfigError("MAINNET_LIVE blocked: walk-forward report has no generated_at timestamp.")
+        try:
+            stamp = datetime.fromisoformat(str(generated_at))
+        except ValueError as exc:
+            raise ConfigError(f"MAINNET_LIVE blocked: unparsable walk-forward generated_at: {exc}.") from exc
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - stamp
+        if age > timedelta(days=self.safety.walkforward_max_report_age_days):
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: walk-forward report is {age.days} days old "
+                f"(limit {self.safety.walkforward_max_report_age_days})."
+            )
+
+        covered = {str(name).upper() for name in report.get("strategies") or []}
+        # Only strategies that can actually open a mainnet position must be proven.
+        required = {
+            str(name).upper()
+            for name in self.strategy.enabled_strategies
+            if str(name).upper() in {str(item).upper() for item in self.safety.mainnet_allowed_strategies}
+        }
+        missing = required - covered
+        if missing:
+            raise ConfigError(
+                "MAINNET_LIVE blocked: walk-forward report does not cover live strategies: "
+                + ", ".join(sorted(missing))
+            )
+
+        oos = report.get("out_of_sample") or {}
+        trades = int(oos.get("trades") or 0)
+        if trades < self.safety.min_walkforward_out_of_sample_trades:
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: only {trades} out-of-sample walk-forward trades "
+                f"(need {self.safety.min_walkforward_out_of_sample_trades})."
+            )
+        profit_factor = to_decimal(oos.get("profit_factor") or "0")
+        if profit_factor < self.safety.min_walkforward_profit_factor:
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: out-of-sample profit factor {profit_factor} "
+                f"< {self.safety.min_walkforward_profit_factor}."
+            )
+        expectancy = to_decimal(oos.get("expectancy_r") or "0")
+        if expectancy < self.safety.min_walkforward_expectancy_r:
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: out-of-sample expectancy {expectancy}R "
+                f"< {self.safety.min_walkforward_expectancy_r}R."
+            )
+        # An edge that is not statistically separable from zero is not an edge.
+        ci_low = _decimal_or_none(oos.get("expectancy_r_ci_low"))
+        if ci_low is None:
+            raise ConfigError(
+                "MAINNET_LIVE blocked: walk-forward report must include expectancy_r_ci_low "
+                "(lower bound of the 95% confidence interval)."
+            )
+        if ci_low <= 0:
+            raise ConfigError(
+                f"MAINNET_LIVE blocked: 95% CI lower bound for expectancy is {ci_low}R. "
+                "The measured edge is not distinguishable from zero."
+            )
 
     def _validate_ml_live_readiness(self) -> None:
         import json
@@ -770,8 +913,13 @@ def _dec_map(data: dict[str, Any]) -> dict[str, Decimal]:
 
 def _safety_config(raw: dict[str, Any]) -> SafetyConfig:
     data = dict(raw)
-    if "max_mainnet_risk_per_trade_pct" in data:
-        data["max_mainnet_risk_per_trade_pct"] = to_decimal(data["max_mainnet_risk_per_trade_pct"])
+    for key in (
+        "max_mainnet_risk_per_trade_pct",
+        "min_walkforward_profit_factor",
+        "min_walkforward_expectancy_r",
+    ):
+        if key in data:
+            data[key] = to_decimal(data[key])
     return SafetyConfig(**data)
 
 
@@ -850,6 +998,27 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 for name, mode in raw["strategy"].get("strategy_modes", {}).items()
             },
             shadow_order_flow_hard_gate=bool(raw["strategy"].get("shadow_order_flow_hard_gate", False)),
+            order_flow_entry_gate_mode=str(
+                raw["strategy"].get("order_flow_entry_gate_mode", "strict")
+            ).strip().lower(),
+            order_flow_hostile_score_floor=to_decimal(
+                raw["strategy"].get("order_flow_hostile_score_floor", "0.70")
+            ),
+            order_flow_mixed_score_floor=to_decimal(
+                raw["strategy"].get("order_flow_mixed_score_floor", "0.45")
+            ),
+            order_flow_always_hard_flags=[
+                str(flag) for flag in raw["strategy"].get("order_flow_always_hard_flags", ["liquidation_cascade"])
+            ],
+            squeeze_order_flow_measurement_enabled=bool(
+                raw["strategy"].get("squeeze_order_flow_measurement_enabled", False)
+            ),
+            squeeze_order_flow_measurement_min_score=to_decimal(
+                raw["strategy"].get("squeeze_order_flow_measurement_min_score", "0.30")
+            ),
+            squeeze_order_flow_measurement_risk_cap_pct=to_decimal(
+                raw["strategy"].get("squeeze_order_flow_measurement_risk_cap_pct", "0.005")
+            ),
             squeeze_controlled_paper_enabled=bool(
                 raw["strategy"].get("squeeze_controlled_paper_enabled", False)
             ),
@@ -1091,6 +1260,7 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             require_liquidation_check_in_live=bool(raw["risk"]["require_liquidation_check_in_live"]),
             adaptive_kelly_enabled=bool(raw["risk"].get("adaptive_kelly_enabled", True)),
             kelly_lookback_trades=int(raw["risk"].get("kelly_lookback_trades", 50)),
+            kelly_min_sample_trades=int(raw["risk"].get("kelly_min_sample_trades", 50)),
             kelly_fraction=to_decimal(raw["risk"].get("kelly_fraction", "0.5")),
             kelly_min_risk_pct=to_decimal(raw["risk"].get("kelly_min_risk_pct", "0.005")),
             kelly_max_risk_pct=to_decimal(raw["risk"].get("kelly_max_risk_pct", "0.03")),
