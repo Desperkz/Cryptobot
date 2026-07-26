@@ -140,7 +140,7 @@ def main() -> None:
 
     trades = _load_trades(args.db, args.epoch)
     shadow_trades = _load_shadow_trades(args.db, args.epoch)
-    if not trades:
+    if not trades and not shadow_trades:
         print("No closed trades found for the requested window.")
         return
 
@@ -226,14 +226,17 @@ def main() -> None:
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return
 
-    print(f"=== EDGE REPORT ({overall['trades']} closed trades) ===")
-    print(f"  E[R]            : {overall['expectancy_r']:+.3f}")
-    print(f"  95% CI          : [{overall['ci95_low']:+.3f}, {overall['ci95_high']:+.3f}]")
-    print(f"  Winrate/payoff  : {overall['winrate']:.1%} / {overall['payoff']}")
-    verdict = "PROVEN (CI excludes zero)" if overall["edge_proven"] else "NOT PROVEN (CI includes zero)"
-    print(f"  Verdict         : {verdict}")
-    if overall["required_n_to_prove"]:
-        print(f"  Trades needed   : {overall['required_n_to_prove']} (have {overall['trades']})")
+    print(f"=== EDGE REPORT ({overall['trades']} closed paper trades) ===")
+    if overall["trades"]:
+        print(f"  E[R]            : {overall['expectancy_r']:+.3f}")
+        print(f"  95% CI          : [{overall['ci95_low']:+.3f}, {overall['ci95_high']:+.3f}]")
+        print(f"  Winrate/payoff  : {overall['winrate']:.1%} / {overall['payoff']}")
+        verdict = "PROVEN (CI excludes zero)" if overall["edge_proven"] else "NOT PROVEN (CI includes zero)"
+        print(f"  Verdict         : {verdict}")
+        if overall["required_n_to_prove"]:
+            print(f"  Trades needed   : {overall['required_n_to_prove']} (have {overall['trades']})")
+    else:
+        print("  No closed paper trades in this window; shadow cohorts are reported below.")
     print()
     print("=== SQZ CONTROL VS MEASUREMENT COHORT ===")
     for block in sqz_cohorts:
