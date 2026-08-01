@@ -996,6 +996,13 @@ def build_strategy_scorecard(
     shadow_trades = shadow_trades or []
     diagnostics = diagnostics or []
     strategy_modes = {str(k).upper(): str(v).lower() for k, v in (strategy_modes or {}).items()}
+    # Revalidation buckets are created by the bot only for virtual research.
+    # They are not part of config.strategy_modes, but the dashboard must never
+    # render them as a disabled/executable strategy.
+    for trade in shadow_trades:
+        strategy = str(_row_get(trade, "strategy", "") or "").upper()
+        if strategy.endswith("_REVALIDATION"):
+            strategy_modes.setdefault(strategy, "shadow")
     buckets: dict[str, dict[str, Any]] = {}
 
     def bucket(strategy: str) -> dict[str, Any]:

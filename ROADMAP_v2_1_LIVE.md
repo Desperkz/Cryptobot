@@ -533,6 +533,13 @@
   - Готово: отправленные milestones хранятся в `operational_state`, поэтому restart не вызывает повторный спам. При пропуске нескольких порогов отправляется только самый высокий, а ранние фиксируются как уже наблюденные.
   - Ограничение: отчет только информирует. Он не меняет gates, allocation, risk, режим стратегии или promotion status. Убыточный paper bucket на 20 сделках получает `STOP_REVIEW` для человеческого решения, не auto-disable.
 
+- `[x]` P7-18 Shadow revalidation: устранить петлю «старый минус блокирует новую выборку».
+  - Причина: `MOMENTUM_CONTINUATION`, `RANGE_GRID`, `SQUEEZE_BREAKOUT_DYNAMIC_UPD`, `TREND_PULLBACK` и `VWAP_REVERSION_WATCH` продолжали выдавать shadow-сигналы, но были hard-coded в diagnostic-only по предыдущему 30d-срезу. Поэтому новая рыночная фаза не могла ни подтвердить, ни опровергнуть старую оценку.
+  - Готово: добавлен изолированный cohort `2026-08-01` с отдельными bucket-именами `MOM_REVALIDATION`, `GRID_REVALIDATION`, `SQZ_DYN_UPD_REVALIDATION`, `TPB_REVALIDATION`, `VWR_W_REVALIDATION`.
+  - Готово: риск виртуальной сделки ограничен `0.25%`; re-entry cooldown, strategy-specific structural/context gates и все paper/live filters сохранены. Новый cohort не может открыть paper/live позицию и не участвует в автоматическом promotion.
+  - Готово: historical loss-control не переносится в новый cohort, иначе две старые убыточные сделки снова останавливали бы fresh sample до получения доказательств.
+  - Условие принятия: на 20 закрытых virtual clusters по каждому bucket сравнить post-cost Avg R, PF, DD, payoff и stop-rate с исходной стратегией. При 10 clusters и Avg R <= `-0.20` либо DD хуже `-3R` оставить bucket research-only и не расширять его.
+
 ## Отложено до условия
 
 - `[ ]` D-01 Перевести `TREND_PULLBACK` из shadow в paper-trial.

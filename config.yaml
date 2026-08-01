@@ -145,6 +145,18 @@ strategy:
   squeeze_dynamic_neutral_shadow_enabled: true
   squeeze_dynamic_neutral_shadow_min_order_flow_score: 0.65
   squeeze_dynamic_neutral_shadow_risk_cap_pct: 0.0025
+  # Historical negative expectancy must not freeze research forever. These
+  # strategies reopen only in isolated virtual cohorts; paper/live admission,
+  # structural safety gates and cooldowns stay unchanged.
+  shadow_revalidation_enabled: true
+  shadow_revalidation_cohort: "2026-08-01"
+  shadow_revalidation_risk_cap_pct: 0.0025
+  shadow_revalidation_strategies:
+    - TREND_PULLBACK
+    - MOMENTUM_CONTINUATION
+    - RANGE_GRID
+    - SQUEEZE_BREAKOUT_DYNAMIC_UPD
+    - VWAP_REVERSION_WATCH
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

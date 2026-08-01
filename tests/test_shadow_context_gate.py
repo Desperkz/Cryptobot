@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 
 from trading_bot.bot import (
     _annotate_shadow_order_flow_gate,
+    _controlled_shadow_revalidation_override,
     _shadow_candidate_context_rejection_reason,
+    _shadow_execution_strategy,
+    _is_shadow_revalidation_signal,
     _shadow_paper_diagnostic_only_reason,
     _shadow_strategy_loss_control_reason,
     _sqz_dynamic_upd_series_rejection_reason,
@@ -683,6 +687,26 @@ def test_negative_expectancy_shadow_strategies_are_diagnostic_only() -> None:
 
     assert reason is not None
     assert "diagnostics only" in reason
+
+
+def test_configured_shadow_revalidation_isolated_from_historical_bucket() -> None:
+    config = SimpleNamespace(
+        shadow_revalidation_enabled=True,
+        shadow_revalidation_cohort="2026-08-01",
+        shadow_revalidation_risk_cap_pct=Decimal("0.0025"),
+        shadow_revalidation_strategies=["RANGE_GRID"],
+    )
+
+    revalidation_signal = _controlled_shadow_revalidation_override(
+        signal("RANGE_GRID", order_flow(alignment="aligned", score="0.86")),
+        config,
+    )
+
+    assert revalidation_signal.metadata["strategy"] == "RANGE_GRID"
+    assert _is_shadow_revalidation_signal(revalidation_signal) is True
+    assert _shadow_execution_strategy(revalidation_signal) == "GRID_REVALIDATION"
+    assert _shadow_paper_diagnostic_only_reason(revalidation_signal, config) is None
+    assert revalidation_signal.metadata["controlled_shadow"]["risk_cap_pct"] == "0.0025"
 
 
 def test_edge_candidate_shadow_strategies_can_open_shadow_paper() -> None:

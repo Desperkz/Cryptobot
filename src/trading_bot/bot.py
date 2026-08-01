@@ -823,6 +823,10 @@ class TradingBot:
 
     async def _record_shadow_signal(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
         shadow_signal = self._annotate_signal_mode(signal, "shadow", shadow_only=True)
+        shadow_signal = _controlled_shadow_revalidation_override(
+            shadow_signal,
+            self.config.strategy,
+        )
         shadow_signal = _controlled_shadow_sqz_dynamic_neutral_override(
             shadow_signal,
             self.config.strategy,
@@ -859,7 +863,10 @@ class TradingBot:
             "SHADOW_SIGNAL",
             "candidate strategy shadow-only; no order attempted",
         )
-        diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(shadow_signal)
+        diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(
+            shadow_signal,
+            self.config.strategy,
+        )
         if diagnostic_only_reason:
             logger.info(
                 "Shadow paper diagnostic-only for %s %s: %s",
@@ -998,23 +1005,24 @@ class TradingBot:
                         series_reason,
                     )
                     return
-                loss_control_reason = _shadow_strategy_loss_control_reason(
-                    signal=policy_signal,
-                    trades=shadow_history,
-                    window_hours=168,
-                    min_closed_trades=2,
-                    max_total_r=Decimal("-1.50"),
-                    max_loss_count=2,
-                    loss_count_max_total_r=Decimal("-1.00"),
-                )
-                if loss_control_reason:
-                    logger.info("Shadow paper %s %s loss-control blocked: %s", strategy, signal.symbol, loss_control_reason)
-                    await self._record_ml_feature_snapshot(
-                        signal,
-                        "SHADOW_PAPER_REJECTED_LOSS_CONTROL",
-                        loss_control_reason,
+                if not _is_shadow_revalidation_signal(signal):
+                    loss_control_reason = _shadow_strategy_loss_control_reason(
+                        signal=policy_signal,
+                        trades=shadow_history,
+                        window_hours=168,
+                        min_closed_trades=2,
+                        max_total_r=Decimal("-1.50"),
+                        max_loss_count=2,
+                        loss_count_max_total_r=Decimal("-1.00"),
                     )
-                    return
+                    if loss_control_reason:
+                        logger.info("Shadow paper %s %s loss-control blocked: %s", strategy, signal.symbol, loss_control_reason)
+                        await self._record_ml_feature_snapshot(
+                            signal,
+                            "SHADOW_PAPER_REJECTED_LOSS_CONTROL",
+                            loss_control_reason,
+                        )
+                        return
         except Exception:
             logger.exception("Failed to check shadow paper re-entry policy for %s %s", strategy, signal.symbol)
             return
@@ -1827,16 +1835,73 @@ SHADOW_PAPER_DIAGNOSTIC_ONLY_STRATEGIES = {
 }
 
 
+SHADOW_REVALIDATION_BUCKETS = {
+    "MOMENTUM_CONTINUATION": "MOM_REVALIDATION",
+    "RANGE_GRID": "GRID_REVALIDATION",
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_DYN_UPD_REVALIDATION",
+    "TREND_PULLBACK": "TPB_REVALIDATION",
+    "VWAP_REVERSION_WATCH": "VWR_W_REVALIDATION",
+}
+
+
 def _strategy_logic_version(strategy: str) -> str | None:
     return STRATEGY_LOGIC_VERSIONS.get(str(strategy or "").upper())
 
 
-def _shadow_paper_diagnostic_only_reason(signal: Signal) -> str | None:
+def _shadow_paper_diagnostic_only_reason(
+    signal: Signal,
+    config: StrategyConfig | None = None,
+) -> str | None:
     strategy = _signal_strategy(signal)
+    revalidation = set(config.shadow_revalidation_strategies) if config else set()
+    if config and config.shadow_revalidation_enabled and strategy in revalidation:
+        return None
     reason = SHADOW_PAPER_DIAGNOSTIC_ONLY_STRATEGIES.get(strategy)
     if not reason:
         return None
     return f"{strategy} shadow-paper disabled: {reason}."
+
+
+def _controlled_shadow_revalidation_override(signal: Signal, config: StrategyConfig) -> Signal:
+    """Route a configured diagnostic candidate into an isolated virtual cohort.
+
+    The source strategy remains intact for its own safety/context checks. Only
+    the stored shadow-trade bucket changes, so this cannot admit a paper order
+    or mix a fresh cohort with the historical candidate sample.
+    """
+    strategy = _signal_strategy(signal)
+    if (
+        not config.shadow_revalidation_enabled
+        or strategy not in set(config.shadow_revalidation_strategies)
+        or strategy not in SHADOW_PAPER_DIAGNOSTIC_ONLY_STRATEGIES
+    ):
+        return signal
+    metadata = signal.metadata or {}
+    existing = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
+    if isinstance(existing, dict) and existing.get("revalidation"):
+        return signal
+    bucket = SHADOW_REVALIDATION_BUCKETS.get(strategy, f"{strategy}_REVALIDATION")
+    source_version = _strategy_logic_version(strategy) or "unknown"
+    return replace(
+        signal,
+        metadata={
+            **dict(metadata),
+            "strategy_logic_version": f"{source_version}:revalidation:{config.shadow_revalidation_cohort}",
+            "controlled_shadow": {
+                "strategy_bucket": bucket,
+                "risk_cap_pct": str(config.shadow_revalidation_risk_cap_pct),
+                "revalidation": True,
+                "cohort": config.shadow_revalidation_cohort,
+                "source_strategy": strategy,
+            },
+        },
+    )
+
+
+def _is_shadow_revalidation_signal(signal: Signal) -> bool:
+    metadata = signal.metadata or {}
+    payload = metadata.get("controlled_shadow") if isinstance(metadata, dict) else None
+    return isinstance(payload, dict) and bool(payload.get("revalidation"))
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:

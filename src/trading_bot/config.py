@@ -164,6 +164,12 @@ class StrategyConfig:
     squeeze_dynamic_neutral_shadow_enabled: bool = False
     squeeze_dynamic_neutral_shadow_min_order_flow_score: Decimal = Decimal("0.65")
     squeeze_dynamic_neutral_shadow_risk_cap_pct: Decimal = Decimal("0.0025")
+    # A fresh, isolated virtual cohort for candidates that were historically
+    # diagnostic-only. It cannot change paper/live admission or promotion.
+    shadow_revalidation_enabled: bool = False
+    shadow_revalidation_cohort: str = ""
+    shadow_revalidation_risk_cap_pct: Decimal = Decimal("0.0025")
+    shadow_revalidation_strategies: list[str] = field(default_factory=list)
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -691,6 +697,33 @@ class AppConfig:
                 raise ConfigError(
                     "strategy.squeeze_dynamic_neutral_shadow_min_order_flow_score must be within (0, 1]."
                 )
+        if self.strategy.shadow_revalidation_enabled:
+            if not self.strategy.shadow_revalidation_cohort:
+                raise ConfigError(
+                    "strategy.shadow_revalidation_cohort is required while shadow revalidation is enabled."
+                )
+            if not self.strategy.shadow_revalidation_strategies:
+                raise ConfigError(
+                    "strategy.shadow_revalidation_strategies must contain at least one shadow strategy."
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.shadow_revalidation_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.shadow_revalidation_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
+            non_shadow = sorted(
+                strategy
+                for strategy in self.strategy.shadow_revalidation_strategies
+                if self.strategy.mode_for_strategy(strategy) != "shadow"
+            )
+            if non_shadow:
+                raise ConfigError(
+                    "strategy.shadow_revalidation_strategies must be configured as shadow: "
+                    + ", ".join(non_shadow)
+                )
         if (
             self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
             and self.risk.risk_per_trade_pct > Decimal("0.02")
@@ -1076,6 +1109,16 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             squeeze_dynamic_neutral_shadow_risk_cap_pct=to_decimal(
                 raw["strategy"].get("squeeze_dynamic_neutral_shadow_risk_cap_pct", "0.0025")
             ),
+            shadow_revalidation_enabled=bool(raw["strategy"].get("shadow_revalidation_enabled", False)),
+            shadow_revalidation_cohort=str(raw["strategy"].get("shadow_revalidation_cohort", "")).strip(),
+            shadow_revalidation_risk_cap_pct=to_decimal(
+                raw["strategy"].get("shadow_revalidation_risk_cap_pct", "0.0025")
+            ),
+            shadow_revalidation_strategies=[
+                _strategy_name(name)
+                for name in raw["strategy"].get("shadow_revalidation_strategies", [])
+                if _strategy_name(name)
+            ],
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),
             mean_reversion_rsi_overbought=to_decimal(raw["strategy"].get("mean_reversion_rsi_overbought", "72")),
