@@ -863,6 +863,8 @@ class TradingBot:
             "SHADOW_SIGNAL",
             "candidate strategy shadow-only; no order attempted",
         )
+        if not _measurement_shadow_payload(shadow_signal):
+            await self._record_shadow_gate_counterfactuals(shadow_signal, filters)
         diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(
             shadow_signal,
             self.config.strategy,
@@ -906,6 +908,47 @@ class TradingBot:
                 strict_context_rejection,
             )
         await self._open_shadow_paper_trade(shadow_signal, filters)
+
+    async def _record_shadow_gate_counterfactuals(
+        self,
+        signal: Signal,
+        filters: SymbolFilters | None = None,
+    ) -> None:
+        """Persist one-gate virtual counterfactuals without changing source admission."""
+        variants, strict_reason, evaluated_gates = _shadow_gate_counterfactual_variants(
+            signal,
+            self.config.strategy,
+            enforce_order_flow=self.config.strategy.shadow_order_flow_hard_gate,
+        )
+        if not evaluated_gates:
+            return
+        summary = {
+            "source_strategy": _signal_strategy(signal),
+            "source_cluster_id": _shadow_gate_source_cluster_id(signal),
+            "strict_rejection_reason": strict_reason,
+            "evaluated_gates": evaluated_gates,
+            "admitted_cohorts": [_shadow_execution_strategy(item) for item in variants],
+        }
+        await self._record_ml_feature_snapshot(
+            signal,
+            "SHADOW_GATE_COUNTERFACTUAL_EVALUATED",
+            json.dumps(summary, ensure_ascii=False, sort_keys=True),
+        )
+        if not variants:
+            return
+
+        try:
+            shadow_history = await self.db.recent_shadow_trades(limit=1_000)
+        except Exception:
+            logger.exception("Failed to load shadow history for gate counterfactuals")
+            return
+        for variant in variants:
+            payload = _measurement_shadow_payload(variant)
+            strategy = _shadow_execution_strategy(variant)
+            source_cluster_id = str(payload.get("source_cluster_id") or "")
+            if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+                continue
+            await self._record_shadow_signal(variant, filters)
 
     async def _record_sqz_gate_cohort_shadows(
         self,
@@ -1904,6 +1947,165 @@ def _is_shadow_revalidation_signal(signal: Signal) -> bool:
     return isinstance(payload, dict) and bool(payload.get("revalidation"))
 
 
+SHADOW_GATE_COUNTERFACTUAL_SOURCE_PREFIX = {
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_DYN_UPD",
+    "TREND_PULLBACK": "TPB",
+    "MOMENTUM_CONTINUATION": "MOM",
+}
+SHADOW_GATE_COUNTERFACTUAL_SOURCE_GATES = {
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": {
+        "RS_NEUTRAL",
+        "RS_AGAINST",
+        "MISSING_OI",
+        "NO_RETEST",
+        "NEAR_LIQUIDITY",
+    },
+    "TREND_PULLBACK": {"RS_NEUTRAL", "RS_AGAINST", "NEAR_LIQUIDITY"},
+    "MOMENTUM_CONTINUATION": {"RS_NEUTRAL", "RS_AGAINST", "NEAR_LIQUIDITY"},
+}
+
+
+def _shadow_gate_source_cluster_id(signal: Signal) -> str:
+    metadata = signal.metadata or {}
+    source = _signal_strategy(signal)
+    close_time = metadata.get("signal_bar_close_time")
+    if close_time not in (None, ""):
+        return f"{source}:{signal.symbol}:{signal.direction.value}:{close_time}"
+    return f"{source}:{signal.symbol}:{signal.direction.value}:{signal.entry_price}:{signal.stop_loss}"
+
+
+def _shadow_gate_counterfactual_applies(signal: Signal, gate: str) -> bool:
+    source = _signal_strategy(signal)
+    gate = str(gate or "").upper()
+    if gate not in SHADOW_GATE_COUNTERFACTUAL_SOURCE_GATES.get(source, set()):
+        return False
+    if gate == "RS_NEUTRAL":
+        return _relative_strength_alignment(signal) == "neutral"
+    if gate == "RS_AGAINST":
+        return _relative_strength_alignment(signal) == "against"
+
+    metadata = signal.metadata or {}
+    order_flow = _order_flow_metadata(signal)
+    if gate == "MISSING_OI":
+        oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
+        if oi_change is None:
+            oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
+        return oi_change is None
+    if gate == "NO_RETEST":
+        return not bool(metadata.get("squeeze_retest_confirmed"))
+    if gate == "NEAR_LIQUIDITY":
+        target_distance = _target_liquidity_distance_bps(signal, order_flow)
+        if target_distance is None:
+            return False
+        if source == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+            return not bool(metadata.get("squeeze_retest_confirmed")) and target_distance < Decimal("20")
+        return target_distance < Decimal("12")
+    return False
+
+
+def _shadow_gate_is_relaxed(signal: Signal, relaxed_gate: str | None, gate: str) -> bool:
+    return bool(
+        relaxed_gate
+        and str(relaxed_gate).upper() == gate
+        and _shadow_gate_counterfactual_applies(signal, gate)
+    )
+
+
+def _shadow_relative_strength_gate_is_relaxed(
+    signal: Signal,
+    relaxed_gate: str | None,
+) -> bool:
+    alignment = _relative_strength_alignment(signal)
+    gate = "RS_NEUTRAL" if alignment == "neutral" else "RS_AGAINST" if alignment == "against" else ""
+    return bool(gate and _shadow_gate_is_relaxed(signal, relaxed_gate, gate))
+
+
+def _shadow_gate_counterfactual_variants(
+    signal: Signal,
+    config: StrategyConfig,
+    *,
+    enforce_order_flow: bool,
+) -> tuple[list[Signal], str | None, list[str]]:
+    """Build virtual entries where exactly one configured context gate is relaxed."""
+    source = _signal_strategy(signal)
+    if (
+        not config.shadow_gate_counterfactual_enabled
+        or source not in SHADOW_GATE_COUNTERFACTUAL_SOURCE_GATES
+    ):
+        return [], None, []
+
+    enabled_gates = {
+        str(gate).strip().upper()
+        for gate in config.shadow_gate_counterfactual_gates
+        if str(gate).strip()
+    }
+    evaluated_gates = [
+        gate
+        for gate in sorted(enabled_gates)
+        if _shadow_gate_counterfactual_applies(signal, gate)
+    ]
+    if not evaluated_gates:
+        return [], None, []
+
+    strict_reason = _shadow_candidate_context_rejection_reason(
+        signal,
+        enforce_order_flow=enforce_order_flow,
+    )
+    if strict_reason is None:
+        return [], None, []
+
+    source_cluster_id = _shadow_gate_source_cluster_id(signal)
+    source_prefix = SHADOW_GATE_COUNTERFACTUAL_SOURCE_PREFIX[source]
+    source_version = _strategy_logic_version(source) or "unknown"
+    variants: list[Signal] = []
+    for gate in evaluated_gates:
+        remaining_rejection = _shadow_candidate_context_rejection_reason(
+            signal,
+            enforce_order_flow=enforce_order_flow,
+            relaxed_gate=gate,
+        )
+        if remaining_rejection is not None:
+            continue
+        strategy_bucket = f"{source_prefix}_{gate}_SHADOW"
+        metadata = dict(signal.metadata or {})
+        metadata.pop("controlled_shadow", None)
+        measurement_shadow = {
+            "bucket": "shadow_gate_counterfactual_v1",
+            "strategy_bucket": strategy_bucket,
+            "source_strategy": source,
+            "source_cluster_id": source_cluster_id,
+            "relaxed_gate": gate,
+            "strict_rejection_reason": strict_reason,
+            "gate_vector": [gate],
+            "cohort": config.shadow_gate_counterfactual_cohort,
+            "risk_cap_pct": str(config.shadow_gate_counterfactual_risk_cap_pct),
+            "execution_constraints": [
+                "exactly_one_context_gate_relaxed",
+                "virtual_shadow_only",
+                "source_exit_profile_preserved",
+                "source_cluster_deduplicated",
+            ],
+        }
+        variants.append(
+            replace(
+                signal,
+                metadata={
+                    **metadata,
+                    "strategy": strategy_bucket,
+                    "strategy_mode": "shadow",
+                    "strategy_source": source,
+                    "exit_profile_strategy": source,
+                    "measurement_shadow": measurement_shadow,
+                    "strategy_logic_version": (
+                        f"{source_version}:gate_counterfactual:"
+                        f"{config.shadow_gate_counterfactual_cohort}:{gate}"
+                    ),
+                },
+            )
+        )
+    return variants, strict_reason, evaluated_gates
+
+
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
     metadata = signal.metadata or {}
     payload = metadata.get("order_flow") if isinstance(metadata, dict) else None
@@ -2353,6 +2555,7 @@ def _shadow_candidate_context_rejection_reason(
     signal: Signal,
     *,
     enforce_order_flow: bool = True,
+    relaxed_gate: str | None = None,
 ) -> str | None:
     strategy = _signal_strategy(signal)
     if strategy not in {
@@ -2395,24 +2598,35 @@ def _shadow_candidate_context_rejection_reason(
             if "absorption_against" in risk_flags:
                 return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
         rs_alignment = _relative_strength_alignment(signal)
-        if rs_alignment != "aligned" and not _is_controlled_shadow_sqz_dynamic_neutral(signal):
+        if (
+            rs_alignment != "aligned"
+            and not _is_controlled_shadow_sqz_dynamic_neutral(signal)
+            and not _shadow_relative_strength_gate_is_relaxed(signal, relaxed_gate)
+        ):
             return (
                 "SQZ-DYN shadow blocked: relative-strength confirmation is "
                 f"{rs_alignment or 'missing'}."
             )
         if strategy == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
             target_distance = _target_liquidity_distance_bps(signal, order_flow)
-            if not retest_confirmed and target_distance is not None and target_distance < Decimal("20"):
+            if (
+                not _shadow_gate_is_relaxed(signal, relaxed_gate, "NEAR_LIQUIDITY")
+                and not retest_confirmed
+                and target_distance is not None
+                and target_distance < Decimal("20")
+            ):
                 return f"SQZ-DYN-UPD shadow blocked: target liquidity is too close without retest ({target_distance:.1f} bps)."
             oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
             if oi_change is None:
                 oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
-            if oi_change is None:
+            if oi_change is None and not _shadow_gate_is_relaxed(signal, relaxed_gate, "MISSING_OI"):
                 return "SQZ-DYN-UPD shadow blocked: missing open-interest confirmation."
         if not retest_confirmed:
-            if not enforce_order_flow:
+            if _shadow_gate_is_relaxed(signal, relaxed_gate, "NO_RETEST"):
+                pass
+            elif not enforce_order_flow:
                 return "SQZ-DYN shadow blocked: retest is required for the baseline sample."
-            if not _is_strong_clean_squeeze_release(
+            elif not _is_strong_clean_squeeze_release(
                 signal,
                 alignment=alignment,
                 score=score,
@@ -2456,7 +2670,7 @@ def _shadow_candidate_context_rejection_reason(
         if isinstance(relative_strength, dict):
             rs_alignment = str(relative_strength.get("alignment") or "")
             rs_score = _optional_decimal(relative_strength.get("score"))
-        if rs_alignment != "aligned":
+        if rs_alignment != "aligned" and not _shadow_relative_strength_gate_is_relaxed(signal, relaxed_gate):
             if signal.direction == Direction.SHORT:
                 return f"TPB shadow blocked: short needs relative-weakness confirmation, got {rs_alignment or 'missing'}."
             return f"TPB shadow blocked: long needs relative-strength confirmation, got {rs_alignment or 'missing'}."
@@ -2471,7 +2685,11 @@ def _shadow_candidate_context_rejection_reason(
         if volume_ratio is not None and volume_ratio < Decimal("1.20"):
             return f"TPB shadow blocked: volume ratio {volume_ratio:.2f} is below profitable bucket minimum."
         target_distance = _target_liquidity_distance_bps(signal, order_flow)
-        if target_distance is not None and target_distance < Decimal("12"):
+        if (
+            not _shadow_gate_is_relaxed(signal, relaxed_gate, "NEAR_LIQUIDITY")
+            and target_distance is not None
+            and target_distance < Decimal("12")
+        ):
             return f"TPB shadow blocked: target liquidity is already too close ({target_distance:.1f} bps)."
     elif strategy == "MOMENTUM_CONTINUATION":
         hard_flags = {
@@ -2493,12 +2711,16 @@ def _shadow_candidate_context_rejection_reason(
                 return f"MOM shadow blocked: order-flow score {score:.2f} below 0.78."
         rs_alignment = _relative_strength_alignment(signal)
         rs_score = _relative_strength_score(signal)
-        if rs_alignment != "aligned":
+        if rs_alignment != "aligned" and not _shadow_relative_strength_gate_is_relaxed(signal, relaxed_gate):
             return f"MOM shadow blocked: continuation needs relative-strength confirmation, got {rs_alignment or 'missing'}."
         if rs_score is None or rs_score < Decimal("0.62"):
             return f"MOM shadow blocked: relative-strength score {rs_score or Decimal('0'):.2f} below 0.62."
         target_distance = _target_liquidity_distance_bps(signal, order_flow)
-        if target_distance is not None and target_distance < Decimal("12"):
+        if (
+            not _shadow_gate_is_relaxed(signal, relaxed_gate, "NEAR_LIQUIDITY")
+            and target_distance is not None
+            and target_distance < Decimal("12")
+        ):
             return f"MOM shadow blocked: target liquidity is already too close ({target_distance:.1f} bps)."
         breakout_extension = _optional_decimal(metadata.get("breakout_extension_atr"))
         if breakout_extension is not None and breakout_extension < Decimal("0.15"):

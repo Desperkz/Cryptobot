@@ -990,6 +990,25 @@ def test_shadow_measurement_cohort_needs_human_review_before_any_paper_discussio
     assert policy["live_review_allowed"] is False
 
 
+def test_generic_gate_counterfactual_is_shadow_measurement_only() -> None:
+    row = {
+        "strategy": "TPB_RS_NEUTRAL_SHADOW",
+        "strategy_mode": "shadow",
+        "gate": {"status": "WATCH"},
+        "shadow_gate": {"status": "TESTING", "promotion_candidate": False},
+        "shadow_paper": {"closed_trades": 19},
+        "post_p5_evidence": {"closed_trade_clusters": 0},
+    }
+
+    policy = apply_strategy_promotion_policy(row)
+
+    assert policy["tier"] == "MEASUREMENT_SHADOW"
+    assert policy["action"] == "COLLECT_SHADOW_COHORT_EVIDENCE"
+    assert policy["paper_review_allowed"] is False
+    assert policy["live_review_allowed"] is False
+    assert policy["review_milestone_trades"] == 20
+
+
 def test_weekly_research_report_ranks_and_flags_actions() -> None:
     scorecard = {
         "generated_at": "2026-05-21T00:00:00+00:00",

@@ -77,6 +77,14 @@ SQZ_GATE_COHORT_SHADOW_STRATEGIES = {
     "SQZ_RS_NEUTRAL_SHADOW",
     "SQZ_NO_RETEST_SHADOW",
 }
+
+SHADOW_GATE_COUNTERFACTUAL_SUFFIXES = (
+    "_RS_NEUTRAL_SHADOW",
+    "_RS_AGAINST_SHADOW",
+    "_MISSING_OI_SHADOW",
+    "_NO_RETEST_SHADOW",
+    "_NEAR_LIQUIDITY_SHADOW",
+)
 STRATEGY_PROMOTION_POLICIES = {
     "SQUEEZE_BREAKOUT": {
         "tier": "CHAMPION",
@@ -829,6 +837,20 @@ def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
                 "No automatic paper or live promotion is allowed.",
             ],
         }
+    if policy is None and strategy_key.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES):
+        policy = {
+            "tier": "MEASUREMENT_SHADOW",
+            "allowed_modes": ["shadow"],
+            "paper_promotion": "HUMAN_REVIEW_AFTER_50_CLOSED_COHORT_TRADES",
+            "live_promotion": "BLOCKED_MEASUREMENT_COHORT",
+            "min_shadow_trades": 50,
+            "review_milestone_trades": 20,
+            "notes": [
+                "Counterfactual cohort: exactly one source-strategy context gate is relaxed.",
+                "Compare with the source revalidation bucket over the same market period.",
+                "No automatic paper or live promotion is allowed.",
+            ],
+        }
     if policy is None:
         policy = {
             "tier": "UNKNOWN",
@@ -1001,7 +1023,7 @@ def build_strategy_scorecard(
     # render them as a disabled/executable strategy.
     for trade in shadow_trades:
         strategy = str(_row_get(trade, "strategy", "") or "").upper()
-        if strategy.endswith("_REVALIDATION"):
+        if strategy.endswith("_REVALIDATION") or strategy.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES):
             strategy_modes.setdefault(strategy, "shadow")
     buckets: dict[str, dict[str, Any]] = {}
 

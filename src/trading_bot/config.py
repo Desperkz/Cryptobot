@@ -170,6 +170,12 @@ class StrategyConfig:
     shadow_revalidation_cohort: str = ""
     shadow_revalidation_risk_cap_pct: Decimal = Decimal("0.0025")
     shadow_revalidation_strategies: list[str] = field(default_factory=list)
+    # Independent virtual cohorts that relax exactly one context gate. These
+    # never change paper/live admission and keep the source exit profile.
+    shadow_gate_counterfactual_enabled: bool = False
+    shadow_gate_counterfactual_cohort: str = ""
+    shadow_gate_counterfactual_risk_cap_pct: Decimal = Decimal("0.0025")
+    shadow_gate_counterfactual_gates: list[str] = field(default_factory=list)
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -724,6 +730,41 @@ class AppConfig:
                     "strategy.shadow_revalidation_strategies must be configured as shadow: "
                     + ", ".join(non_shadow)
                 )
+        if self.strategy.shadow_gate_counterfactual_enabled:
+            allowed_gates = {
+                "RS_NEUTRAL",
+                "RS_AGAINST",
+                "MISSING_OI",
+                "NO_RETEST",
+                "NEAR_LIQUIDITY",
+            }
+            if not self.strategy.shadow_gate_counterfactual_cohort:
+                raise ConfigError(
+                    "strategy.shadow_gate_counterfactual_cohort is required while counterfactuals are enabled."
+                )
+            configured_gates = {
+                str(gate).strip().upper()
+                for gate in self.strategy.shadow_gate_counterfactual_gates
+                if str(gate).strip()
+            }
+            if not configured_gates:
+                raise ConfigError(
+                    "strategy.shadow_gate_counterfactual_gates must contain at least one gate."
+                )
+            unknown_gates = sorted(configured_gates - allowed_gates)
+            if unknown_gates:
+                raise ConfigError(
+                    "strategy.shadow_gate_counterfactual_gates contains unsupported gates: "
+                    + ", ".join(unknown_gates)
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.shadow_gate_counterfactual_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.shadow_gate_counterfactual_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
         if (
             self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
             and self.risk.risk_per_trade_pct > Decimal("0.02")
@@ -1118,6 +1159,20 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 _strategy_name(name)
                 for name in raw["strategy"].get("shadow_revalidation_strategies", [])
                 if _strategy_name(name)
+            ],
+            shadow_gate_counterfactual_enabled=bool(
+                raw["strategy"].get("shadow_gate_counterfactual_enabled", False)
+            ),
+            shadow_gate_counterfactual_cohort=str(
+                raw["strategy"].get("shadow_gate_counterfactual_cohort", "")
+            ).strip(),
+            shadow_gate_counterfactual_risk_cap_pct=to_decimal(
+                raw["strategy"].get("shadow_gate_counterfactual_risk_cap_pct", "0.0025")
+            ),
+            shadow_gate_counterfactual_gates=[
+                str(gate).strip().upper()
+                for gate in raw["strategy"].get("shadow_gate_counterfactual_gates", [])
+                if str(gate).strip()
             ],
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),

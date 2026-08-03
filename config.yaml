@@ -157,6 +157,18 @@ strategy:
     - RANGE_GRID
     - SQUEEZE_BREAKOUT_DYNAMIC_UPD
     - VWAP_REVERSION_WATCH
+  # P7-19: five isolated counterfactual arms. A virtual entry is created only
+  # when every source-strategy gate except exactly one named gate passes.
+  # Paper/live admission is unchanged; each arm keeps a 0.25% virtual risk cap.
+  shadow_gate_counterfactual_enabled: true
+  shadow_gate_counterfactual_cohort: "2026-08-03"
+  shadow_gate_counterfactual_risk_cap_pct: 0.0025
+  shadow_gate_counterfactual_gates:
+    - RS_NEUTRAL
+    - RS_AGAINST
+    - MISSING_OI
+    - NO_RETEST
+    - NEAR_LIQUIDITY
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70
