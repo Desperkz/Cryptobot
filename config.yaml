@@ -137,7 +137,9 @@ strategy:
   # P7-12: controlled paper-frequency experiment. Only a clean SQZ with
   # neutral (not unknown/against) relative strength may pass this one gate;
   # hostile OF, no-retest/weak release and missing structure-break stay blocked.
-  squeeze_controlled_paper_enabled: true
+  # Neutral-RS admission remains shadow-only. The first post-epoch paper trade
+  # admitted by this exception lost -1.07R; strict SQZ would have rejected it.
+  squeeze_controlled_paper_enabled: false
   squeeze_controlled_paper_min_order_flow_score: 0.65
   squeeze_controlled_paper_risk_cap_pct: 0.005
   # Исследовательский shadow-бакет: neutral RS допускается только после retest
@@ -154,14 +156,15 @@ strategy:
   shadow_revalidation_strategies:
     - TREND_PULLBACK
     - MOMENTUM_CONTINUATION
-    - RANGE_GRID
     - SQUEEZE_BREAKOUT_DYNAMIC_UPD
     - VWAP_REVERSION_WATCH
   # P7-19: five isolated counterfactual arms. A virtual entry is created only
   # when every source-strategy gate except exactly one named gate passes.
   # Paper/live admission is unchanged; each arm keeps a 0.25% virtual risk cap.
   shadow_gate_counterfactual_enabled: true
-  shadow_gate_counterfactual_cohort: "2026-08-03"
+  # The previous cohort inherited observe-only OF and is retained as historical
+  # evidence. This clean cohort enforces every non-relaxed gate.
+  shadow_gate_counterfactual_cohort: "2026-08-07-clean-of"
   shadow_gate_counterfactual_risk_cap_pct: 0.0025
   shadow_gate_counterfactual_gates:
     - RS_NEUTRAL

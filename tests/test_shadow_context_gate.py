@@ -70,7 +70,7 @@ def target_flow(
 def counterfactual_config(*gates: str) -> SimpleNamespace:
     return SimpleNamespace(
         shadow_gate_counterfactual_enabled=True,
-        shadow_gate_counterfactual_cohort="2026-08-03",
+        shadow_gate_counterfactual_cohort="2026-08-07-clean-of",
         shadow_gate_counterfactual_risk_cap_pct=Decimal("0.0025"),
         shadow_gate_counterfactual_gates=list(gates),
     )
@@ -87,14 +87,13 @@ def test_counterfactual_sqz_upd_relaxes_only_neutral_relative_strength() -> None
     variants, strict_reason, evaluated = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("RS_NEUTRAL"),
-        enforce_order_flow=True,
     )
 
     assert strict_reason is not None
     assert evaluated == ["RS_NEUTRAL"]
     assert len(variants) == 1
     variant = variants[0]
-    assert variant.metadata["strategy"] == "SQZ_DYN_UPD_RS_NEUTRAL_SHADOW"
+    assert variant.metadata["strategy"] == "SQZ_DYN_UPD_CLEAN_RS_NEUTRAL_SHADOW"
     assert variant.metadata["measurement_shadow"]["relaxed_gate"] == "RS_NEUTRAL"
     assert variant.metadata["measurement_shadow"]["source_cluster_id"].endswith(":12345")
     assert _shadow_candidate_context_rejection_reason(candidate) is not None
@@ -111,7 +110,6 @@ def test_counterfactual_does_not_mix_neutral_rs_with_missing_oi() -> None:
     variants, strict_reason, evaluated = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("RS_NEUTRAL", "MISSING_OI"),
-        enforce_order_flow=True,
     )
 
     assert strict_reason is not None
@@ -130,12 +128,34 @@ def test_counterfactual_sqz_upd_measures_missing_open_interest_only() -> None:
     variants, _, _ = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("MISSING_OI"),
-        enforce_order_flow=True,
     )
 
     assert [item.metadata["strategy"] for item in variants] == [
-        "SQZ_DYN_UPD_MISSING_OI_SHADOW"
+        "SQZ_DYN_UPD_CLEAN_MISSING_OI_SHADOW"
     ]
+
+
+def test_counterfactual_missing_oi_keeps_hostile_order_flow_strict() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        order_flow(
+            alignment="against",
+            score="0.18",
+            flags=["taker_flow_against", "aggressive_delta_against"],
+        ),
+        relative_strength={"alignment": "aligned", "score": "0.70"},
+        metadata={"squeeze_retest_confirmed": True},
+    )
+
+    variants, strict_reason, evaluated = _shadow_gate_counterfactual_variants(
+        candidate,
+        counterfactual_config("MISSING_OI"),
+    )
+
+    assert evaluated == ["MISSING_OI"]
+    assert strict_reason is not None
+    assert "order-flow" in strict_reason
+    assert variants == []
 
 
 def test_counterfactual_sqz_upd_measures_missing_retest_only() -> None:
@@ -154,11 +174,10 @@ def test_counterfactual_sqz_upd_measures_missing_retest_only() -> None:
     variants, _, _ = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("NO_RETEST"),
-        enforce_order_flow=True,
     )
 
     assert [item.metadata["strategy"] for item in variants] == [
-        "SQZ_DYN_UPD_NO_RETEST_SHADOW"
+        "SQZ_DYN_UPD_CLEAN_NO_RETEST_SHADOW"
     ]
 
 
@@ -173,11 +192,10 @@ def test_counterfactual_tpb_measures_near_target_liquidity_only() -> None:
     variants, _, _ = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("NEAR_LIQUIDITY"),
-        enforce_order_flow=True,
     )
 
     assert [item.metadata["strategy"] for item in variants] == [
-        "TPB_NEAR_LIQUIDITY_SHADOW"
+        "TPB_CLEAN_NEAR_LIQUIDITY_SHADOW"
     ]
 
 
@@ -192,11 +210,10 @@ def test_counterfactual_tpb_measures_against_relative_strength_only() -> None:
     variants, _, _ = _shadow_gate_counterfactual_variants(
         candidate,
         counterfactual_config("RS_AGAINST"),
-        enforce_order_flow=True,
     )
 
     assert [item.metadata["strategy"] for item in variants] == [
-        "TPB_RS_AGAINST_SHADOW"
+        "TPB_CLEAN_RS_AGAINST_SHADOW"
     ]
 
 

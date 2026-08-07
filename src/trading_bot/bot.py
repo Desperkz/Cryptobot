@@ -918,7 +918,6 @@ class TradingBot:
         variants, strict_reason, evaluated_gates = _shadow_gate_counterfactual_variants(
             signal,
             self.config.strategy,
-            enforce_order_flow=self.config.strategy.shadow_order_flow_hard_gate,
         )
         if not evaluated_gates:
             return
@@ -1948,9 +1947,9 @@ def _is_shadow_revalidation_signal(signal: Signal) -> bool:
 
 
 SHADOW_GATE_COUNTERFACTUAL_SOURCE_PREFIX = {
-    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_DYN_UPD",
-    "TREND_PULLBACK": "TPB",
-    "MOMENTUM_CONTINUATION": "MOM",
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_DYN_UPD_CLEAN",
+    "TREND_PULLBACK": "TPB_CLEAN",
+    "MOMENTUM_CONTINUATION": "MOM_CLEAN",
 }
 SHADOW_GATE_COUNTERFACTUAL_SOURCE_GATES = {
     "SQUEEZE_BREAKOUT_DYNAMIC_UPD": {
@@ -2023,10 +2022,12 @@ def _shadow_relative_strength_gate_is_relaxed(
 def _shadow_gate_counterfactual_variants(
     signal: Signal,
     config: StrategyConfig,
-    *,
-    enforce_order_flow: bool,
 ) -> tuple[list[Signal], str | None, list[str]]:
-    """Build virtual entries where exactly one configured context gate is relaxed."""
+    """Build virtual entries where exactly one configured context gate is relaxed.
+
+    The source shadow stream may observe rather than enforce order-flow, but a
+    one-gate counterfactual must always retain every other strict gate.
+    """
     source = _signal_strategy(signal)
     if (
         not config.shadow_gate_counterfactual_enabled
@@ -2049,7 +2050,7 @@ def _shadow_gate_counterfactual_variants(
 
     strict_reason = _shadow_candidate_context_rejection_reason(
         signal,
-        enforce_order_flow=enforce_order_flow,
+        enforce_order_flow=True,
     )
     if strict_reason is None:
         return [], None, []
@@ -2061,7 +2062,7 @@ def _shadow_gate_counterfactual_variants(
     for gate in evaluated_gates:
         remaining_rejection = _shadow_candidate_context_rejection_reason(
             signal,
-            enforce_order_flow=enforce_order_flow,
+            enforce_order_flow=True,
             relaxed_gate=gate,
         )
         if remaining_rejection is not None:
