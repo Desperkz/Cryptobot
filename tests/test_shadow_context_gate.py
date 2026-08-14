@@ -9,6 +9,7 @@ from trading_bot.bot import (
     _controlled_shadow_revalidation_override,
     _shadow_candidate_context_rejection_reason,
     _shadow_gate_counterfactual_variants,
+    _shadow_parallel_lab_variants,
     _shadow_execution_strategy,
     _is_shadow_revalidation_signal,
     _shadow_paper_diagnostic_only_reason,
@@ -74,6 +75,96 @@ def counterfactual_config(*gates: str) -> SimpleNamespace:
         shadow_gate_counterfactual_risk_cap_pct=Decimal("0.0025"),
         shadow_gate_counterfactual_gates=list(gates),
     )
+
+
+def parallel_lab_config(*arms: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        shadow_parallel_lab_enabled=True,
+        shadow_parallel_lab_cohort="2026-08-14-parallel-lab",
+        shadow_parallel_lab_risk_cap_pct=Decimal("0.0025"),
+        shadow_parallel_lab_arms=list(arms),
+    )
+
+
+def test_parallel_lab_records_explicit_strict_control() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        {**order_flow(score="0.80"), "open_interest_change_pct": "0.35"},
+        relative_strength={"alignment": "aligned", "score": "0.70"},
+        metadata={"squeeze_retest_confirmed": True, "signal_bar_close_time": 12345},
+    )
+
+    variants, strict_reason, evaluated = _shadow_parallel_lab_variants(
+        candidate,
+        parallel_lab_config("STRICT", "MISSING_OI"),
+    )
+
+    assert strict_reason is None
+    assert evaluated == ["STRICT"]
+    assert [item.metadata["strategy"] for item in variants] == [
+        "SQZ_UPD_LAB_STRICT_SHADOW"
+    ]
+    payload = variants[0].metadata["measurement_shadow"]
+    assert payload["relaxed_gates"] == []
+    assert payload["source_cluster_id"].endswith(":12345")
+
+
+def test_parallel_lab_pair_does_not_mix_with_single_gate_arms() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        order_flow(score="0.80", flags=["taker_flow_against"]),
+        relative_strength={"alignment": "aligned", "score": "0.70"},
+        metadata={"squeeze_retest_confirmed": True, "signal_bar_close_time": 23456},
+    )
+
+    variants, strict_reason, evaluated = _shadow_parallel_lab_variants(
+        candidate,
+        parallel_lab_config(
+            "STRICT",
+            "OF_HOSTILE",
+            "MISSING_OI",
+            "OF_HOSTILE+MISSING_OI",
+        ),
+    )
+
+    assert strict_reason is not None
+    assert evaluated == ["STRICT", "OF_HOSTILE", "MISSING_OI", "OF_HOSTILE+MISSING_OI"]
+    assert [item.metadata["strategy"] for item in variants] == [
+        "SQZ_UPD_LAB_OF_HOSTILE_MISSING_OI_SHADOW"
+    ]
+    assert variants[0].metadata["measurement_shadow"]["relaxed_gates"] == [
+        "MISSING_OI",
+        "OF_HOSTILE",
+    ]
+
+
+def test_parallel_lab_can_measure_neutral_rs_and_no_retest_pair() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        {**order_flow(score="0.80"), "open_interest_change_pct": "0.35"},
+        relative_strength={"alignment": "neutral", "score": "0.62"},
+        metadata={
+            "squeeze_retest_confirmed": False,
+            "squeeze_state": "build",
+            "squeeze_entry_timing": "early_breakout",
+            "breakout_atr": "1.20",
+        },
+    )
+
+    variants, _, evaluated = _shadow_parallel_lab_variants(
+        candidate,
+        parallel_lab_config(
+            "STRICT",
+            "RS_NEUTRAL",
+            "NO_RETEST",
+            "RS_NEUTRAL+NO_RETEST",
+        ),
+    )
+
+    assert evaluated == ["STRICT", "RS_NEUTRAL", "NO_RETEST", "RS_NEUTRAL+NO_RETEST"]
+    assert [item.metadata["strategy"] for item in variants] == [
+        "SQZ_UPD_LAB_RS_NEUTRAL_NO_RETEST_SHADOW"
+    ]
 
 
 def test_counterfactual_sqz_upd_relaxes_only_neutral_relative_strength() -> None:

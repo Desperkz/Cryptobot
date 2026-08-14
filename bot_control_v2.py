@@ -85,6 +85,11 @@ SHADOW_GATE_COUNTERFACTUAL_SUFFIXES = (
     "_NO_RETEST_SHADOW",
     "_NEAR_LIQUIDITY_SHADOW",
 )
+
+
+def _is_parallel_shadow_lab_strategy(strategy: str) -> bool:
+    strategy_key = str(strategy or "").upper()
+    return "_LAB_" in strategy_key and strategy_key.endswith("_SHADOW")
 STRATEGY_PROMOTION_POLICIES = {
     "SQUEEZE_BREAKOUT": {
         "tier": "CHAMPION",
@@ -837,7 +842,10 @@ def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
                 "No automatic paper or live promotion is allowed.",
             ],
         }
-    if policy is None and strategy_key.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES):
+    if policy is None and (
+        strategy_key.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES)
+        or _is_parallel_shadow_lab_strategy(strategy_key)
+    ):
         policy = {
             "tier": "MEASUREMENT_SHADOW",
             "allowed_modes": ["shadow"],
@@ -846,8 +854,8 @@ def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
             "min_shadow_trades": 50,
             "review_milestone_trades": 20,
             "notes": [
-                "Counterfactual cohort: exactly one source-strategy context gate is relaxed.",
-                "Compare with the source revalidation bucket over the same market period.",
+                "Counterfactual cohort: one fixed context-gate policy is replayed virtually.",
+                "Compare each arm with the strict lab control over the same source clusters.",
                 "No automatic paper or live promotion is allowed.",
             ],
         }
@@ -1023,7 +1031,11 @@ def build_strategy_scorecard(
     # render them as a disabled/executable strategy.
     for trade in shadow_trades:
         strategy = str(_row_get(trade, "strategy", "") or "").upper()
-        if strategy.endswith("_REVALIDATION") or strategy.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES):
+        if (
+            strategy.endswith("_REVALIDATION")
+            or strategy.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES)
+            or _is_parallel_shadow_lab_strategy(strategy)
+        ):
             strategy_modes.setdefault(strategy, "shadow")
     buckets: dict[str, dict[str, Any]] = {}
 

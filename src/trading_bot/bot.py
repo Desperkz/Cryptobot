@@ -9,6 +9,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from collections.abc import Collection
 from typing import Any
 
 from trading_bot.config import AppConfig, StrategyConfig
@@ -865,6 +866,7 @@ class TradingBot:
         )
         if not _measurement_shadow_payload(shadow_signal):
             await self._record_shadow_gate_counterfactuals(shadow_signal, filters)
+            await self._record_shadow_parallel_lab(shadow_signal, filters)
         diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(
             shadow_signal,
             self.config.strategy,
@@ -940,6 +942,50 @@ class TradingBot:
             shadow_history = await self.db.recent_shadow_trades(limit=1_000)
         except Exception:
             logger.exception("Failed to load shadow history for gate counterfactuals")
+            return
+        for variant in variants:
+            payload = _measurement_shadow_payload(variant)
+            strategy = _shadow_execution_strategy(variant)
+            source_cluster_id = str(payload.get("source_cluster_id") or "")
+            if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+                continue
+            await self._record_shadow_signal(variant, filters)
+
+    async def _record_shadow_parallel_lab(
+        self,
+        signal: Signal,
+        filters: SymbolFilters | None = None,
+    ) -> None:
+        """Replay one pre-context candidate through independent virtual policies."""
+        variants, strict_reason, evaluated_arms = _shadow_parallel_lab_variants(
+            signal,
+            self.config.strategy,
+        )
+        if not evaluated_arms:
+            return
+        source_cluster_id = _shadow_gate_source_cluster_id(signal)
+        await self._record_ml_feature_snapshot(
+            signal,
+            "SHADOW_PARALLEL_LAB_EVALUATED",
+            json.dumps(
+                {
+                    "source_strategy": _signal_strategy(signal),
+                    "source_cluster_id": source_cluster_id,
+                    "strict_rejection_reason": strict_reason,
+                    "evaluated_arms": evaluated_arms,
+                    "admitted_cohorts": [_shadow_execution_strategy(item) for item in variants],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        if not variants:
+            return
+
+        try:
+            shadow_history = await self.db.recent_shadow_trades(limit=1_000)
+        except Exception:
+            logger.exception("Failed to load shadow history for parallel lab")
             return
         for variant in variants:
             payload = _measurement_shadow_payload(variant)
@@ -2002,17 +2048,27 @@ def _shadow_gate_counterfactual_applies(signal: Signal, gate: str) -> bool:
     return False
 
 
-def _shadow_gate_is_relaxed(signal: Signal, relaxed_gate: str | None, gate: str) -> bool:
-    return bool(
-        relaxed_gate
-        and str(relaxed_gate).upper() == gate
-        and _shadow_gate_counterfactual_applies(signal, gate)
-    )
+def _normalized_relaxed_gates(
+    relaxed_gate: str | Collection[str] | None,
+) -> frozenset[str]:
+    if relaxed_gate is None:
+        return frozenset()
+    values = [relaxed_gate] if isinstance(relaxed_gate, str) else relaxed_gate
+    return frozenset(str(value).strip().upper() for value in values if str(value).strip())
+
+
+def _shadow_gate_is_relaxed(
+    signal: Signal,
+    relaxed_gate: str | Collection[str] | None,
+    gate: str,
+) -> bool:
+    del signal
+    return str(gate).upper() in _normalized_relaxed_gates(relaxed_gate)
 
 
 def _shadow_relative_strength_gate_is_relaxed(
     signal: Signal,
-    relaxed_gate: str | None,
+    relaxed_gate: str | Collection[str] | None,
 ) -> bool:
     alignment = _relative_strength_alignment(signal)
     gate = "RS_NEUTRAL" if alignment == "neutral" else "RS_AGAINST" if alignment == "against" else ""
@@ -2105,6 +2161,183 @@ def _shadow_gate_counterfactual_variants(
             )
         )
     return variants, strict_reason, evaluated_gates
+
+
+SHADOW_PARALLEL_LAB_SOURCE_PREFIX = {
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_UPD_LAB",
+    "TREND_PULLBACK": "TPB_LAB",
+    "MOMENTUM_CONTINUATION": "MOM_LAB",
+}
+SHADOW_PARALLEL_LAB_SOURCE_GATES = {
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": {
+        "OF_AGAINST",
+        "OF_HOSTILE",
+        "OF_WEAK",
+        "OF_ABSORPTION",
+        "RS_NEUTRAL",
+        "RS_AGAINST",
+        "MISSING_OI",
+        "NO_RETEST",
+        "NEAR_LIQUIDITY",
+    },
+    "TREND_PULLBACK": {
+        "OF_AGAINST",
+        "OF_HOSTILE",
+        "OF_WEAK",
+        "RS_NEUTRAL",
+        "RS_AGAINST",
+        "NEAR_LIQUIDITY",
+    },
+    "MOMENTUM_CONTINUATION": {
+        "OF_AGAINST",
+        "OF_HOSTILE",
+        "OF_WEAK",
+        "OF_ABSORPTION",
+        "RS_NEUTRAL",
+        "RS_AGAINST",
+        "NEAR_LIQUIDITY",
+    },
+}
+
+
+def _shadow_parallel_lab_gate_applies(signal: Signal, gate: str) -> bool:
+    source = _signal_strategy(signal)
+    gate = str(gate).upper()
+    if gate not in SHADOW_PARALLEL_LAB_SOURCE_GATES.get(source, set()):
+        return False
+    if gate in {"RS_NEUTRAL", "RS_AGAINST", "MISSING_OI", "NO_RETEST", "NEAR_LIQUIDITY"}:
+        return _shadow_gate_counterfactual_applies(signal, gate)
+
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "mixed")
+    score = _optional_decimal(order_flow.get("score")) or Decimal("0")
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    if gate == "OF_AGAINST":
+        return alignment == "against"
+    if gate == "OF_ABSORPTION":
+        return "absorption_against" in risk_flags
+    if gate == "OF_HOSTILE":
+        hostile_flags = {
+            "adverse_liquidity_nearby",
+            "taker_flow_against",
+            "book_imbalance_against",
+            "aggressive_delta_against",
+            "structure_break_against",
+            "liquidation_cascade",
+        }
+        return bool(risk_flags.intersection(hostile_flags))
+    if gate == "OF_WEAK":
+        if source == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+            return (alignment == "mixed" and score < Decimal("0.50")) or (
+                alignment == "aligned" and score < Decimal("0.55")
+            )
+        if source == "TREND_PULLBACK":
+            floor = Decimal("0.68") if signal.direction == Direction.SHORT else Decimal("0.62")
+            return alignment == "mixed" or score < floor
+        if source == "MOMENTUM_CONTINUATION":
+            return alignment == "mixed" or score < Decimal("0.78")
+    return False
+
+
+def _shadow_parallel_lab_variants(
+    signal: Signal,
+    config: StrategyConfig,
+) -> tuple[list[Signal], str | None, list[str]]:
+    """Build strict and fixed relaxed-policy variants from one unique candidate."""
+    source = _signal_strategy(signal)
+    if (
+        not config.shadow_parallel_lab_enabled
+        or source not in SHADOW_PARALLEL_LAB_SOURCE_GATES
+    ):
+        return [], None, []
+
+    strict_reason = _shadow_candidate_context_rejection_reason(
+        signal,
+        enforce_order_flow=True,
+    )
+    source_cluster_id = _shadow_gate_source_cluster_id(signal)
+    source_prefix = SHADOW_PARALLEL_LAB_SOURCE_PREFIX[source]
+    source_version = _strategy_logic_version(source) or "unknown"
+    observed_failed_gates = sorted(
+        gate
+        for gate in SHADOW_PARALLEL_LAB_SOURCE_GATES[source]
+        if _shadow_parallel_lab_gate_applies(signal, gate)
+    )
+    variants: list[Signal] = []
+    evaluated_arms: list[str] = []
+    seen_arms: set[str] = set()
+    for configured_arm in config.shadow_parallel_lab_arms:
+        arm = "+".join(
+            part.strip().upper()
+            for part in str(configured_arm).split("+")
+            if part.strip()
+        )
+        if not arm or arm in seen_arms:
+            continue
+        seen_arms.add(arm)
+        if arm == "STRICT":
+            evaluated_arms.append(arm)
+            relaxed_gates = frozenset()
+            if strict_reason is not None:
+                continue
+        else:
+            relaxed_gates = frozenset(arm.split("+"))
+            if not relaxed_gates.issubset(SHADOW_PARALLEL_LAB_SOURCE_GATES[source]):
+                continue
+            if not all(_shadow_parallel_lab_gate_applies(signal, gate) for gate in relaxed_gates):
+                continue
+            evaluated_arms.append(arm)
+            remaining_rejection = _shadow_candidate_context_rejection_reason(
+                signal,
+                enforce_order_flow=True,
+                relaxed_gate=relaxed_gates,
+            )
+            if remaining_rejection is not None:
+                continue
+
+        arm_token = arm.replace("+", "_")
+        strategy_bucket = f"{source_prefix}_{arm_token}_SHADOW"
+        metadata = dict(signal.metadata or {})
+        metadata.pop("controlled_shadow", None)
+        measurement_shadow = {
+            "bucket": "parallel_shadow_lab_v1",
+            "strategy_bucket": strategy_bucket,
+            "source_strategy": source,
+            "source_cluster_id": source_cluster_id,
+            "policy_arm": arm,
+            "relaxed_gate": arm if arm != "STRICT" else "NONE_STRICT_CONTROL",
+            "relaxed_gates": sorted(relaxed_gates),
+            "observed_failed_gates": observed_failed_gates,
+            "strict_rejection_reason": strict_reason,
+            "cohort": config.shadow_parallel_lab_cohort,
+            "risk_cap_pct": str(config.shadow_parallel_lab_risk_cap_pct),
+            "execution_constraints": [
+                "pre_context_candidate",
+                "fixed_policy_matrix",
+                "identical_source_exit_profile",
+                "virtual_shadow_only",
+                "source_cluster_deduplicated",
+                "no_portfolio_capacity_competition",
+            ],
+        }
+        variants.append(
+            replace(
+                signal,
+                metadata={
+                    **metadata,
+                    "strategy": strategy_bucket,
+                    "strategy_mode": "shadow",
+                    "strategy_source": source,
+                    "exit_profile_strategy": source,
+                    "measurement_shadow": measurement_shadow,
+                    "strategy_logic_version": (
+                        f"{source_version}:parallel_lab:"
+                        f"{config.shadow_parallel_lab_cohort}:{arm}"
+                    ),
+                },
+            )
+        )
+    return variants, strict_reason, evaluated_arms
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
@@ -2556,7 +2789,7 @@ def _shadow_candidate_context_rejection_reason(
     signal: Signal,
     *,
     enforce_order_flow: bool = True,
-    relaxed_gate: str | None = None,
+    relaxed_gate: str | Collection[str] | None = None,
 ) -> str | None:
     strategy = _signal_strategy(signal)
     if strategy not in {
@@ -2591,12 +2824,18 @@ def _shadow_candidate_context_rejection_reason(
         }
         retest_confirmed = bool(metadata.get("squeeze_retest_confirmed"))
         if enforce_order_flow:
-            if alignment == "against":
+            if alignment == "against" and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_AGAINST"):
                 return "SQZ-DYN shadow blocked: order-flow is against breakout."
-            if risk_flags.intersection(hard_flags):
+            if (
+                risk_flags.intersection(hard_flags)
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_HOSTILE")
+            ):
                 flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
                 return f"SQZ-DYN shadow blocked: hostile breakout flow ({flags})."
-            if "absorption_against" in risk_flags:
+            if (
+                "absorption_against" in risk_flags
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_ABSORPTION")
+            ):
                 return f"SQZ-DYN shadow blocked: absorption against breakout, score {score:.2f}."
         rs_alignment = _relative_strength_alignment(signal)
         if (
@@ -2635,11 +2874,24 @@ def _shadow_candidate_context_rejection_reason(
             ):
                 return "SQZ-DYN shadow blocked: no retest and release is not strong enough."
         if enforce_order_flow:
-            if alignment == "mixed" and score < Decimal("0.50"):
+            if (
+                alignment == "mixed"
+                and score < Decimal("0.50")
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_WEAK")
+            ):
                 return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
-            if alignment == "mixed" and not retest_confirmed and score < Decimal("0.58"):
+            if (
+                alignment == "mixed"
+                and not retest_confirmed
+                and score < Decimal("0.58")
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_WEAK")
+            ):
                 return f"SQZ-DYN shadow blocked: mixed flow needs retest confirmation, score {score:.2f}."
-            if alignment == "aligned" and score < Decimal("0.55"):
+            if (
+                alignment == "aligned"
+                and score < Decimal("0.55")
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_WEAK")
+            ):
                 return f"SQZ-DYN shadow blocked: aligned flow is too weak, score {score:.2f}."
     elif strategy == "LIQUIDITY_SWEEP_REVERSAL":
         if enforce_order_flow:
@@ -2657,13 +2909,17 @@ def _shadow_candidate_context_rejection_reason(
             "liquidation_cascade",
         }
         if enforce_order_flow:
-            if risk_flags.intersection(hard_flags):
+            if (
+                risk_flags.intersection(hard_flags)
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_HOSTILE")
+            ):
                 flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
                 return f"TPB shadow blocked: hostile continuation flow ({flags})."
-            if alignment != "aligned":
+            alignment_gate = "OF_AGAINST" if alignment == "against" else "OF_WEAK"
+            if alignment != "aligned" and not _shadow_gate_is_relaxed(signal, relaxed_gate, alignment_gate):
                 return f"TPB shadow blocked: profitable bucket requires aligned order-flow, got {alignment}."
             min_score = Decimal("0.68") if signal.direction == Direction.SHORT else Decimal("0.62")
-            if score < min_score:
+            if score < min_score and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_WEAK"):
                 return f"TPB shadow blocked: order-flow score {score:.2f} below {min_score:.2f}."
         relative_strength = (signal.metadata or {}).get("relative_strength")
         rs_alignment = ""
@@ -2703,12 +2959,16 @@ def _shadow_candidate_context_rejection_reason(
             "absorption_against",
         }
         if enforce_order_flow:
-            if risk_flags.intersection(hard_flags):
+            if (
+                risk_flags.intersection(hard_flags)
+                and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_HOSTILE")
+            ):
                 flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
                 return f"MOM shadow blocked: hostile momentum flow ({flags})."
-            if alignment != "aligned":
+            alignment_gate = "OF_AGAINST" if alignment == "against" else "OF_WEAK"
+            if alignment != "aligned" and not _shadow_gate_is_relaxed(signal, relaxed_gate, alignment_gate):
                 return f"MOM shadow blocked: continuation requires aligned order-flow, got {alignment}."
-            if score < Decimal("0.78"):
+            if score < Decimal("0.78") and not _shadow_gate_is_relaxed(signal, relaxed_gate, "OF_WEAK"):
                 return f"MOM shadow blocked: order-flow score {score:.2f} below 0.78."
         rs_alignment = _relative_strength_alignment(signal)
         rs_score = _relative_strength_score(signal)

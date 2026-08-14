@@ -176,6 +176,12 @@ class StrategyConfig:
     shadow_gate_counterfactual_cohort: str = ""
     shadow_gate_counterfactual_risk_cap_pct: Decimal = Decimal("0.0025")
     shadow_gate_counterfactual_gates: list[str] = field(default_factory=list)
+    # Parallel virtual lab: strict control plus fixed single/pair context-gate
+    # policies evaluated from the same pre-context strategy candidate.
+    shadow_parallel_lab_enabled: bool = False
+    shadow_parallel_lab_cohort: str = ""
+    shadow_parallel_lab_risk_cap_pct: Decimal = Decimal("0.0025")
+    shadow_parallel_lab_arms: list[str] = field(default_factory=list)
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -765,6 +771,52 @@ class AppConfig:
                 raise ConfigError(
                     "strategy.shadow_gate_counterfactual_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
                 )
+        if self.strategy.shadow_parallel_lab_enabled:
+            allowed_gates = {
+                "OF_AGAINST",
+                "OF_HOSTILE",
+                "OF_WEAK",
+                "OF_ABSORPTION",
+                "RS_NEUTRAL",
+                "RS_AGAINST",
+                "MISSING_OI",
+                "NO_RETEST",
+                "NEAR_LIQUIDITY",
+            }
+            if not self.strategy.shadow_parallel_lab_cohort:
+                raise ConfigError(
+                    "strategy.shadow_parallel_lab_cohort is required while the parallel lab is enabled."
+                )
+            if not self.strategy.shadow_parallel_lab_arms:
+                raise ConfigError(
+                    "strategy.shadow_parallel_lab_arms must contain STRICT and at least one experiment arm."
+                )
+            normalized_arms = {
+                "+".join(part.strip().upper() for part in str(arm).split("+") if part.strip())
+                for arm in self.strategy.shadow_parallel_lab_arms
+            }
+            if "STRICT" not in normalized_arms:
+                raise ConfigError("strategy.shadow_parallel_lab_arms must include STRICT.")
+            unknown_gates = sorted({
+                gate
+                for arm in normalized_arms
+                if arm != "STRICT"
+                for gate in arm.split("+")
+                if gate not in allowed_gates
+            })
+            if unknown_gates:
+                raise ConfigError(
+                    "strategy.shadow_parallel_lab_arms contains unsupported gates: "
+                    + ", ".join(unknown_gates)
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.shadow_parallel_lab_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.shadow_parallel_lab_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
         if (
             self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
             and self.risk.risk_per_trade_pct > Decimal("0.02")
@@ -1173,6 +1225,20 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 str(gate).strip().upper()
                 for gate in raw["strategy"].get("shadow_gate_counterfactual_gates", [])
                 if str(gate).strip()
+            ],
+            shadow_parallel_lab_enabled=bool(
+                raw["strategy"].get("shadow_parallel_lab_enabled", False)
+            ),
+            shadow_parallel_lab_cohort=str(
+                raw["strategy"].get("shadow_parallel_lab_cohort", "")
+            ).strip(),
+            shadow_parallel_lab_risk_cap_pct=to_decimal(
+                raw["strategy"].get("shadow_parallel_lab_risk_cap_pct", "0.0025")
+            ),
+            shadow_parallel_lab_arms=[
+                "+".join(part.strip().upper() for part in str(arm).split("+") if part.strip())
+                for arm in raw["strategy"].get("shadow_parallel_lab_arms", [])
+                if str(arm).strip()
             ],
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),

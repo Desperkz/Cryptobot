@@ -161,7 +161,8 @@ strategy:
   # P7-19: five isolated counterfactual arms. A virtual entry is created only
   # when every source-strategy gate except exactly one named gate passes.
   # Paper/live admission is unchanged; each arm keeps a 0.25% virtual risk cap.
-  shadow_gate_counterfactual_enabled: true
+  # P7-19 history is preserved, but new entries move to the broader P7-21 lab.
+  shadow_gate_counterfactual_enabled: false
   # The previous cohort inherited observe-only OF and is retained as historical
   # evidence. This clean cohort enforces every non-relaxed gate.
   shadow_gate_counterfactual_cohort: "2026-08-07-clean-of"
@@ -172,6 +173,29 @@ strategy:
     - MISSING_OI
     - NO_RETEST
     - NEAR_LIQUIDITY
+  # P7-21: every unique pre-context candidate is replayed through a strict
+  # control and a fixed matrix of single/pair relaxed policies. All entries are
+  # virtual, use identical realistic execution, and cannot reach paper/live.
+  shadow_parallel_lab_enabled: true
+  shadow_parallel_lab_cohort: "2026-08-14-parallel-lab"
+  shadow_parallel_lab_risk_cap_pct: 0.0025
+  shadow_parallel_lab_arms:
+    - STRICT
+    - OF_AGAINST
+    - OF_HOSTILE
+    - OF_WEAK
+    - OF_ABSORPTION
+    - RS_NEUTRAL
+    - RS_AGAINST
+    - MISSING_OI
+    - NO_RETEST
+    - NEAR_LIQUIDITY
+    - OF_AGAINST+OF_HOSTILE
+    - OF_AGAINST+MISSING_OI
+    - OF_HOSTILE+MISSING_OI
+    - OF_WEAK+NO_RETEST
+    - RS_NEUTRAL+NO_RETEST
+    - RS_AGAINST+NEAR_LIQUIDITY
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70
