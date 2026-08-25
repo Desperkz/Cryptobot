@@ -182,6 +182,13 @@ class StrategyConfig:
     shadow_parallel_lab_cohort: str = ""
     shadow_parallel_lab_risk_cap_pct: Decimal = Decimal("0.0025")
     shadow_parallel_lab_arms: list[str] = field(default_factory=list)
+    # Conditional virtual lab: every supported pre-context candidate enters
+    # exactly one score bucket so filters can be calibrated jointly.
+    shadow_conditional_lab_enabled: bool = False
+    shadow_conditional_lab_cohort: str = ""
+    shadow_conditional_lab_risk_cap_pct: Decimal = Decimal("0.0020")
+    shadow_conditional_lab_high_score: Decimal = Decimal("70")
+    shadow_conditional_lab_mid_score: Decimal = Decimal("50")
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -817,6 +824,28 @@ class AppConfig:
                 raise ConfigError(
                     "strategy.shadow_parallel_lab_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
                 )
+        if self.strategy.shadow_conditional_lab_enabled:
+            if not self.strategy.shadow_conditional_lab_cohort:
+                raise ConfigError(
+                    "strategy.shadow_conditional_lab_cohort is required while the conditional lab is enabled."
+                )
+            if not (
+                Decimal("0")
+                < self.strategy.shadow_conditional_lab_risk_cap_pct
+                <= self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError(
+                    "strategy.shadow_conditional_lab_risk_cap_pct must be positive and no higher than risk_per_trade_pct."
+                )
+            if not (
+                Decimal("0")
+                <= self.strategy.shadow_conditional_lab_mid_score
+                < self.strategy.shadow_conditional_lab_high_score
+                <= Decimal("100")
+            ):
+                raise ConfigError(
+                    "strategy.shadow_conditional_lab score thresholds must satisfy 0 <= mid < high <= 100."
+                )
         if (
             self.mode in {TradingMode.PAPER_TRADING, TradingMode.BACKTEST}
             and self.risk.risk_per_trade_pct > Decimal("0.02")
@@ -1240,6 +1269,21 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
                 for arm in raw["strategy"].get("shadow_parallel_lab_arms", [])
                 if str(arm).strip()
             ],
+            shadow_conditional_lab_enabled=bool(
+                raw["strategy"].get("shadow_conditional_lab_enabled", False)
+            ),
+            shadow_conditional_lab_cohort=str(
+                raw["strategy"].get("shadow_conditional_lab_cohort", "")
+            ).strip(),
+            shadow_conditional_lab_risk_cap_pct=to_decimal(
+                raw["strategy"].get("shadow_conditional_lab_risk_cap_pct", "0.0020")
+            ),
+            shadow_conditional_lab_high_score=to_decimal(
+                raw["strategy"].get("shadow_conditional_lab_high_score", "70")
+            ),
+            shadow_conditional_lab_mid_score=to_decimal(
+                raw["strategy"].get("shadow_conditional_lab_mid_score", "50")
+            ),
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),
             mean_reversion_rsi_overbought=to_decimal(raw["strategy"].get("mean_reversion_rsi_overbought", "72")),

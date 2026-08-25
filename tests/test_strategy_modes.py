@@ -129,6 +129,11 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     assert cfg.strategy.shadow_parallel_lab_cohort == "2026-08-14-parallel-lab"
     assert "STRICT" in cfg.strategy.shadow_parallel_lab_arms
     assert "OF_HOSTILE+MISSING_OI" in cfg.strategy.shadow_parallel_lab_arms
+    assert cfg.strategy.shadow_conditional_lab_enabled is True
+    assert cfg.strategy.shadow_conditional_lab_cohort == "2026-08-25-conditional-v1"
+    assert cfg.strategy.shadow_conditional_lab_risk_cap_pct == Decimal("0.0020")
+    assert cfg.strategy.shadow_conditional_lab_mid_score == Decimal("50")
+    assert cfg.strategy.shadow_conditional_lab_high_score == Decimal("70")
 
 
 def test_router_records_shadow_candidates_separately_from_execution() -> None:

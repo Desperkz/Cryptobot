@@ -10,6 +10,8 @@ from trading_bot.bot import (
     _shadow_candidate_context_rejection_reason,
     _shadow_gate_counterfactual_variants,
     _shadow_parallel_lab_variants,
+    _shadow_conditional_lab_variant,
+    _shadow_conditional_profile,
     _shadow_execution_strategy,
     _is_shadow_revalidation_signal,
     _shadow_paper_diagnostic_only_reason,
@@ -84,6 +86,80 @@ def parallel_lab_config(*arms: str) -> SimpleNamespace:
         shadow_parallel_lab_risk_cap_pct=Decimal("0.0025"),
         shadow_parallel_lab_arms=list(arms),
     )
+
+
+def conditional_lab_config(*, enabled: bool = True) -> SimpleNamespace:
+    return SimpleNamespace(
+        shadow_conditional_lab_enabled=enabled,
+        shadow_conditional_lab_cohort="2026-08-25-conditional-v1",
+        shadow_conditional_lab_risk_cap_pct=Decimal("0.0020"),
+        shadow_conditional_lab_high_score=Decimal("70"),
+        shadow_conditional_lab_mid_score=Decimal("50"),
+    )
+
+
+def test_conditional_lab_assigns_strong_sqz_candidate_to_one_high_bucket() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        {
+            **target_flow(score="0.82"),
+            "open_interest_change_pct": "0.35",
+        },
+        relative_strength={"alignment": "aligned", "score": "0.72"},
+        metadata={
+            "regime": "TREND_DOWN",
+            "squeeze_retest_confirmed": True,
+            "signal_bar_close_time": 45678,
+            "volume_ratio": "1.60",
+        },
+    )
+
+    variant, profile = _shadow_conditional_lab_variant(candidate, conditional_lab_config())
+
+    assert variant is not None
+    assert profile is not None
+    assert profile["bucket"] == "HIGH"
+    assert Decimal(profile["score"]) >= Decimal("70")
+    assert variant.metadata["strategy"] == "SQZ_UPD_COND_HIGH_SHADOW"
+    payload = variant.metadata["measurement_shadow"]
+    assert payload["risk_cap_pct"] == "0.0020"
+    assert payload["source_cluster_id"].endswith(":45678")
+    assert payload["execution_constraints"][1] == "one_non_overlapping_bucket_per_source_cluster"
+
+
+def test_conditional_lab_keeps_hostile_candidate_as_low_measurement_not_admission() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        order_flow(
+            alignment="against",
+            score="0.25",
+            flags=["adverse_liquidity_nearby", "taker_flow_against"],
+        ),
+        relative_strength={"alignment": "against", "score": "0.30"},
+        metadata={
+            "regime": "TREND_UP",
+            "squeeze_retest_confirmed": False,
+            "volume_ratio": "0.80",
+        },
+    )
+
+    profile = _shadow_conditional_profile(candidate, conditional_lab_config())
+    variant, _ = _shadow_conditional_lab_variant(candidate, conditional_lab_config())
+
+    assert profile is not None
+    assert profile["bucket"] == "LOW"
+    assert profile["strict_rejection_reason"] is not None
+    assert variant is not None
+    assert variant.metadata["strategy"] == "SQZ_UPD_COND_LOW_SHADOW"
+    assert "no_production_admission_authority" in variant.metadata["measurement_shadow"]["execution_constraints"]
+
+
+def test_conditional_lab_ignores_disabled_or_unsupported_source() -> None:
+    candidate = signal("VWAP_REVERSION", order_flow())
+
+    assert _shadow_conditional_lab_variant(candidate, conditional_lab_config())[0] is None
+    supported = signal("TREND_PULLBACK", order_flow())
+    assert _shadow_conditional_lab_variant(supported, conditional_lab_config(enabled=False))[0] is None
 
 
 def test_parallel_lab_records_explicit_strict_control() -> None:

@@ -867,6 +867,7 @@ class TradingBot:
         if not _measurement_shadow_payload(shadow_signal):
             await self._record_shadow_gate_counterfactuals(shadow_signal, filters)
             await self._record_shadow_parallel_lab(shadow_signal, filters)
+            await self._record_shadow_conditional_lab(shadow_signal, filters)
         diagnostic_only_reason = _shadow_paper_diagnostic_only_reason(
             shadow_signal,
             self.config.strategy,
@@ -994,6 +995,32 @@ class TradingBot:
             if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
                 continue
             await self._record_shadow_signal(variant, filters)
+
+    async def _record_shadow_conditional_lab(
+        self,
+        signal: Signal,
+        filters: SymbolFilters | None = None,
+    ) -> None:
+        """Place one generated candidate into one non-overlapping score bucket."""
+        variant, profile = _shadow_conditional_lab_variant(signal, self.config.strategy)
+        if variant is None or profile is None:
+            return
+        await self._record_ml_feature_snapshot(
+            signal,
+            "SHADOW_CONDITIONAL_LAB_EVALUATED",
+            json.dumps(profile, ensure_ascii=False, sort_keys=True),
+        )
+        try:
+            shadow_history = await self.db.recent_shadow_trades(limit=1_000)
+        except Exception:
+            logger.exception("Failed to load shadow history for conditional lab")
+            return
+        payload = _measurement_shadow_payload(variant)
+        strategy = _shadow_execution_strategy(variant)
+        source_cluster_id = str(payload.get("source_cluster_id") or "")
+        if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+            return
+        await self._record_shadow_signal(variant, filters)
 
     async def _record_sqz_gate_cohort_shadows(
         self,
@@ -2338,6 +2365,280 @@ def _shadow_parallel_lab_variants(
             )
         )
     return variants, strict_reason, evaluated_arms
+
+
+SHADOW_CONDITIONAL_LAB_SOURCE_PREFIX = {
+    "SQUEEZE_BREAKOUT_DYNAMIC_UPD": "SQZ_UPD",
+    "TREND_PULLBACK": "TPB",
+    "MOMENTUM_CONTINUATION": "MOM",
+}
+SHADOW_CONDITIONAL_HOSTILE_FLAGS = {
+    "adverse_liquidity_nearby",
+    "taker_flow_against",
+    "book_imbalance_against",
+    "aggressive_delta_against",
+    "structure_break_against",
+    "liquidation_cascade",
+    "absorption_against",
+}
+
+
+def _conditional_regime_component(
+    source: str,
+    direction: Direction,
+    regime: str,
+) -> int:
+    matching = "TREND_UP" if direction == Direction.LONG else "TREND_DOWN"
+    opposite = "TREND_DOWN" if direction == Direction.LONG else "TREND_UP"
+    if source == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+        if regime == "MOMENTUM":
+            return 8
+        if regime == matching:
+            return 6
+        if regime == opposite:
+            return -10
+        if regime == "RANGE":
+            return 2
+        return -2 if regime == "HIGH_VOLATILITY" else 0
+    if regime == "MOMENTUM":
+        return 8
+    if regime == matching:
+        return 10
+    if regime == opposite:
+        return -16
+    if regime == "RANGE":
+        return -10
+    return -4 if regime == "HIGH_VOLATILITY" else 0
+
+
+def _conditional_confirmation(
+    signal: Signal,
+    source: str,
+) -> tuple[str, int]:
+    metadata = signal.metadata or {}
+    if source == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+        confirmed = bool(metadata.get("squeeze_retest_confirmed"))
+        return ("RETEST", 10) if confirmed else ("NO_RETEST", -8)
+    if source == "TREND_PULLBACK":
+        depth = _optional_decimal(metadata.get("pullback_depth_atr"))
+        if depth is None:
+            return "PB_UNKNOWN", -3
+        if Decimal("0.65") <= depth <= Decimal("1.95"):
+            return "PB_VALID", 6
+        return ("PB_SHALLOW", -8) if depth < Decimal("0.65") else ("PB_EXTENDED", -8)
+    extension = _optional_decimal(metadata.get("breakout_extension_atr"))
+    if extension is None:
+        return "EXT_UNKNOWN", -3
+    if extension >= Decimal("0.30"):
+        return "EXT_STRONG", 6
+    if extension >= Decimal("0.15"):
+        return "EXT_VALID", 2
+    return "EXT_WEAK", -6
+
+
+def _shadow_conditional_profile(
+    signal: Signal,
+    config: StrategyConfig,
+) -> dict[str, Any] | None:
+    """Return a transparent research score, never a production admission decision."""
+    source = _signal_strategy(signal)
+    if source not in SHADOW_CONDITIONAL_LAB_SOURCE_PREFIX:
+        return None
+
+    metadata = signal.metadata or {}
+    order_flow = _order_flow_metadata(signal)
+    alignment = str(order_flow.get("alignment") or "missing").lower()
+    flow_score = _optional_decimal(order_flow.get("score"))
+    risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+    rs_alignment = _relative_strength_alignment(signal) or "missing"
+    rs_score = _relative_strength_score(signal)
+    regime = str(metadata.get("regime") or "UNKNOWN").upper()
+    components: dict[str, int] = {}
+
+    components["regime"] = _conditional_regime_component(source, signal.direction, regime)
+    components["order_flow_alignment"] = {
+        "aligned": 14,
+        "mixed": -2,
+        "against": -18,
+    }.get(alignment, -6)
+    if flow_score is None:
+        components["order_flow_score"] = -4
+        flow_band = "MISSING"
+    elif flow_score >= Decimal("0.75"):
+        components["order_flow_score"] = 8
+        flow_band = "HIGH"
+    elif flow_score >= Decimal("0.60"):
+        components["order_flow_score"] = 4
+        flow_band = "OK"
+    elif flow_score < Decimal("0.40"):
+        components["order_flow_score"] = -8
+        flow_band = "LOW"
+    else:
+        components["order_flow_score"] = 0
+        flow_band = "MID"
+    hostile_count = len(risk_flags.intersection(SHADOW_CONDITIONAL_HOSTILE_FLAGS))
+    components["hostile_flags"] = -min(18, hostile_count * 6)
+
+    components["relative_strength_alignment"] = {
+        "aligned": 12,
+        "neutral": -2,
+        "against": -16,
+    }.get(rs_alignment, -6)
+    if rs_score is None:
+        components["relative_strength_score"] = -3
+        rs_band = "MISSING"
+    elif rs_score >= Decimal("0.75"):
+        components["relative_strength_score"] = 5
+        rs_band = "HIGH"
+    elif rs_score >= Decimal("0.60"):
+        components["relative_strength_score"] = 2
+        rs_band = "OK"
+    elif rs_score < Decimal("0.45"):
+        components["relative_strength_score"] = -5
+        rs_band = "LOW"
+    else:
+        components["relative_strength_score"] = 0
+        rs_band = "MID"
+
+    oi_change = _optional_decimal(order_flow.get("open_interest_change_pct"))
+    if oi_change is None:
+        oi_change = _optional_decimal(metadata.get("open_interest_change_pct"))
+    if oi_change is None:
+        oi_state = "MISSING"
+        components["open_interest"] = -4
+    elif oi_change > 0:
+        oi_state = "RISING"
+        components["open_interest"] = 5
+    elif oi_change < 0:
+        oi_state = "FALLING"
+        components["open_interest"] = -5
+    else:
+        oi_state = "FLAT"
+        components["open_interest"] = -1
+
+    confirmation, confirmation_points = _conditional_confirmation(signal, source)
+    components["confirmation"] = confirmation_points
+    target_distance = _target_liquidity_distance_bps(signal, order_flow)
+    if "adverse_liquidity_nearby" in risk_flags:
+        liquidity_state = "ADVERSE"
+        components["target_liquidity"] = -10
+    elif target_distance is None:
+        liquidity_state = "UNKNOWN"
+        components["target_liquidity"] = 0
+    elif target_distance < Decimal("12"):
+        liquidity_state = "VERY_NEAR"
+        components["target_liquidity"] = -8
+    elif target_distance < Decimal("20"):
+        liquidity_state = "NEAR"
+        components["target_liquidity"] = -3
+    else:
+        liquidity_state = "CLEAR"
+        components["target_liquidity"] = 3
+
+    volume_ratio = _optional_decimal(metadata.get("volume_ratio"))
+    if volume_ratio is None:
+        volume_band = "UNKNOWN"
+        components["volume"] = 0
+    elif volume_ratio >= Decimal("1.50"):
+        volume_band = "HIGH"
+        components["volume"] = 5
+    elif volume_ratio >= Decimal("1.20"):
+        volume_band = "OK"
+        components["volume"] = 2
+    elif volume_ratio < Decimal("1.00"):
+        volume_band = "LOW"
+        components["volume"] = -4
+    else:
+        volume_band = "MID"
+        components["volume"] = 0
+
+    raw_score = Decimal("50") + Decimal(sum(components.values()))
+    score = max(Decimal("0"), min(Decimal("100"), raw_score))
+    if score >= config.shadow_conditional_lab_high_score:
+        bucket = "HIGH"
+    elif score >= config.shadow_conditional_lab_mid_score:
+        bucket = "MID"
+    else:
+        bucket = "LOW"
+    cell_traits = {
+        "regime": regime,
+        "direction": signal.direction.value,
+        "of_alignment": alignment.upper(),
+        "of_band": flow_band,
+        "rs_alignment": rs_alignment.upper(),
+        "rs_band": rs_band,
+        "oi": oi_state,
+        "confirmation": confirmation,
+        "liquidity": liquidity_state,
+        "volume": volume_band,
+    }
+    cell = "|".join(f"{key}={value}" for key, value in cell_traits.items())
+    return {
+        "score_version": "conditional_context_v1",
+        "source_strategy": source,
+        "source_cluster_id": _shadow_gate_source_cluster_id(signal),
+        "score": str(score),
+        "raw_score": str(raw_score),
+        "bucket": bucket,
+        "cell": cell,
+        "traits": cell_traits,
+        "components": components,
+        "risk_flags": sorted(risk_flags),
+        "strict_rejection_reason": _shadow_candidate_context_rejection_reason(
+            signal,
+            enforce_order_flow=True,
+        ),
+    }
+
+
+def _shadow_conditional_lab_variant(
+    signal: Signal,
+    config: StrategyConfig,
+) -> tuple[Signal | None, dict[str, Any] | None]:
+    if not config.shadow_conditional_lab_enabled:
+        return None, None
+    profile = _shadow_conditional_profile(signal, config)
+    if profile is None:
+        return None, None
+    source = str(profile["source_strategy"])
+    bucket = str(profile["bucket"])
+    strategy_bucket = f"{SHADOW_CONDITIONAL_LAB_SOURCE_PREFIX[source]}_COND_{bucket}_SHADOW"
+    metadata = dict(signal.metadata or {})
+    metadata.pop("controlled_shadow", None)
+    measurement_shadow = {
+        "bucket": "conditional_shadow_lab_v1",
+        "strategy_bucket": strategy_bucket,
+        "source_strategy": source,
+        "source_cluster_id": profile["source_cluster_id"],
+        "policy_arm": f"CONDITIONAL_{bucket}",
+        "cohort": config.shadow_conditional_lab_cohort,
+        "risk_cap_pct": str(config.shadow_conditional_lab_risk_cap_pct),
+        "conditional_profile": profile,
+        "execution_constraints": [
+            "pre_context_candidate",
+            "one_non_overlapping_bucket_per_source_cluster",
+            "identical_source_exit_profile",
+            "virtual_shadow_only",
+            "no_production_admission_authority",
+        ],
+    }
+    source_version = _strategy_logic_version(source) or "unknown"
+    return replace(
+        signal,
+        metadata={
+            **metadata,
+            "strategy": strategy_bucket,
+            "strategy_mode": "shadow",
+            "strategy_source": source,
+            "exit_profile_strategy": source,
+            "measurement_shadow": measurement_shadow,
+            "conditional_profile": profile,
+            "strategy_logic_version": (
+                f"{source_version}:conditional_lab:"
+                f"{config.shadow_conditional_lab_cohort}:{bucket}"
+            ),
+        },
+    ), profile
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:

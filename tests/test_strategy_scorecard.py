@@ -6,6 +6,7 @@ from bot_control_v2 import (
     apply_strategy_promotion_policy,
     build_chaos_readiness_report,
     build_monthly_target_report,
+    build_conditional_edge_report,
     build_production_readiness_report,
     build_soak_readiness_report,
     build_strategy_allocator,
@@ -1381,3 +1382,80 @@ def test_monthly_target_report_marks_frequency_gap() -> None:
     assert row["required_monthly_clusters_at_current_avg_r"] == 25
     assert row["monthly_cluster_gap_at_current_avg_r"] == 5
     assert row["primary_blocker"] == "frequency"
+
+
+def conditional_trade(
+    trade_id: int,
+    *,
+    bucket: str,
+    r_value: float,
+    status: str = "CLOSED",
+    source: str = "TREND_PULLBACK",
+    cell: str = "regime=TREND_UP|direction=LONG|of_alignment=ALIGNED",
+) -> dict:
+    strategy = f"TPB_COND_{bucket}_SHADOW"
+    profile = {
+        "score_version": "conditional_context_v1",
+        "source_strategy": source,
+        "source_cluster_id": f"{source}:BTCUSDT:{trade_id}",
+        "score": "82" if bucket == "HIGH" else "56",
+        "bucket": bucket,
+        "cell": cell,
+        "traits": {"regime": "TREND_UP", "direction": "LONG"},
+        "components": {"regime": 10},
+        "strict_rejection_reason": None,
+    }
+    metadata = {
+        "signal_metadata": {
+            "measurement_shadow": {
+                "bucket": "conditional_shadow_lab_v1",
+                "cohort": "2026-08-25-conditional-v1",
+                "source_strategy": source,
+                "source_cluster_id": profile["source_cluster_id"],
+                "conditional_profile": profile,
+            }
+        }
+    }
+    return {
+        "id": trade_id,
+        "created_at": f"2026-08-25 0{trade_id}:00:00",
+        "closed_at": f"2026-08-25 0{trade_id}:30:00" if status == "CLOSED" else None,
+        "strategy": strategy,
+        "status": status,
+        "realized_pnl": str(r_value * 2),
+        "r_multiple": str(r_value),
+        "metadata": json.dumps(metadata),
+    }
+
+
+def test_conditional_edge_report_keeps_buckets_non_overlapping() -> None:
+    report = build_conditional_edge_report([
+        conditional_trade(1, bucket="HIGH", r_value=1.2),
+        conditional_trade(2, bucket="HIGH", r_value=-1.0),
+        conditional_trade(3, bucket="MID", r_value=0.4),
+    ])
+
+    assert report["measurement_only"] is True
+    assert report["auto_promotion_enabled"] is False
+    assert report["totals"]["entries"] == 3
+    assert [(row["bucket"], row["closed"]) for row in report["summaries"]] == [
+        ("HIGH", 2),
+        ("MID", 1),
+    ]
+    assert report["summaries"][0]["avg_r"] == 0.1
+    assert report["summaries"][0]["verdict"] == "INSUFFICIENT_SAMPLE"
+
+
+def test_conditional_shadow_strategy_requires_human_cohort_review() -> None:
+    policy = apply_strategy_promotion_policy({
+        "strategy": "SQZ_UPD_COND_HIGH_SHADOW",
+        "strategy_mode": "shadow",
+        "shadow_gate": {"promotion_candidate": True},
+        "shadow_paper": {"closed_trades": 100},
+    })
+
+    assert policy["tier"] == "MEASUREMENT_SHADOW"
+    assert policy["action"] == "SHADOW_COHORT_REVIEW_REQUIRED"
+    assert policy["paper_review_allowed"] is True
+    assert policy["live_review_allowed"] is False
+    assert policy["human_review_required"] is True

@@ -196,6 +196,14 @@ strategy:
     - OF_WEAK+NO_RETEST
     - RS_NEUTRAL+NO_RETEST
     - RS_AGAINST+NEAR_LIQUIDITY
+  # P7-22: non-overlapping conditional score buckets. Every generated source
+  # candidate enters exactly one virtual HIGH/MID/LOW cohort. Paper/live gates
+  # are untouched; the score is research evidence, never an execution permit.
+  shadow_conditional_lab_enabled: true
+  shadow_conditional_lab_cohort: "2026-08-25-conditional-v1"
+  shadow_conditional_lab_risk_cap_pct: 0.0020
+  shadow_conditional_lab_high_score: 70
+  shadow_conditional_lab_mid_score: 50
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

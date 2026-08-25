@@ -90,6 +90,13 @@ SHADOW_GATE_COUNTERFACTUAL_SUFFIXES = (
 def _is_parallel_shadow_lab_strategy(strategy: str) -> bool:
     strategy_key = str(strategy or "").upper()
     return "_LAB_" in strategy_key and strategy_key.endswith("_SHADOW")
+
+
+def _is_conditional_shadow_lab_strategy(strategy: str) -> bool:
+    strategy_key = str(strategy or "").upper()
+    return "_COND_" in strategy_key and strategy_key.endswith("_SHADOW")
+
+
 STRATEGY_PROMOTION_POLICIES = {
     "SQUEEZE_BREAKOUT": {
         "tier": "CHAMPION",
@@ -845,6 +852,7 @@ def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
     if policy is None and (
         strategy_key.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES)
         or _is_parallel_shadow_lab_strategy(strategy_key)
+        or _is_conditional_shadow_lab_strategy(strategy_key)
     ):
         policy = {
             "tier": "MEASUREMENT_SHADOW",
@@ -854,8 +862,8 @@ def strategy_promotion_policy(strategy: str) -> dict[str, Any]:
             "min_shadow_trades": 50,
             "review_milestone_trades": 20,
             "notes": [
-                "Counterfactual cohort: one fixed context-gate policy is replayed virtually.",
-                "Compare each arm with the strict lab control over the same source clusters.",
+                "Measurement cohort: a fixed context policy is replayed virtually.",
+                "Conditional buckets are non-overlapping and must be compared within one source cohort.",
                 "No automatic paper or live promotion is allowed.",
             ],
         }
@@ -1035,6 +1043,7 @@ def build_strategy_scorecard(
             strategy.endswith("_REVALIDATION")
             or strategy.endswith(SHADOW_GATE_COUNTERFACTUAL_SUFFIXES)
             or _is_parallel_shadow_lab_strategy(strategy)
+            or _is_conditional_shadow_lab_strategy(strategy)
         ):
             strategy_modes.setdefault(strategy, "shadow")
     buckets: dict[str, dict[str, Any]] = {}
@@ -2725,6 +2734,171 @@ def api_shadow_trades(limit: int = 100) -> list[dict]:
         return [{"error": str(e)}]
 
 
+def _conditional_shadow_profile(row: Any) -> dict[str, Any]:
+    metadata = _parse_metadata(_row_get(row, "metadata", {}))
+    signal_metadata = metadata.get("signal_metadata")
+    if not isinstance(signal_metadata, dict):
+        signal_metadata = {}
+    measurement = signal_metadata.get("measurement_shadow")
+    if not isinstance(measurement, dict):
+        measurement = metadata.get("measurement_shadow")
+    if not isinstance(measurement, dict) or measurement.get("bucket") != "conditional_shadow_lab_v1":
+        return {}
+    profile = measurement.get("conditional_profile")
+    if not isinstance(profile, dict):
+        profile = signal_metadata.get("conditional_profile")
+    if not isinstance(profile, dict):
+        profile = {}
+    return {
+        "cohort": str(measurement.get("cohort") or "UNKNOWN"),
+        "source_strategy": str(
+            profile.get("source_strategy") or measurement.get("source_strategy") or "UNKNOWN"
+        ).upper(),
+        "source_cluster_id": str(measurement.get("source_cluster_id") or ""),
+        "bucket": str(profile.get("bucket") or "UNKNOWN").upper(),
+        "cell": str(profile.get("cell") or "UNKNOWN"),
+        "score": _to_float(profile.get("score"), None),
+        "score_version": str(profile.get("score_version") or "UNKNOWN"),
+        "traits": profile.get("traits") if isinstance(profile.get("traits"), dict) else {},
+        "components": profile.get("components") if isinstance(profile.get("components"), dict) else {},
+        "strict_rejection_reason": profile.get("strict_rejection_reason"),
+    }
+
+
+def _conditional_edge_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    closed = [row for row in rows if str(_row_get(row, "status", "")).upper() == "CLOSED"]
+    pnl_values = [_to_float(_row_get(row, "realized_pnl"), 0.0) or 0.0 for row in closed]
+    r_values = [_to_float(_row_get(row, "r_multiple"), 0.0) or 0.0 for row in closed]
+    wins = sum(value > 0 for value in r_values)
+    losses = sum(value < 0 for value in r_values)
+    gross_profit = sum(value for value in pnl_values if value > 0)
+    gross_loss = abs(sum(value for value in pnl_values if value < 0))
+    avg_r = sum(r_values) / len(r_values) if r_values else 0.0
+    if len(r_values) > 1:
+        variance = sum((value - avg_r) ** 2 for value in r_values) / (len(r_values) - 1)
+        margin = 1.96 * (variance / len(r_values)) ** 0.5
+    else:
+        margin = None
+    if len(r_values) < 20:
+        verdict = "INSUFFICIENT_SAMPLE"
+    elif margin is not None and avg_r - margin > 0:
+        verdict = "POSITIVE_WATCH"
+    elif margin is not None and avg_r + margin < 0:
+        verdict = "NEGATIVE_WATCH"
+    else:
+        verdict = "INCONCLUSIVE"
+    scores = [
+        score
+        for score in (_to_float(row.get("_conditional_profile", {}).get("score"), None) for row in rows)
+        if score is not None
+    ]
+    latest = max(
+        (str(_row_get(row, "closed_at") or _row_get(row, "created_at") or "") for row in rows),
+        default="",
+    )
+    return {
+        "entries": len(rows),
+        "closed": len(closed),
+        "open": len(rows) - len(closed),
+        "wins": wins,
+        "losses": losses,
+        "winrate": round((wins / len(closed) * 100) if closed else 0.0, 2),
+        "total_pnl": round(sum(pnl_values), 4),
+        "total_r": round(sum(r_values), 4),
+        "avg_r": round(avg_r, 4),
+        "avg_r_ci95": None if margin is None else [round(avg_r - margin, 4), round(avg_r + margin, 4)],
+        "profit_factor": None if gross_loss == 0 else round(gross_profit / gross_loss, 3),
+        "avg_context_score": round(sum(scores) / len(scores), 2) if scores else None,
+        "verdict": verdict,
+        "review_progress": f"{len(closed)}/20",
+        "decision_progress": f"{len(closed)}/50",
+        "latest": latest or None,
+    }
+
+
+def build_conditional_edge_report(rows: list[Any]) -> dict[str, Any]:
+    normalized: list[dict[str, Any]] = []
+    for raw_row in rows:
+        profile = _conditional_shadow_profile(raw_row)
+        if not profile:
+            continue
+        row = dict(raw_row) if isinstance(raw_row, dict) else dict(raw_row)
+        row["_conditional_profile"] = profile
+        normalized.append(row)
+
+    source_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    cell_groups: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for row in normalized:
+        profile = row["_conditional_profile"]
+        source_key = (profile["cohort"], profile["source_strategy"], profile["bucket"])
+        cell_key = (*source_key, profile["cell"])
+        source_groups.setdefault(source_key, []).append(row)
+        cell_groups.setdefault(cell_key, []).append(row)
+
+    bucket_order = {"HIGH": 0, "MID": 1, "LOW": 2}
+    summaries = []
+    for (cohort, source, bucket), group in source_groups.items():
+        summaries.append({
+            "cohort": cohort,
+            "source_strategy": source,
+            "bucket": bucket,
+            **_conditional_edge_metrics(group),
+        })
+    summaries.sort(
+        key=lambda item: (
+            item["cohort"],
+            item["source_strategy"],
+            bucket_order.get(item["bucket"], 9),
+        )
+    )
+
+    cells = []
+    for (cohort, source, bucket, cell), group in cell_groups.items():
+        example = group[0]["_conditional_profile"]
+        cells.append({
+            "cohort": cohort,
+            "source_strategy": source,
+            "bucket": bucket,
+            "cell": cell,
+            "traits": example.get("traits", {}),
+            "strict_rejection_reason": example.get("strict_rejection_reason"),
+            **_conditional_edge_metrics(group),
+        })
+    cells.sort(key=lambda item: (-item["closed"], -item["entries"], item["cell"]))
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "measurement_only": True,
+        "auto_promotion_enabled": False,
+        "method": {
+            "score_version": "conditional_context_v1",
+            "assignment": "one non-overlapping HIGH/MID/LOW bucket per generated source candidate",
+            "scope": ["SQUEEZE_BREAKOUT_DYNAMIC_UPD", "TREND_PULLBACK", "MOMENTUM_CONTINUATION"],
+            "review_milestone_closed": 20,
+            "decision_min_closed": 50,
+        },
+        "totals": _conditional_edge_metrics(normalized),
+        "summaries": summaries,
+        "cells": cells,
+    }
+
+
+def api_conditional_edge() -> dict:
+    try:
+        conn = get_db()
+        ensure_shadow_trades_table(conn)
+        rows = conn.execute("""
+            SELECT id, created_at, closed_at, symbol, direction, strategy,
+                   status, realized_pnl, r_multiple, close_reason, metadata
+            FROM shadow_trades
+            WHERE strategy LIKE '%_COND_%_SHADOW'
+            ORDER BY id DESC
+        """).fetchall()
+        conn.close()
+        return build_conditional_edge_report(rows)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def api_logs(lines: int = 100) -> list[str]:
     try:
         p = Path(LOG_PATH)
@@ -3310,6 +3484,7 @@ ROUTES = {
     "/production-readiness": api_production_readiness,
     "/monthly-target-plan": api_monthly_target_plan,
     "/order-flow": api_order_flow,
+    "/conditional-edge": api_conditional_edge,
 }
 
 POST_ROUTES = {
