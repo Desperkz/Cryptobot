@@ -583,6 +583,14 @@
   - Готово: systemd задаёт Control API `MemoryHigh=350M` и `MemoryMax=500M`, чтобы регрессия аналитики перезапустила только API и не вытеснила торговый процесс из памяти.
   - Условие принятия: серия холодных запросов scorecard/allocator/monthly-target/conditional-edge не увеличивает `NRestarts`, ответы остаются HTTP 200, память Control API стабилизируется ниже `350 MB`, а counts в БД сохраняются после deploy.
 
+- `[x]` P7-23 Исправление прогноза риска и OOS-калибровка условного SQZ edge.
+  - Факт: после последней paper-сделки `2026-08-17` бот оценил `238` уникальных SQZ-кластера, но не получил ни одного кандидата без отказов OF/RS/retest/structure. Это не остановка процесса: shadow и diagnostics продолжали работать.
+  - Исправлено: `/config` возвращает фактический `risk_per_trade_pct=0.5%` и mainnet cap `0.25%`; `/monthly-target-plan` больше не подставляет ошибочные `2%` и отдельно показывает, что цель `10%` требует `20R` в paper либо `40R` при mainnet cap.
+  - Evidence v1: `SQZ LOW` отрицателен (`26` закрытий, Avg R `-0.260`, PF `0.49`); HIGH/MID около `+0.10R`, но их CI пересекает ноль. На exploratory-срезе RS band HIGH выглядит сильнее, а RANGE, RS LOW/AGAINST и VERY_NEAR liquidity хуже; эти наблюдения нельзя применять к старой выборке задним числом.
+  - Готово: параллельно с неизменной v1 создана SQZ-only когорта `conditional_context_v2`, epoch `2026-09-03-conditional-v2`, строки `SQZ_UPD_C2_COND_*_SHADOW`. V2 заранее фиксирует больший вес RS/regime, меньший вес единичного OF snapshot/retest и отдельные штрафы опасной ликвидности/слабого объёма.
+  - Ограничение: v2 только virtual shadow с risk cap `0.20%`, отдельной статистикой и флагами `future_oos_only`/`no_production_admission_authority`. Paper/live admission, TP/SL и текущая v1 не изменены.
+  - Контроль: первый review на `20` закрытых SQZ v2-сделках по bucket, решение не раньше `50`. Сравнивать v1/v2 на совпадающих будущих source clusters; paper review возможен только при PF `>=1.30`, Avg R `>=+0.20`, CI без явного отрицательного смещения и без зависимости от одного символа.
+
 ## Отложено до условия
 
 - `[ ]` D-01 Перевести `TREND_PULLBACK` из shadow в paper-trial.

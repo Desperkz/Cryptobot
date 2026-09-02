@@ -204,6 +204,13 @@ strategy:
   shadow_conditional_lab_risk_cap_pct: 0.0020
   shadow_conditional_lab_high_score: 70
   shadow_conditional_lab_mid_score: 50
+  # P7-23: новая SQZ-only калибровка работает параллельно с v1 и набирает
+  # только будущую OOS-выборку. Она не имеет права открыть paper/live сделку.
+  shadow_conditional_lab_v2_enabled: true
+  shadow_conditional_lab_v2_cohort: "2026-09-03-conditional-v2"
+  shadow_conditional_lab_v2_risk_cap_pct: 0.0020
+  shadow_conditional_lab_v2_high_score: 70
+  shadow_conditional_lab_v2_mid_score: 50
   mean_reversion_deviation_atr: 2.0
   mean_reversion_rsi_oversold: 30       # frequency experiment: больше MR-кандидатов, confluence/edge gates остаются
   mean_reversion_rsi_overbought: 70

@@ -11,7 +11,9 @@ from trading_bot.bot import (
     _shadow_gate_counterfactual_variants,
     _shadow_parallel_lab_variants,
     _shadow_conditional_lab_variant,
+    _shadow_conditional_lab_v2_variant,
     _shadow_conditional_profile,
+    _shadow_conditional_profile_v2,
     _shadow_execution_strategy,
     _is_shadow_revalidation_signal,
     _shadow_paper_diagnostic_only_reason,
@@ -95,6 +97,11 @@ def conditional_lab_config(*, enabled: bool = True) -> SimpleNamespace:
         shadow_conditional_lab_risk_cap_pct=Decimal("0.0020"),
         shadow_conditional_lab_high_score=Decimal("70"),
         shadow_conditional_lab_mid_score=Decimal("50"),
+        shadow_conditional_lab_v2_enabled=enabled,
+        shadow_conditional_lab_v2_cohort="2026-09-03-conditional-v2",
+        shadow_conditional_lab_v2_risk_cap_pct=Decimal("0.0020"),
+        shadow_conditional_lab_v2_high_score=Decimal("70"),
+        shadow_conditional_lab_v2_mid_score=Decimal("50"),
     )
 
 
@@ -160,6 +167,69 @@ def test_conditional_lab_ignores_disabled_or_unsupported_source() -> None:
     assert _shadow_conditional_lab_variant(candidate, conditional_lab_config())[0] is None
     supported = signal("TREND_PULLBACK", order_flow())
     assert _shadow_conditional_lab_variant(supported, conditional_lab_config(enabled=False))[0] is None
+
+
+def test_conditional_lab_v2_reweights_future_sqz_evidence_without_changing_v1() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        target_flow(
+            alignment="mixed",
+            score="0.50",
+            lower_bps="35",
+            flags=["book_imbalance_against"],
+        ),
+        direction=Direction.LONG,
+        relative_strength={"alignment": "aligned", "score": "0.82"},
+        metadata={
+            "regime": "MOMENTUM",
+            "squeeze_retest_confirmed": False,
+            "signal_bar_close_time": 98765,
+            "volume_ratio": "1.70",
+        },
+    )
+
+    v1_variant, v1_profile = _shadow_conditional_lab_variant(candidate, conditional_lab_config())
+    v2_variant, v2_profile = _shadow_conditional_lab_v2_variant(candidate, conditional_lab_config())
+
+    assert v1_variant is not None and v1_profile is not None
+    assert v2_variant is not None and v2_profile is not None
+    assert v1_variant.metadata["strategy"].startswith("SQZ_UPD_COND_")
+    assert v2_profile["score_version"] == "conditional_context_v2"
+    assert v2_profile["bucket"] == "HIGH"
+    assert Decimal(v2_profile["score"]) > Decimal(v1_profile["score"])
+    assert v2_variant.metadata["strategy"] == "SQZ_UPD_C2_COND_HIGH_SHADOW"
+    payload = v2_variant.metadata["measurement_shadow"]
+    assert payload["cohort"] == "2026-09-03-conditional-v2"
+    assert "no_production_admission_authority" in payload["execution_constraints"]
+    assert "future_oos_only" in payload["execution_constraints"]
+
+
+def test_conditional_lab_v2_keeps_low_relative_strength_candidate_low() -> None:
+    candidate = signal(
+        "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        target_flow(alignment="aligned", score="0.70", lower_bps="30"),
+        direction=Direction.LONG,
+        relative_strength={"alignment": "aligned", "score": "0.35"},
+        metadata={
+            "regime": "RANGE",
+            "squeeze_retest_confirmed": True,
+            "volume_ratio": "1.25",
+        },
+    )
+
+    profile = _shadow_conditional_profile_v2(candidate, conditional_lab_config())
+
+    assert profile is not None
+    assert profile["bucket"] == "LOW"
+    assert profile["components"]["relative_strength_score"] == -18
+
+
+def test_conditional_lab_v2_is_sqz_only_and_can_be_disabled() -> None:
+    tpb = signal("TREND_PULLBACK", target_flow())
+    sqz = signal("SQUEEZE_BREAKOUT_DYNAMIC_UPD", target_flow())
+
+    assert _shadow_conditional_profile_v2(tpb, conditional_lab_config()) is None
+    assert _shadow_conditional_lab_v2_variant(sqz, conditional_lab_config(enabled=False))[0] is None
 
 
 def test_parallel_lab_records_explicit_strict_control() -> None:

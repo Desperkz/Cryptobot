@@ -134,6 +134,11 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     assert cfg.strategy.shadow_conditional_lab_risk_cap_pct == Decimal("0.0020")
     assert cfg.strategy.shadow_conditional_lab_mid_score == Decimal("50")
     assert cfg.strategy.shadow_conditional_lab_high_score == Decimal("70")
+    assert cfg.strategy.shadow_conditional_lab_v2_enabled is True
+    assert cfg.strategy.shadow_conditional_lab_v2_cohort == "2026-09-03-conditional-v2"
+    assert cfg.strategy.shadow_conditional_lab_v2_risk_cap_pct == Decimal("0.0020")
+    assert cfg.strategy.shadow_conditional_lab_v2_mid_score == Decimal("50")
+    assert cfg.strategy.shadow_conditional_lab_v2_high_score == Decimal("70")
 
 
 def test_router_records_shadow_candidates_separately_from_execution() -> None:

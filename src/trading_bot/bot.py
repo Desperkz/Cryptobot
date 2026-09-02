@@ -1001,26 +1001,34 @@ class TradingBot:
         signal: Signal,
         filters: SymbolFilters | None = None,
     ) -> None:
-        """Place one generated candidate into one non-overlapping score bucket."""
-        variant, profile = _shadow_conditional_lab_variant(signal, self.config.strategy)
-        if variant is None or profile is None:
+        """Place a candidate into isolated v1/v2 measurement buckets."""
+        evaluated: list[tuple[Signal, dict[str, Any], str]] = []
+        for variant, profile, decision in (
+            (*_shadow_conditional_lab_variant(signal, self.config.strategy), "SHADOW_CONDITIONAL_LAB_EVALUATED"),
+            (*_shadow_conditional_lab_v2_variant(signal, self.config.strategy), "SHADOW_CONDITIONAL_LAB_V2_EVALUATED"),
+        ):
+            if variant is None or profile is None:
+                continue
+            evaluated.append((variant, profile, decision))
+            await self._record_ml_feature_snapshot(
+                signal,
+                decision,
+                json.dumps(profile, ensure_ascii=False, sort_keys=True),
+            )
+        if not evaluated:
             return
-        await self._record_ml_feature_snapshot(
-            signal,
-            "SHADOW_CONDITIONAL_LAB_EVALUATED",
-            json.dumps(profile, ensure_ascii=False, sort_keys=True),
-        )
         try:
             shadow_history = await self.db.recent_shadow_trades(limit=1_000)
         except Exception:
             logger.exception("Failed to load shadow history for conditional lab")
             return
-        payload = _measurement_shadow_payload(variant)
-        strategy = _shadow_execution_strategy(variant)
-        source_cluster_id = str(payload.get("source_cluster_id") or "")
-        if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
-            return
-        await self._record_shadow_signal(variant, filters)
+        for variant, _, _ in evaluated:
+            payload = _measurement_shadow_payload(variant)
+            strategy = _shadow_execution_strategy(variant)
+            source_cluster_id = str(payload.get("source_cluster_id") or "")
+            if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+                continue
+            await self._record_shadow_signal(variant, filters)
 
     async def _record_sqz_gate_cohort_shadows(
         self,
@@ -2636,6 +2644,174 @@ def _shadow_conditional_lab_variant(
             "strategy_logic_version": (
                 f"{source_version}:conditional_lab:"
                 f"{config.shadow_conditional_lab_cohort}:{bucket}"
+            ),
+        },
+    ), profile
+
+
+def _shadow_conditional_profile_v2(
+    signal: Signal,
+    config: StrategyConfig,
+) -> dict[str, Any] | None:
+    """Return an isolated SQZ score recalibration for future OOS evidence.
+
+    V1 remains untouched as the control. V2 reduces unsupported rewards for
+    OF/retest, penalizes range entries, and gives relative-strength quality
+    more weight. The score is research metadata, never an admission decision.
+    """
+    if _signal_strategy(signal) != "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+        return None
+    base = _shadow_conditional_profile(signal, config)
+    if base is None:
+        return None
+
+    traits = dict(base.get("traits") or {})
+    risk_flags = {str(flag) for flag in base.get("risk_flags") or []}
+    direction = str(traits.get("direction") or "")
+    regime = str(traits.get("regime") or "UNKNOWN")
+    matching_regime = "TREND_UP" if direction == Direction.LONG.value else "TREND_DOWN"
+    opposite_regime = "TREND_DOWN" if direction == Direction.LONG.value else "TREND_UP"
+    if regime == "MOMENTUM":
+        regime_points = 12
+    elif regime == matching_regime:
+        regime_points = 8
+    elif regime == opposite_regime:
+        regime_points = -16
+    elif regime == "RANGE":
+        regime_points = -8
+    elif regime == "HIGH_VOLATILITY":
+        regime_points = -4
+    else:
+        regime_points = 0
+
+    components: dict[str, int] = {
+        "regime": regime_points,
+        "order_flow_alignment": {
+            "ALIGNED": 4,
+            "MIXED": 0,
+            "AGAINST": -12,
+        }.get(str(traits.get("of_alignment") or ""), -8),
+        "order_flow_score": {
+            "HIGH": 2,
+            "OK": 1,
+            "MID": 0,
+            "LOW": -4,
+        }.get(str(traits.get("of_band") or ""), -4),
+        "relative_strength_alignment": {
+            "ALIGNED": 6,
+            "NEUTRAL": 0,
+            "AGAINST": -20,
+        }.get(str(traits.get("rs_alignment") or ""), -10),
+        "relative_strength_score": {
+            "HIGH": 18,
+            "OK": 4,
+            "MID": -2,
+            "LOW": -18,
+        }.get(str(traits.get("rs_band") or ""), -6),
+        "open_interest": {
+            "RISING": 4,
+            "FLAT": -1,
+            "FALLING": -4,
+            "MISSING": -2,
+        }.get(str(traits.get("oi") or ""), -2),
+        "confirmation": 2 if traits.get("confirmation") == "RETEST" else -2,
+        "target_liquidity": {
+            "CLEAR": 4,
+            "NEAR": -3,
+            "VERY_NEAR": -10,
+            "ADVERSE": -15,
+            "UNKNOWN": -2,
+        }.get(str(traits.get("liquidity") or ""), -2),
+        "volume": {
+            "HIGH": 6,
+            "MID": 0,
+            "OK": -4,
+            "LOW": -10,
+            "UNKNOWN": -2,
+        }.get(str(traits.get("volume") or ""), -2),
+    }
+
+    permanent_flags = {
+        "adverse_liquidity_nearby",
+        "liquidation_cascade",
+        "structure_break_against",
+    }
+    severe_count = len(risk_flags.intersection(permanent_flags))
+    components["permanent_risk_flags"] = -min(30, severe_count * 20)
+    if "absorption_against" in risk_flags:
+        components["absorption"] = -10
+    soft_hostile = risk_flags.intersection({
+        "taker_flow_against",
+        "aggressive_delta_against",
+        "book_imbalance_against",
+    })
+    components["soft_hostile_flags"] = -min(6, len(soft_hostile) * 2)
+
+    raw_score = Decimal("50") + Decimal(sum(components.values()))
+    score = max(Decimal("0"), min(Decimal("100"), raw_score))
+    if score >= config.shadow_conditional_lab_v2_high_score:
+        bucket = "HIGH"
+    elif score >= config.shadow_conditional_lab_v2_mid_score:
+        bucket = "MID"
+    else:
+        bucket = "LOW"
+    return {
+        **base,
+        "score_version": "conditional_context_v2",
+        "score": str(score),
+        "raw_score": str(raw_score),
+        "bucket": bucket,
+        "components": components,
+        "calibration_basis": "post_v1_hypothesis_frozen_for_future_oos",
+    }
+
+
+def _shadow_conditional_lab_v2_variant(
+    signal: Signal,
+    config: StrategyConfig,
+) -> tuple[Signal | None, dict[str, Any] | None]:
+    if not config.shadow_conditional_lab_v2_enabled:
+        return None, None
+    profile = _shadow_conditional_profile_v2(signal, config)
+    if profile is None:
+        return None, None
+    source = str(profile["source_strategy"])
+    bucket = str(profile["bucket"])
+    strategy_bucket = f"SQZ_UPD_C2_COND_{bucket}_SHADOW"
+    metadata = dict(signal.metadata or {})
+    metadata.pop("controlled_shadow", None)
+    measurement_shadow = {
+        "bucket": "conditional_shadow_lab_v2",
+        "strategy_bucket": strategy_bucket,
+        "source_strategy": source,
+        "source_cluster_id": profile["source_cluster_id"],
+        "policy_arm": f"CONDITIONAL_V2_{bucket}",
+        "cohort": config.shadow_conditional_lab_v2_cohort,
+        "risk_cap_pct": str(config.shadow_conditional_lab_v2_risk_cap_pct),
+        "conditional_profile": profile,
+        "execution_constraints": [
+            "pre_context_candidate",
+            "one_non_overlapping_bucket_per_source_cluster",
+            "identical_source_exit_profile",
+            "virtual_shadow_only",
+            "no_production_admission_authority",
+            "future_oos_only",
+        ],
+    }
+    source_version = _strategy_logic_version(source) or "unknown"
+    return replace(
+        signal,
+        metadata={
+            **metadata,
+            "strategy": strategy_bucket,
+            "strategy_mode": "shadow",
+            "strategy_source": source,
+            "exit_profile_strategy": source,
+            "measurement_shadow": measurement_shadow,
+            "conditional_profile": profile,
+            "strategy_logic_version": (
+                f"{source_version}:conditional_lab_v2:"
+                f"{config.shadow_conditional_lab_v2_cohort}:{bucket}"
             ),
         },
     ), profile

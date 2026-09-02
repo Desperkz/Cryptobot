@@ -1365,7 +1365,8 @@ async function loadMonthlyTargetPlan() {
       `<span class="mt-badge ${statusGood ? 'good' : 'warn'}">Прогноз ${fmt(summary.combined_projected_monthly_return_pct || 0, 2)}%</span>`,
       `<span class="mt-badge ${Number(summary.target_gap_pct || 0) <= 0 ? 'good' : 'bad'}">Gap ${signedFmt(-(summary.target_gap_pct || 0), 2)}%</span>`,
       `<span class="mt-badge">Нужно ${fmt(data.target_r_month || 0, 2)}R/мес</span>`,
-      `<span class="mt-badge">Risk ${fmt((data.base_risk_pct || 0) * 100, 2)}%</span>`
+      `<span class="mt-badge">Paper risk ${fmt((data.base_risk_pct || 0) * 100, 2)}%</span>`,
+      `<span class="mt-badge">Mainnet max ${fmt((data.mainnet_risk_cap_pct || 0) * 100, 2)}% · ${fmt(data.mainnet_target_r_month || 0, 1)}R/мес</span>`
     ].join(''));
     if (!rows.length) {
       setHTML('mt-body', '<tr><td colspan="9" class="empty">Нет расчета цели</td></tr>');
@@ -1376,7 +1377,8 @@ async function loadMonthlyTargetPlan() {
       sample: 'выборка',
       expectancy: 'мат. ожидание',
       frequency: 'частота',
-      avg_r: 'Avg R'
+      avg_r: 'Avg R',
+      research_policy: 'только shadow'
     })[b] || b || '—';
     setHTML('mt-body', rows.map(r => {
       const projected = Number(r.projected_monthly_return_pct || 0);

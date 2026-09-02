@@ -2347,18 +2347,36 @@ def build_monthly_target_report(
     initial_equity: float = 1000.0,
     target_monthly_return_pct: float = 10.0,
     base_risk_pct: float = 0.02,
+    mainnet_risk_cap_pct: float | None = None,
 ) -> dict[str, Any]:
     """Estimate whether current evidence can mathematically support a monthly return target."""
     target_monthly_return_pct = max(float(target_monthly_return_pct), 0.0)
     base_risk_pct = max(float(base_risk_pct), 0.0001)
     initial_equity = max(float(initial_equity), 0.0001)
     target_r_month = target_monthly_return_pct / (base_risk_pct * 100.0)
+    bounded_mainnet_risk = (
+        max(float(mainnet_risk_cap_pct), 0.0001)
+        if mainnet_risk_cap_pct is not None
+        else None
+    )
+    mainnet_target_r_month = (
+        target_monthly_return_pct / (bounded_mainnet_risk * 100.0)
+        if bounded_mainnet_risk is not None
+        else None
+    )
     rows: list[dict[str, Any]] = []
     recommendations: list[str] = []
 
     for row in scorecard.get("strategies", []):
         strategy = str(row.get("strategy") or "UNKNOWN")
         mode = str(row.get("strategy_mode") or "unknown").lower()
+        promotion_policy = row.get("promotion_policy") if isinstance(row.get("promotion_policy"), dict) else {}
+        measurement_only = bool(
+            promotion_policy.get("tier") == "MEASUREMENT_SHADOW"
+            or strategy in SQZ_GATE_COHORT_SHADOW_STRATEGIES
+            or _is_parallel_shadow_lab_strategy(strategy)
+            or _is_conditional_shadow_lab_strategy(strategy)
+        )
         if mode == "shadow":
             metrics = row.get("shadow_paper") or {}
             scope = "shadow_paper"
@@ -2396,6 +2414,8 @@ def build_monthly_target_report(
         avg_r_gap = max(0.0, required_avg_r - avg_r) if required_avg_r is not None else None
 
         blockers: list[str] = []
+        if measurement_only:
+            blockers.append("measurement_only")
         if closed < 20:
             blockers.append("low_sample")
         if avg_r <= 0:
@@ -2405,7 +2425,9 @@ def build_monthly_target_report(
         if projected_monthly_return_pct < target_monthly_return_pct:
             blockers.append("target_gap")
 
-        if not blockers and closed >= 100 and profit_factor >= 1.30 and avg_r >= 0.25:
+        if measurement_only:
+            status = "MEASUREMENT_ONLY"
+        elif not blockers and closed >= 100 and profit_factor >= 1.30 and avg_r >= 0.25:
             status = "ON_TRACK"
         elif projected_monthly_return_pct >= target_monthly_return_pct and avg_r > 0:
             status = "WATCH_SAMPLE"
@@ -2413,7 +2435,9 @@ def build_monthly_target_report(
             status = "IMPROVE_OR_SCALE"
         else:
             status = "BLOCKED"
-        if closed < 20:
+        if measurement_only:
+            primary_blocker = "research_policy"
+        elif closed < 20:
             primary_blocker = "sample"
         elif avg_r <= 0:
             primary_blocker = "expectancy"
@@ -2430,6 +2454,7 @@ def build_monthly_target_report(
             "strategy": strategy,
             "mode": mode,
             "scope": scope,
+            "measurement_only": measurement_only,
             "status": status,
             "closed_clusters": closed,
             "open_trades": open_trades,
@@ -2458,6 +2483,7 @@ def build_monthly_target_report(
         row
         for row in rows
         if row["status"] in {"ON_TRACK", "IMPROVE_OR_SCALE"}
+        and not row["measurement_only"]
         and "low_sample" not in row["blockers"]
         and row["avg_r"] > 0
         and row["profit_factor"] >= 1.20
@@ -2481,6 +2507,12 @@ def build_monthly_target_report(
         "target_monthly_return_pct": round(target_monthly_return_pct, 2),
         "base_risk_pct": round(base_risk_pct, 4),
         "target_r_month": round(target_r_month, 2),
+        "mainnet_risk_cap_pct": (
+            round(bounded_mainnet_risk, 4) if bounded_mainnet_risk is not None else None
+        ),
+        "mainnet_target_r_month": (
+            round(mainnet_target_r_month, 2) if mainnet_target_r_month is not None else None
+        ),
         "initial_equity": round(initial_equity, 2),
         "summary": {
             "strategies": len(rows),
@@ -2768,7 +2800,10 @@ def _conditional_shadow_profile(row: Any) -> dict[str, Any]:
     measurement = signal_metadata.get("measurement_shadow")
     if not isinstance(measurement, dict):
         measurement = metadata.get("measurement_shadow")
-    if not isinstance(measurement, dict) or measurement.get("bucket") != "conditional_shadow_lab_v1":
+    if (
+        not isinstance(measurement, dict)
+        or measurement.get("bucket") not in {"conditional_shadow_lab_v1", "conditional_shadow_lab_v2"}
+    ):
         return {}
     profile = measurement.get("conditional_profile")
     if not isinstance(profile, dict):
@@ -2903,12 +2938,17 @@ def build_conditional_edge_report(
     else:
         cells = []
     source_rows_total = len(normalized) if source_rows_total is None else int(source_rows_total)
+    score_versions = sorted({
+        str(row.get("_conditional_profile", {}).get("score_version") or "UNKNOWN")
+        for row in normalized
+    })
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "measurement_only": True,
         "auto_promotion_enabled": False,
         "method": {
-            "score_version": "conditional_context_v1",
+            "score_version": score_versions[0] if len(score_versions) == 1 else "mixed",
+            "score_versions": score_versions,
             "assignment": "one non-overlapping HIGH/MID/LOW bucket per generated source candidate",
             "scope": ["SQUEEZE_BREAKOUT_DYNAMIC_UPD", "TREND_PULLBACK", "MOMENTUM_CONTINUATION"],
             "review_milestone_closed": 20,
@@ -3022,6 +3062,11 @@ def api_config() -> dict:
         return {
             "initial_equity_usdt": float(eq) if eq else 1000.0,
             "mode": cfg.mode.value,
+            "risk": {
+                "risk_per_trade_pct": float(cfg.risk.risk_per_trade_pct),
+                "max_mainnet_risk_per_trade_pct": float(cfg.safety.max_mainnet_risk_per_trade_pct),
+                "max_mainnet_leverage": int(cfg.safety.max_mainnet_leverage),
+            },
             "strategy_modes": cfg.strategy.mode_summary(),
             "execution_strategies": cfg.strategy.execution_strategies(cfg.mode),
             "shadow_strategies": cfg.strategy.shadow_strategies(),
@@ -3498,11 +3543,13 @@ def api_monthly_target_plan() -> dict:
     if "error" in scorecard:
         return scorecard
     config = api_config()
+    risk = config.get("risk") if isinstance(config.get("risk"), dict) else {}
     return build_monthly_target_report(
         scorecard,
         initial_equity=_to_float(config.get("initial_equity_usdt"), 1000.0) or 1000.0,
         target_monthly_return_pct=_to_float(os.getenv("BOT_TARGET_MONTHLY_RETURN_PCT"), 10.0) or 10.0,
-        base_risk_pct=_to_float(config.get("risk", {}).get("risk_per_trade_pct"), 0.02) or 0.02,
+        base_risk_pct=_to_float(risk.get("risk_per_trade_pct"), 0.02) or 0.02,
+        mainnet_risk_cap_pct=_to_float(risk.get("max_mainnet_risk_per_trade_pct"), None),
     )
 
 

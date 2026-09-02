@@ -83,6 +83,28 @@ def test_log_tail_reads_only_recent_bounded_window(tmp_path, monkeypatch) -> Non
     assert all("HTTP Request" not in line for line in lines)
 
 
+def test_monthly_target_api_uses_configured_risk_and_mainnet_cap(monkeypatch) -> None:
+    monkeypatch.setattr(bot_control_v2, "api_strategy_scorecard", lambda: {"summary": {}, "strategies": []})
+    monkeypatch.setattr(
+        bot_control_v2,
+        "api_config",
+        lambda: {
+            "initial_equity_usdt": 1000.0,
+            "risk": {
+                "risk_per_trade_pct": 0.005,
+                "max_mainnet_risk_per_trade_pct": 0.0025,
+            },
+        },
+    )
+
+    report = bot_control_v2.api_monthly_target_plan()
+
+    assert report["base_risk_pct"] == 0.005
+    assert report["target_r_month"] == 20.0
+    assert report["mainnet_risk_cap_pct"] == 0.0025
+    assert report["mainnet_target_r_month"] == 40.0
+
+
 def test_dashboard_indexes_cover_bounded_diagnostics_query() -> None:
     conn = sqlite3.connect(":memory:")
     conn.execute("""

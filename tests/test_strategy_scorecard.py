@@ -1384,6 +1384,43 @@ def test_monthly_target_report_marks_frequency_gap() -> None:
     assert row["primary_blocker"] == "frequency"
 
 
+def test_monthly_target_report_does_not_sum_parallel_measurement_buckets() -> None:
+    scorecard = {
+        "summary": {},
+        "strategies": [
+            {
+                "strategy": "SQZ_UPD_C2_COND_HIGH_SHADOW",
+                "strategy_mode": "shadow",
+                "promotion_policy": {"tier": "MEASUREMENT_SHADOW"},
+                "shadow_paper": {
+                    "closed_trades": 100,
+                    "open_trades": 0,
+                    "sample_age_days": 30,
+                    "avg_r": 0.5,
+                    "profit_factor": 2.0,
+                    "winrate": 60,
+                    "realized_pnl": 100,
+                },
+            }
+        ],
+    }
+
+    report = build_monthly_target_report(
+        scorecard,
+        initial_equity=1000,
+        target_monthly_return_pct=10,
+        base_risk_pct=0.005,
+        mainnet_risk_cap_pct=0.0025,
+    )
+
+    row = report["strategies"][0]
+    assert row["measurement_only"] is True
+    assert row["status"] == "MEASUREMENT_ONLY"
+    assert row["primary_blocker"] == "research_policy"
+    assert report["summary"]["viable_strategies"] == 0
+    assert report["summary"]["combined_projected_monthly_return_pct"] == 0
+
+
 def conditional_trade(
     trade_id: int,
     *,
