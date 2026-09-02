@@ -6,6 +6,7 @@ import socketserver
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 import bot_control_v2
 
@@ -18,6 +19,68 @@ def test_control_api_uses_threaded_server() -> None:
 
 def test_control_api_has_request_timeout() -> None:
     assert bot_control_v2.CONTROL_REQUEST_TIMEOUT_SECONDS > 0
+
+
+def test_scorecard_sql_aggregates_keep_exact_signal_and_rejection_counts() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT,
+            metadata TEXT
+        );
+        CREATE TABLE filter_rejections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy TEXT,
+            filter_type TEXT
+        );
+        """
+    )
+    conn.executemany(
+        "INSERT INTO signals(created_at, metadata) VALUES(?, ?)",
+        [
+            ("2026-09-01 00:00:00", json.dumps({"strategy": "TREND_PULLBACK", "strategy_mode": "shadow"})),
+            ("2026-09-02 00:00:00", json.dumps({"signal_metadata": {"strategy": "TREND_PULLBACK", "strategy_mode": "shadow"}})),
+            ("2026-09-02 01:00:00", "not-json"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO filter_rejections(strategy, filter_type) VALUES(?, ?)",
+        [("TREND_PULLBACK", "ORDER_FLOW"), ("TREND_PULLBACK", "ORDER_FLOW"), ("TREND_PULLBACK", "UTC")],
+    )
+
+    signals = bot_control_v2._scorecard_signal_aggregates(conn)
+    rejections = bot_control_v2._scorecard_rejection_aggregates(conn)
+    conn.close()
+
+    assert signals["TREND_PULLBACK"] == {
+        "signals_total": 2,
+        "shadow_signals": 2,
+        "last_signal_at": "2026-09-02 00:00:00",
+    }
+    assert signals["UNKNOWN"]["signals_total"] == 1
+    assert rejections["TREND_PULLBACK"] == {
+        "rejections_total": 3,
+        "by_type": {"ORDER_FLOW": 2, "UTC": 1},
+    }
+
+
+def test_log_tail_reads_only_recent_bounded_window(tmp_path, monkeypatch) -> None:
+    log_path = Path(tmp_path) / "bot.log"
+    log_path.write_text(
+        "OLD_MARKER\n" + ("x" * 500) + "\nHTTP Request noise\nRECENT_MARKER\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bot_control_v2, "LOG_PATH", str(log_path))
+    monkeypatch.setattr(bot_control_v2, "LOG_TAIL_MAX_BYTES", 80)
+
+    lines = bot_control_v2.api_logs(100)
+
+    assert "RECENT_MARKER" in lines
+    assert all("OLD_MARKER" not in line for line in lines)
+    assert all("HTTP Request" not in line for line in lines)
 
 
 def test_dashboard_indexes_cover_bounded_diagnostics_query() -> None:

@@ -920,7 +920,7 @@ const API = (() => {
   if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin;
   return PUBLIC_API;
 })();
-const INTERVAL = 15;
+const INTERVAL = 30;
 let cdownVal = INTERVAL, cdownTimer;
 let configLoaded = false;
 let refreshInFlight = null;

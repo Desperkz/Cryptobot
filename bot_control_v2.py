@@ -49,8 +49,12 @@ STRATEGY_GATE_DEFAULTS = {
     "max_drawdown": float(os.getenv("STRATEGY_GATE_MAX_DRAWDOWN", "-10")),
 }
 SCORECARD_CLUSTER_WINDOW_MINUTES = int(os.getenv("SCORECARD_CLUSTER_WINDOW_MINUTES", "60"))
-SCORECARD_CACHE_SECONDS = float(os.getenv("SCORECARD_CACHE_SECONDS", "30"))
+SCORECARD_CACHE_SECONDS = float(os.getenv("SCORECARD_CACHE_SECONDS", "120"))
 SCORECARD_DIAGNOSTIC_LIMIT = int(os.getenv("SCORECARD_DIAGNOSTIC_LIMIT", "1500"))
+SCORECARD_SIGNAL_SAMPLE_LIMIT = int(os.getenv("SCORECARD_SIGNAL_SAMPLE_LIMIT", "3000"))
+CONDITIONAL_EDGE_TRADE_LIMIT = int(os.getenv("CONDITIONAL_EDGE_TRADE_LIMIT", "5000"))
+CONDITIONAL_EDGE_CELL_LIMIT = int(os.getenv("CONDITIONAL_EDGE_CELL_LIMIT", "100"))
+LOG_TAIL_MAX_BYTES = int(os.getenv("BOT_LOG_TAIL_MAX_BYTES", str(2 * 1024 * 1024)))
 SHADOW_GATE_DEFAULTS = {
     "min_closed_trades": int(os.getenv("SHADOW_GATE_MIN_CLOSED_TRADES", "30")),
     "min_sample_age_days": float(os.getenv("SHADOW_GATE_MIN_SAMPLE_AGE_DAYS", "3")),
@@ -1028,6 +1032,8 @@ def build_strategy_scorecard(
     prices: dict[str, Any] | None = None,
     gate_thresholds: dict[str, Any] | None = None,
     strategy_modes: dict[str, str] | None = None,
+    signal_aggregates: dict[str, dict[str, Any]] | None = None,
+    rejection_aggregates: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     prices = prices or {}
     signals = signals or []
@@ -1094,6 +1100,22 @@ def build_strategy_scorecard(
     for strategy in strategy_modes:
         bucket(strategy)
 
+    exact_signal_counts = signal_aggregates is not None
+    for strategy, aggregate in (signal_aggregates or {}).items():
+        item = bucket(str(strategy))
+        item["signals_total"] = int(aggregate.get("signals_total", 0) or 0)
+        item["shadow_signals"] = int(aggregate.get("shadow_signals", 0) or 0)
+        item["last_signal_at"] = _parse_datetime(aggregate.get("last_signal_at"))
+
+    exact_rejection_counts = rejection_aggregates is not None
+    for strategy, aggregate in (rejection_aggregates or {}).items():
+        item = bucket(str(strategy))
+        by_type = aggregate.get("by_type")
+        item["rejections_by_type"] = dict(by_type) if isinstance(by_type, dict) else {}
+        item["rejections_total"] = int(
+            aggregate.get("rejections_total", sum(item["rejections_by_type"].values())) or 0
+        )
+
     for trade in trades:
         strategy = _strategy_from_trade(trade)
         status = str(_row_get(trade, "status", "") or "").upper()
@@ -1116,8 +1138,9 @@ def build_strategy_scorecard(
         strategy = str(_row_get(rejection, "strategy", "UNKNOWN") or "UNKNOWN")
         item = bucket(strategy)
         filter_type = str(_row_get(rejection, "filter_type", "OTHER") or "OTHER")
-        item["rejections_total"] += 1
-        item["rejections_by_type"][filter_type] = item["rejections_by_type"].get(filter_type, 0) + 1
+        if not exact_rejection_counts:
+            item["rejections_total"] += 1
+            item["rejections_by_type"][filter_type] = item["rejections_by_type"].get(filter_type, 0) + 1
 
     for signal in signals:
         # Parse the signal envelope once.  The scorecard can contain tens of
@@ -1129,9 +1152,10 @@ def build_strategy_scorecard(
             signal_metadata = metadata
         strategy = str(signal_metadata.get("strategy") or "UNKNOWN")
         item = bucket(strategy)
-        item["signals_total"] += 1
+        if not exact_signal_counts:
+            item["signals_total"] += 1
         mode = str(signal_metadata.get("strategy_mode") or strategy_modes.get(strategy, "unknown")).lower()
-        if mode == "shadow":
+        if mode == "shadow" and not exact_signal_counts:
             item["shadow_signals"] += 1
         confidence = _to_float(_row_get(signal, "confidence"), None)
         if confidence is not None:
@@ -1157,7 +1181,9 @@ def build_strategy_scorecard(
             for flag in flags:
                 _increment(evidence_counts, f"flag:{flag}")
         signal_dt = _parse_datetime(_row_get(signal, "created_at"))
-        if signal_dt and (item["last_signal_at"] is None or signal_dt > item["last_signal_at"]):
+        if signal_dt and (
+            item["last_signal_at"] is None or signal_dt > item["last_signal_at"]
+        ):
             item["last_signal_at"] = signal_dt
 
     for diagnostic in diagnostics:
@@ -2816,7 +2842,12 @@ def _conditional_edge_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_conditional_edge_report(rows: list[Any]) -> dict[str, Any]:
+def build_conditional_edge_report(
+    rows: list[Any],
+    *,
+    cell_limit: int = CONDITIONAL_EDGE_CELL_LIMIT,
+    source_rows_total: int | None = None,
+) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
     for raw_row in rows:
         profile = _conditional_shadow_profile(raw_row)
@@ -2865,6 +2896,13 @@ def build_conditional_edge_report(rows: list[Any]) -> dict[str, Any]:
             **_conditional_edge_metrics(group),
         })
     cells.sort(key=lambda item: (-item["closed"], -item["entries"], item["cell"]))
+    cells_total = len(cells)
+    bounded_cell_limit = max(0, int(cell_limit))
+    if bounded_cell_limit:
+        cells = cells[:bounded_cell_limit]
+    else:
+        cells = []
+    source_rows_total = len(normalized) if source_rows_total is None else int(source_rows_total)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "measurement_only": True,
@@ -2875,9 +2913,15 @@ def build_conditional_edge_report(rows: list[Any]) -> dict[str, Any]:
             "scope": ["SQUEEZE_BREAKOUT_DYNAMIC_UPD", "TREND_PULLBACK", "MOMENTUM_CONTINUATION"],
             "review_milestone_closed": 20,
             "decision_min_closed": 50,
+            "trade_rows_loaded": len(normalized),
+            "trade_rows_total": source_rows_total,
+            "trade_rows_truncated": source_rows_total > len(normalized),
+            "cell_limit": bounded_cell_limit,
         },
         "totals": _conditional_edge_metrics(normalized),
         "summaries": summaries,
+        "cells_total": cells_total,
+        "cells_truncated": cells_total > len(cells),
         "cells": cells,
     }
 
@@ -2886,17 +2930,39 @@ def api_conditional_edge() -> dict:
     try:
         conn = get_db()
         ensure_shadow_trades_table(conn)
+        source_rows_total = int(conn.execute("""
+            SELECT COUNT(*) FROM shadow_trades
+            WHERE strategy LIKE '%_COND_%_SHADOW'
+        """).fetchone()[0])
         rows = conn.execute("""
             SELECT id, created_at, closed_at, symbol, direction, strategy,
                    status, realized_pnl, r_multiple, close_reason, metadata
-            FROM shadow_trades
-            WHERE strategy LIKE '%_COND_%_SHADOW'
-            ORDER BY id DESC
-        """).fetchall()
+            FROM (
+                SELECT id, created_at, closed_at, symbol, direction, strategy,
+                       status, realized_pnl, r_multiple, close_reason, metadata
+                FROM shadow_trades
+                WHERE strategy LIKE '%_COND_%_SHADOW'
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            ORDER BY id ASC
+        """, (CONDITIONAL_EDGE_TRADE_LIMIT,)).fetchall()
         conn.close()
-        return build_conditional_edge_report(rows)
+        return build_conditional_edge_report(rows, source_rows_total=source_rows_total)
     except Exception as e:
         return {"error": str(e)}
+
+
+def _bounded_log_tail(path: Path, *, max_bytes: int) -> list[str]:
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        end = handle.tell()
+        start = max(0, end - max(1, max_bytes))
+        handle.seek(start)
+        payload = handle.read(end - start)
+    if start > 0 and b"\n" in payload:
+        payload = payload.split(b"\n", 1)[1]
+    return payload.decode("utf-8", errors="ignore").splitlines()
 
 
 def api_logs(lines: int = 100) -> list[str]:
@@ -2904,12 +2970,13 @@ def api_logs(lines: int = 100) -> list[str]:
         p = Path(LOG_PATH)
         if not p.exists():
             return []
-        all_lines = p.read_text(errors="ignore").splitlines()
+        requested_lines = max(1, min(int(lines), 1_000))
+        all_lines = _bounded_log_tail(p, max_bytes=LOG_TAIL_MAX_BYTES)
         # Фильтруем HTTP мусор
         filtered = [l for l in all_lines if not any(x in l for x in [
             "HTTP Request", "httpx", "httpcore", "Skipping", "receive_", "send_request"
         ])]
-        return filtered[-lines:]
+        return filtered[-requested_lines:]
     except Exception as e:
         return [str(e)]
 
@@ -3151,6 +3218,57 @@ def _summarize_order_flow(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _scorecard_signal_aggregates(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = conn.execute("""
+        WITH parsed AS (
+            SELECT
+                CASE WHEN json_valid(metadata) THEN COALESCE(
+                    json_extract(metadata, '$.strategy'),
+                    json_extract(metadata, '$.signal_metadata.strategy')
+                ) END AS strategy,
+                CASE WHEN json_valid(metadata) THEN COALESCE(
+                    json_extract(metadata, '$.strategy_mode'),
+                    json_extract(metadata, '$.signal_metadata.strategy_mode')
+                ) END AS strategy_mode,
+                created_at
+            FROM signals
+        )
+        SELECT COALESCE(strategy, 'UNKNOWN') AS strategy,
+               COUNT(*) AS signals_total,
+               SUM(CASE WHEN LOWER(COALESCE(strategy_mode, '')) = 'shadow' THEN 1 ELSE 0 END)
+                   AS shadow_signals,
+               MAX(created_at) AS last_signal_at
+        FROM parsed
+        GROUP BY COALESCE(strategy, 'UNKNOWN')
+    """).fetchall()
+    return {
+        str(row["strategy"]): {
+            "signals_total": int(row["signals_total"] or 0),
+            "shadow_signals": int(row["shadow_signals"] or 0),
+            "last_signal_at": row["last_signal_at"],
+        }
+        for row in rows
+    }
+
+
+def _scorecard_rejection_aggregates(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = conn.execute("""
+        SELECT COALESCE(strategy, 'UNKNOWN') AS strategy,
+               COALESCE(filter_type, 'OTHER') AS filter_type,
+               COUNT(*) AS rejection_count
+        FROM filter_rejections
+        GROUP BY COALESCE(strategy, 'UNKNOWN'), COALESCE(filter_type, 'OTHER')
+    """).fetchall()
+    aggregates: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        strategy = str(row["strategy"])
+        item = aggregates.setdefault(strategy, {"rejections_total": 0, "by_type": {}})
+        count = int(row["rejection_count"] or 0)
+        item["rejections_total"] += count
+        item["by_type"][str(row["filter_type"])] = count
+    return aggregates
+
+
 def _build_strategy_scorecard() -> dict:
     try:
         conn = get_db()
@@ -3162,16 +3280,18 @@ def _build_strategy_scorecard() -> dict:
             FROM trades
             ORDER BY id ASC
         """).fetchall()
-        rejections = conn.execute("""
-            SELECT symbol, direction, strategy, confidence, filter_type, reason, created_at
-            FROM filter_rejections
-            ORDER BY id ASC
-        """).fetchall()
+        rejection_aggregates = _scorecard_rejection_aggregates(conn)
+        signal_aggregates = _scorecard_signal_aggregates(conn)
         signals = conn.execute("""
-            SELECT symbol, direction, confidence, reason, created_at, metadata
-            FROM signals
+            SELECT id, symbol, direction, confidence, reason, created_at, metadata
+            FROM (
+                SELECT id, symbol, direction, confidence, reason, created_at, metadata
+                FROM signals
+                ORDER BY id DESC
+                LIMIT ?
+            )
             ORDER BY id ASC
-        """).fetchall()
+        """, (SCORECARD_SIGNAL_SAMPLE_LIMIT,)).fetchall()
         shadow_trades = conn.execute("""
             SELECT id, created_at, closed_at, symbol, direction, strategy, quantity,
                    entry_price, stop_loss, take_profit, mode, status, risk_amount,
@@ -3218,20 +3338,26 @@ def _build_strategy_scorecard() -> dict:
         config = api_config()
         scorecard = build_strategy_scorecard(
             list(trades),
-            list(rejections),
+            [],
             list(signals),
             list(shadow_trades),
             [*list(diagnostics), *list(shadow_diagnostics)],
             initial_equity=float(config.get("initial_equity_usdt", 1000.0)),
             prices=prices,
             strategy_modes=config.get("strategy_modes", {}),
+            signal_aggregates=signal_aggregates,
+            rejection_aggregates=rejection_aggregates,
         )
         scorecard["generated_at"] = datetime.now(timezone.utc).isoformat()
         scorecard["diagnostics_scope"] = {
             "limit": SCORECARD_DIAGNOSTIC_LIMIT,
             "loaded": len(diagnostics),
             "shadow_loaded": len(shadow_diagnostics),
-            "note": "recent diagnostics only to keep dashboard memory bounded",
+            "signals_loaded": len(signals),
+            "signal_limit": SCORECARD_SIGNAL_SAMPLE_LIMIT,
+            "signal_totals": "exact_sql_aggregates",
+            "rejection_totals": "exact_sql_aggregates",
+            "note": "recent detail samples with exact SQL totals keep dashboard memory bounded",
         }
         return scorecard
     except Exception as e:

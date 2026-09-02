@@ -1446,6 +1446,59 @@ def test_conditional_edge_report_keeps_buckets_non_overlapping() -> None:
     assert report["summaries"][0]["verdict"] == "INSUFFICIENT_SAMPLE"
 
 
+def test_scorecard_uses_exact_totals_with_bounded_detail_samples() -> None:
+    report = build_strategy_scorecard(
+        [],
+        [rejection("TREND_PULLBACK", "UTC")],
+        [signal_row("TREND_PULLBACK", metadata={"confidence": 0.8})],
+        strategy_modes={"TREND_PULLBACK": "shadow"},
+        signal_aggregates={
+            "TREND_PULLBACK": {
+                "signals_total": 125,
+                "shadow_signals": 120,
+                "last_signal_at": "2026-09-02 01:00:00",
+            }
+        },
+        rejection_aggregates={
+            "TREND_PULLBACK": {
+                "rejections_total": 80,
+                "by_type": {"ORDER_FLOW": 60, "UTC": 20},
+            }
+        },
+    )
+
+    row = by_strategy(report, "TREND_PULLBACK")
+    assert row["signals_total"] == 125
+    assert row["shadow_signals"] == 120
+    assert row["last_signal_at"] == "2026-09-02T01:00:00Z"
+    assert row["rejections_total"] == 80
+    assert row["rejections_by_type"] == {"ORDER_FLOW": 60, "UTC": 20}
+    assert row["candidate_evidence"]["avg_signal_confidence"] == 0.8
+
+
+def test_conditional_edge_report_bounds_cell_details_and_marks_truncation() -> None:
+    report = build_conditional_edge_report(
+        [
+            conditional_trade(1, bucket="HIGH", r_value=1.0),
+            conditional_trade(
+                2,
+                bucket="MID",
+                r_value=0.2,
+                cell="regime=RANGE|direction=LONG|of_alignment=MIXED",
+            ),
+        ],
+        cell_limit=1,
+        source_rows_total=10,
+    )
+
+    assert report["method"]["trade_rows_loaded"] == 2
+    assert report["method"]["trade_rows_total"] == 10
+    assert report["method"]["trade_rows_truncated"] is True
+    assert report["cells_total"] == 2
+    assert report["cells_truncated"] is True
+    assert len(report["cells"]) == 1
+
+
 def test_conditional_shadow_strategy_requires_human_cohort_review() -> None:
     policy = apply_strategy_promotion_policy({
         "strategy": "SQZ_UPD_COND_HIGH_SHADOW",
