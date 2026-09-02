@@ -589,6 +589,7 @@
   - Evidence v1: `SQZ LOW` отрицателен (`26` закрытий, Avg R `-0.260`, PF `0.49`); HIGH/MID около `+0.10R`, но их CI пересекает ноль. На exploratory-срезе RS band HIGH выглядит сильнее, а RANGE, RS LOW/AGAINST и VERY_NEAR liquidity хуже; эти наблюдения нельзя применять к старой выборке задним числом.
   - Готово: параллельно с неизменной v1 создана SQZ-only когорта `conditional_context_v2`, epoch `2026-09-03-conditional-v2`, строки `SQZ_UPD_C2_COND_*_SHADOW`. V2 заранее фиксирует больший вес RS/regime, меньший вес единичного OF snapshot/retest и отдельные штрафы опасной ликвидности/слабого объёма.
   - Ограничение: v2 только virtual shadow с risk cap `0.20%`, отдельной статистикой и флагами `future_oos_only`/`no_production_admission_authority`. Paper/live admission, TP/SL и текущая v1 не изменены.
+  - Runtime-аудит: устранено повторное назначение одного source cluster в разные HIGH/MID/LOW bucket при обновлении контекста. Назначение теперь замораживается по `score_version + cohort + source_cluster_id`, а `/conditional-edge` дедуплицирует старые повторения без удаления исходных строк БД.
   - Контроль: первый review на `20` закрытых SQZ v2-сделках по bucket, решение не раньше `50`. Сравнивать v1/v2 на совпадающих будущих source clusters; paper review возможен только при PF `>=1.30`, Avg R `>=+0.20`, CI без явного отрицательного смещения и без зависимости от одного символа.
 
 ## Отложено до условия

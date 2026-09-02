@@ -1483,6 +1483,24 @@ def test_conditional_edge_report_keeps_buckets_non_overlapping() -> None:
     assert report["summaries"][0]["verdict"] == "INSUFFICIENT_SAMPLE"
 
 
+def test_conditional_edge_report_removes_rebucketed_source_duplicates() -> None:
+    first = conditional_trade(1, bucket="HIGH", r_value=1.2)
+    repeated = conditional_trade(2, bucket="LOW", r_value=-1.0)
+    repeated_metadata = json.loads(repeated["metadata"])
+    measurement = repeated_metadata["signal_metadata"]["measurement_shadow"]
+    measurement["source_cluster_id"] = "TREND_PULLBACK:BTCUSDT:1"
+    measurement["conditional_profile"]["source_cluster_id"] = "TREND_PULLBACK:BTCUSDT:1"
+    repeated["metadata"] = json.dumps(repeated_metadata)
+
+    report = build_conditional_edge_report([repeated, first])
+
+    assert report["totals"]["entries"] == 1
+    assert report["summaries"][0]["bucket"] == "HIGH"
+    assert report["method"]["trade_rows_raw_loaded"] == 2
+    assert report["method"]["trade_rows_loaded"] == 1
+    assert report["method"]["duplicate_assignments_removed"] == 1
+
+
 def test_scorecard_uses_exact_totals_with_bounded_detail_samples() -> None:
     report = build_strategy_scorecard(
         [],

@@ -1026,7 +1026,7 @@ class TradingBot:
             payload = _measurement_shadow_payload(variant)
             strategy = _shadow_execution_strategy(variant)
             source_cluster_id = str(payload.get("source_cluster_id") or "")
-            if _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id):
+            if _conditional_shadow_source_seen(shadow_history, payload):
                 continue
             await self._record_shadow_signal(variant, filters)
 
@@ -1090,11 +1090,17 @@ class TradingBot:
             shadow_history = await self.db.recent_shadow_trades(limit=1_000)
             measurement_payload = _measurement_shadow_payload(signal)
             source_cluster_id = str(measurement_payload.get("source_cluster_id") or "")
-            if measurement_payload and _measurement_shadow_source_seen(
-                shadow_history,
-                strategy,
-                source_cluster_id,
-            ):
+            conditional_seen = (
+                _conditional_shadow_source_seen(shadow_history, measurement_payload)
+                if measurement_payload
+                else False
+            )
+            strategy_seen = (
+                _measurement_shadow_source_seen(shadow_history, strategy, source_cluster_id)
+                if measurement_payload
+                else False
+            )
+            if measurement_payload and (conditional_seen or strategy_seen):
                 logger.info("Shadow measurement %s already recorded source %s.", strategy, source_cluster_id)
                 return
             if not measurement_payload:
@@ -3198,6 +3204,33 @@ def _measurement_shadow_source_seen(
         if not isinstance(payload, dict):
             payload = metadata.get("measurement_shadow")
         if isinstance(payload, dict) and str(payload.get("source_cluster_id") or "") == source_cluster_id:
+            return True
+    return False
+
+
+def _conditional_shadow_source_seen(
+    trades: list[dict[str, Any]],
+    candidate_payload: dict[str, Any],
+) -> bool:
+    """Keep each conditional-lab source cluster in one bucket per cohort."""
+    bucket = str(candidate_payload.get("bucket") or "")
+    cohort = str(candidate_payload.get("cohort") or "")
+    source_cluster_id = str(candidate_payload.get("source_cluster_id") or "")
+    if not bucket.startswith("conditional_shadow_lab_") or not cohort or not source_cluster_id:
+        return False
+    for trade in trades:
+        metadata = _trade_metadata(trade)
+        signal_metadata = metadata.get("signal_metadata")
+        payload = signal_metadata.get("measurement_shadow") if isinstance(signal_metadata, dict) else None
+        if not isinstance(payload, dict):
+            payload = metadata.get("measurement_shadow")
+        if not isinstance(payload, dict):
+            continue
+        if (
+            str(payload.get("bucket") or "") == bucket
+            and str(payload.get("cohort") or "") == cohort
+            and str(payload.get("source_cluster_id") or "") == source_cluster_id
+        ):
             return True
     return False
 

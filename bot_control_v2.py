@@ -2883,13 +2883,39 @@ def build_conditional_edge_report(
     cell_limit: int = CONDITIONAL_EDGE_CELL_LIMIT,
     source_rows_total: int | None = None,
 ) -> dict[str, Any]:
-    normalized: list[dict[str, Any]] = []
+    raw_normalized: list[dict[str, Any]] = []
     for raw_row in rows:
         profile = _conditional_shadow_profile(raw_row)
         if not profile:
             continue
         row = dict(raw_row) if isinstance(raw_row, dict) else dict(raw_row)
         row["_conditional_profile"] = profile
+        raw_normalized.append(row)
+
+    normalized: list[dict[str, Any]] = []
+    seen_assignments: set[tuple[str, str, str, str]] = set()
+    duplicate_assignments_removed = 0
+    ordered_rows = sorted(
+        raw_normalized,
+        key=lambda row: (
+            str(_row_get(row, "created_at") or ""),
+            int(_to_float(_row_get(row, "id"), 0) or 0),
+        ),
+    )
+    for row in ordered_rows:
+        profile = row["_conditional_profile"]
+        source_cluster_id = str(profile.get("source_cluster_id") or "")
+        if source_cluster_id:
+            assignment_key = (
+                str(profile.get("cohort") or "UNKNOWN"),
+                str(profile.get("score_version") or "UNKNOWN"),
+                str(profile.get("source_strategy") or "UNKNOWN"),
+                source_cluster_id,
+            )
+            if assignment_key in seen_assignments:
+                duplicate_assignments_removed += 1
+                continue
+            seen_assignments.add(assignment_key)
         normalized.append(row)
 
     source_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
@@ -2937,7 +2963,8 @@ def build_conditional_edge_report(
         cells = cells[:bounded_cell_limit]
     else:
         cells = []
-    source_rows_total = len(normalized) if source_rows_total is None else int(source_rows_total)
+    raw_rows_loaded = len(raw_normalized)
+    source_rows_total = raw_rows_loaded if source_rows_total is None else int(source_rows_total)
     score_versions = sorted({
         str(row.get("_conditional_profile", {}).get("score_version") or "UNKNOWN")
         for row in normalized
@@ -2954,8 +2981,10 @@ def build_conditional_edge_report(
             "review_milestone_closed": 20,
             "decision_min_closed": 50,
             "trade_rows_loaded": len(normalized),
+            "trade_rows_raw_loaded": raw_rows_loaded,
             "trade_rows_total": source_rows_total,
-            "trade_rows_truncated": source_rows_total > len(normalized),
+            "trade_rows_truncated": source_rows_total > raw_rows_loaded,
+            "duplicate_assignments_removed": duplicate_assignments_removed,
             "cell_limit": bounded_cell_limit,
         },
         "totals": _conditional_edge_metrics(normalized),

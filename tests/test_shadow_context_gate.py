@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from trading_bot.bot import (
     _annotate_shadow_order_flow_gate,
+    _conditional_shadow_source_seen,
     _controlled_shadow_revalidation_override,
     _shadow_candidate_context_rejection_reason,
     _shadow_gate_counterfactual_variants,
@@ -230,6 +231,38 @@ def test_conditional_lab_v2_is_sqz_only_and_can_be_disabled() -> None:
 
     assert _shadow_conditional_profile_v2(tpb, conditional_lab_config()) is None
     assert _shadow_conditional_lab_v2_variant(sqz, conditional_lab_config(enabled=False))[0] is None
+
+
+def test_conditional_lab_freezes_one_bucket_per_version_cohort_and_source() -> None:
+    source_cluster_id = "SQUEEZE_BREAKOUT_DYNAMIC_UPD:HBARUSDT:LONG:12345"
+    existing = [{
+        "metadata": {
+            "signal_metadata": {
+                "strategy": "SQZ_UPD_C2_COND_HIGH_SHADOW",
+                "measurement_shadow": {
+                    "bucket": "conditional_shadow_lab_v2",
+                    "cohort": "2026-09-03-conditional-v2",
+                    "source_cluster_id": source_cluster_id,
+                },
+            },
+        },
+    }]
+
+    repeated_low = {
+        "bucket": "conditional_shadow_lab_v2",
+        "cohort": "2026-09-03-conditional-v2",
+        "source_cluster_id": source_cluster_id,
+        "strategy_bucket": "SQZ_UPD_C2_COND_LOW_SHADOW",
+    }
+    parallel_v1 = {
+        "bucket": "conditional_shadow_lab_v1",
+        "cohort": "2026-08-25-conditional-v1",
+        "source_cluster_id": source_cluster_id,
+        "strategy_bucket": "SQZ_UPD_COND_LOW_SHADOW",
+    }
+
+    assert _conditional_shadow_source_seen(existing, repeated_low) is True
+    assert _conditional_shadow_source_seen(existing, parallel_v1) is False
 
 
 def test_parallel_lab_records_explicit_strict_control() -> None:
