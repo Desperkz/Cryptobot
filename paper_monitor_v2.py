@@ -100,13 +100,22 @@ def ensure_shadow_trades_table(conn: sqlite3.Connection) -> None:
     """)
 
 
+async def _get_market_response(client: httpx.AsyncClient, path: str, params: dict) -> httpx.Response:
+    for attempt in range(2):
+        try:
+            response = await client.get(f"{BASE_URL}{path}", params=params, timeout=5)
+            response.raise_for_status()
+            return response
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
+            if attempt:
+                raise
+            await asyncio.sleep(0.2)
+    raise RuntimeError("Market request attempts exhausted")
+
+
 async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketSnapshot | None:
     try:
-        resp = await client.get(
-            f"{BASE_URL}/fapi/v1/ticker/price",
-            params={"symbol": symbol},
-            timeout=5,
-        )
+        resp = await _get_market_response(client, "/fapi/v1/ticker/price", {"symbol": symbol})
         data = resp.json()
         price = Decimal(str(data["price"]))
         high = price
@@ -114,10 +123,8 @@ async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketS
         candle_open_time: datetime | None = None
         candle_close_time: datetime | None = None
         try:
-            candle_resp = await client.get(
-                f"{BASE_URL}/fapi/v1/klines",
-                params={"symbol": symbol, "interval": "1m", "limit": 1},
-                timeout=5,
+            candle_resp = await _get_market_response(
+                client, "/fapi/v1/klines", {"symbol": symbol, "interval": "1m", "limit": 1}
             )
             candles = candle_resp.json()
             if candles:
@@ -127,7 +134,7 @@ async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketS
                 candle_open_time = datetime.fromtimestamp(int(candle[0]) / 1000, tz=timezone.utc)
                 candle_close_time = datetime.fromtimestamp(int(candle[6]) / 1000, tz=timezone.utc)
         except Exception as candle_error:
-            logger.debug("Не удалось получить 1m свечу %s: %s", symbol, candle_error)
+            logger.debug("Не удалось получить 1m свечу %s: %r", symbol, candle_error)
         return MarketSnapshot(
             price=price,
             high=high,
@@ -136,7 +143,7 @@ async def get_market_snapshot(client: httpx.AsyncClient, symbol: str) -> MarketS
             candle_close_time=candle_close_time,
         )
     except Exception as e:
-        logger.warning("Не удалось получить цену %s: %s", symbol, e)
+        logger.warning("Не удалось получить цену %s: %r", symbol, e)
         return None
 
 

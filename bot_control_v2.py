@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import http.server
 import json
+import logging
 import os
 import secrets
 import socketserver
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -240,6 +242,13 @@ STRATEGY_PROMOTION_POLICIES = {
 class ControlHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request, client_address) -> None:
+        error = sys.exc_info()[1]
+        if isinstance(error, (ConnectionResetError, BrokenPipeError)):
+            logging.getLogger(__name__).info("Control API client disconnected: %s", client_address[0])
+            return
+        super().handle_error(request, client_address)
 
 
 _SERVICE_STATUS_CACHE: dict[str, tuple[float, str]] = {}
