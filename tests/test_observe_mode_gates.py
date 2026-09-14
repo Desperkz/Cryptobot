@@ -200,16 +200,19 @@ def test_observe_mode_requires_context_gate_in_config() -> None:
     """observe без контекстного гейта впустил бы весь поток RANGE-пробоев."""
     root = Path(__file__).resolve().parents[1]
     cfg = load_config(root / "config.yaml", root / ".env.example")
+    object.__setattr__(cfg.strategy, "order_flow_entry_gate_mode", "observe")
     object.__setattr__(cfg.strategy, "squeeze_context_gate_enabled", False)
     with pytest.raises(ConfigError, match="squeeze_context_gate_enabled"):
         cfg.validate()
 
 
-def test_runtime_config_runs_observe_mode_with_context_gate() -> None:
+def test_runtime_config_keeps_paper_control_and_enables_isolated_p8() -> None:
     root = Path(__file__).resolve().parents[1]
     cfg = load_config(root / "config.yaml", root / ".env.example")
-    assert cfg.strategy.order_flow_entry_gate_mode == "observe"
-    assert cfg.strategy.squeeze_context_gate_enabled is True
+    assert cfg.strategy.order_flow_entry_gate_mode == "measure"
+    assert cfg.strategy.squeeze_context_gate_enabled is False
     assert cfg.strategy.squeeze_context_gate_blocked_regimes == ["RANGE"]
-    assert cfg.strategy.shadow_conditional_neutralize_order_flow is True
+    assert cfg.strategy.shadow_conditional_neutralize_order_flow is False
+    assert cfg.strategy.p8_shadow_enabled is True
+    assert cfg.risk.max_concurrent_positions == 4
     cfg.validate()

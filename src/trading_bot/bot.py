@@ -123,7 +123,8 @@ class TradingBot:
         self.regime = MarketRegimeDetector(config.strategy)
         self.styles = StyleSelector(config.universe.max_spread_bps, config.universe.min_24h_quote_volume_usdt)
         self.edge_analyzer = EdgeAnalyzer(config.edge_filters)
-        self.order_flow = OrderFlowAnnotator(config.edge_filters)
+        self.order_flow = OrderFlowAnnotator(config.edge_filters, legacy_liquidity=True)
+        self.p8_order_flow = OrderFlowAnnotator(config.edge_filters)
         self._squeeze = SqueezeBreakoutStrategy(config.strategy, self.regime)
         self._trend_pullback = TrendPullbackStrategy(config.strategy, self.regime, self.edge_analyzer)
         self._liquidity_sweep_reversal = LiquiditySweepReversalStrategy(config.strategy, self.edge_analyzer)
@@ -440,6 +441,7 @@ class TradingBot:
             signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
             await self._record_relative_strength_annotation(signal, relative_strength)
             await self._record_sqz_gate_cohort_shadows(signal, asset.filters)
+            await self._record_p8_shadow(signal, asset.filters)
             if has_active_position:
                 logger.info(
                     "Active %s position exists; strict paper entry skipped after shadow diagnostics.",
@@ -797,6 +799,12 @@ class TradingBot:
             **dict(signal.metadata or {}),
             "order_flow": annotation.to_metadata(),
         }
+        if self.config.strategy.p8_shadow_enabled and _signal_strategy(signal) in {
+            "SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC_UPD"
+        }:
+            metadata["p8_order_flow"] = self.p8_order_flow.annotate(
+                candles_15m, signal.direction, metrics
+            ).to_metadata()
         return replace(signal, metadata=metadata), annotation
 
     def _dynamic_sizing_decision(
@@ -1002,6 +1010,8 @@ class TradingBot:
         filters: SymbolFilters | None = None,
     ) -> None:
         """Place a candidate into isolated v1/v2 measurement buckets."""
+        if _signal_strategy(signal) == "SQUEEZE_BREAKOUT_DYNAMIC_UPD":
+            await self._record_p8_shadow(signal, filters)
         evaluated: list[tuple[Signal, dict[str, Any], str]] = []
         for variant, profile, decision in (
             (*_shadow_conditional_lab_variant(signal, self.config.strategy), "SHADOW_CONDITIONAL_LAB_EVALUATED"),
@@ -1028,6 +1038,19 @@ class TradingBot:
             source_cluster_id = str(payload.get("source_cluster_id") or "")
             if _conditional_shadow_source_seen(shadow_history, payload):
                 continue
+            await self._record_shadow_signal(variant, filters)
+
+    async def _record_p8_shadow(self, signal: Signal, filters: SymbolFilters | None = None) -> None:
+        variants, decisions = _p8_shadow_variants(signal, self.config.strategy)
+        if not decisions:
+            return
+        await self._record_ml_feature_snapshot(
+            signal, "P8_SHADOW_EVALUATED", json.dumps(decisions, sort_keys=True)
+        )
+        if not variants:
+            return
+        # Existing shadow writer enforces source deduplication and simulated exits.
+        for variant in variants:
             await self._record_shadow_signal(variant, filters)
 
     async def _record_sqz_gate_cohort_shadows(
@@ -2508,9 +2531,11 @@ def _shadow_conditional_profile(
         of_score_component = 0
     components["order_flow_score"] = 0 if neutralize_of else of_score_component
     hostile_count = len(risk_flags.intersection(SHADOW_CONDITIONAL_HOSTILE_FLAGS))
-    components["hostile_flags"] = (
-        0 if neutralize_of else -min(18, hostile_count * 6)
-    )
+    if neutralize_of:
+        hostile_count = len(risk_flags.intersection(SHADOW_CONDITIONAL_HOSTILE_FLAGS - {
+            "taker_flow_against", "book_imbalance_against", "aggressive_delta_against"
+        }))
+    components["hostile_flags"] = -min(18, hostile_count * 6)
 
     components["relative_strength_alignment"] = {
         "aligned": 12,
@@ -2607,7 +2632,7 @@ def _shadow_conditional_profile(
     }
     cell = "|".join(f"{key}={value}" for key, value in cell_traits.items())
     return {
-        "score_version": "conditional_context_v1",
+        "score_version": "conditional_context_p8_v1" if neutralize_of else "conditional_context_v1",
         "source_strategy": source,
         "source_cluster_id": _shadow_gate_source_cluster_id(signal),
         "score": str(score),
@@ -2630,7 +2655,8 @@ def _shadow_conditional_lab_variant(
 ) -> tuple[Signal | None, dict[str, Any] | None]:
     if not config.shadow_conditional_lab_enabled:
         return None, None
-    profile = _shadow_conditional_profile(signal, config)
+    control_config = replace(config, shadow_conditional_neutralize_order_flow=False) if _conditional_neutralize_order_flow(config) else config
+    profile = _shadow_conditional_profile(signal, control_config)
     if profile is None:
         return None, None
     source = str(profile["source_strategy"])
@@ -2785,7 +2811,7 @@ def _shadow_conditional_profile_v2(
         bucket = "LOW"
     return {
         **base,
-        "score_version": "conditional_context_v2",
+        "score_version": "conditional_context_p8_v2" if neutralize_of else "conditional_context_v2",
         "score": str(score),
         "raw_score": str(raw_score),
         "bucket": bucket,
@@ -2800,7 +2826,8 @@ def _shadow_conditional_lab_v2_variant(
 ) -> tuple[Signal | None, dict[str, Any] | None]:
     if not config.shadow_conditional_lab_v2_enabled:
         return None, None
-    profile = _shadow_conditional_profile_v2(signal, config)
+    control_config = replace(config, shadow_conditional_neutralize_order_flow=False) if _conditional_neutralize_order_flow(config) else config
+    profile = _shadow_conditional_profile_v2(signal, control_config)
     if profile is None:
         return None, None
     source = str(profile["source_strategy"])
@@ -2843,6 +2870,83 @@ def _shadow_conditional_lab_v2_variant(
             ),
         },
     ), profile
+
+
+def _p8_shadow_variants(
+    signal: Signal, config: StrategyConfig,
+) -> tuple[list[Signal], dict[str, Any]]:
+    """Paired future-only virtual admission arms; never return a paper candidate."""
+    source = _signal_strategy(signal)
+    if not config.p8_shadow_enabled or source not in {
+        "SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC_UPD"
+    } or _measurement_shadow_payload(signal):
+        return [], {}
+    metadata = dict(signal.metadata or {})
+    corrected = metadata.get("p8_order_flow")
+    if not isinstance(corrected, dict) or not corrected:
+        return [], {"rejection": "missing separately computed P8 order-flow", "source": source}
+    source_id = _shadow_gate_source_cluster_id(signal)
+    variants: list[Signal] = []
+    decisions: dict[str, Any] = {"source_strategy": source, "source_cluster_id": source_id}
+    for arm in ("control", "observe"):
+        observe = arm == "observe"
+        arm_config = replace(
+            config, order_flow_entry_gate_mode="observe" if observe else "strict",
+            squeeze_context_gate_enabled=observe,
+            squeeze_context_gate_require_4h_squeeze_or_trend=True,
+            squeeze_context_gate_blocked_regimes=["RANGE"],
+            shadow_conditional_neutralize_order_flow=observe,
+        )
+        arm_signal = replace(signal, metadata={
+            **metadata, "order_flow": corrected if observe else metadata.get("order_flow", {}),
+        })
+        # The UPD source has its own strict control. P8 tests the proposed
+        # relaxed SQZ entry gates using that same pre-context source candidate.
+        gate_signal = replace(arm_signal, metadata={
+            **arm_signal.metadata,
+            "strategy": "SQUEEZE_BREAKOUT" if source == "SQUEEZE_BREAKOUT" else "SQUEEZE_BREAKOUT_DYNAMIC",
+        })
+        rejection = _order_flow_entry_rejection_reason(gate_signal, arm_config)
+        if not observe and source == "SQUEEZE_BREAKOUT_DYNAMIC_UPD" and rejection is None:
+            reason = _shadow_candidate_context_rejection_reason(arm_signal, enforce_order_flow=True)
+            rejection = ("SHADOW_CONTEXT", reason) if reason else None
+        cohort = f"{config.p8_shadow_cohort}:{arm}"
+        decisions[arm] = {"cohort": cohort, "rejection": rejection}
+        if rejection is not None:
+            continue
+        # Reuse the transparent SQZ score components without relabelling the
+        # actual source. Scores annotate all admitted entries, not just HIGH.
+        profile_signal = replace(arm_signal, metadata={
+            **arm_signal.metadata, "strategy": "SQUEEZE_BREAKOUT_DYNAMIC_UPD",
+        })
+        profile = _shadow_conditional_profile_v2(profile_signal, arm_config)
+        if profile is None:
+            continue
+        profile.update({
+            "source_strategy": source, "source_cluster_id": source_id,
+            "score_version": "p8_neutral_of_v1" if observe else "p8_control_score_v1",
+            "calibration_basis": "frozen_future_oos_2026_09_14",
+        })
+        name = f"P8_{'SQZ' if source == 'SQUEEZE_BREAKOUT' else 'SQZ_UPD'}_COND_{arm.upper()}_SHADOW"
+        payload = {
+            "bucket": f"conditional_shadow_lab_p8_{arm}", "strategy_bucket": name,
+            "source_strategy": source, "source_cluster_id": source_id,
+            "policy_arm": f"P8_{arm.upper()}", "cohort": cohort,
+            "risk_cap_pct": str(config.p8_shadow_risk_cap_pct),
+            "conditional_profile": profile,
+            "execution_constraints": ["virtual_shadow_only", "no_production_admission_authority",
+                                      "future_oos_only", "identical_source_exit_profile"],
+        }
+        clean = dict(arm_signal.metadata)
+        clean.pop("controlled_shadow", None)
+        variants.append(replace(arm_signal, metadata={
+            **clean, "strategy": name, "strategy_source": source,
+            "strategy_mode": "shadow", "shadow_only": True,
+            "exit_profile_strategy": source, "measurement_shadow": payload,
+            "conditional_profile": profile, "strategy_logic_version": f"{cohort}:entry_v1",
+        }))
+        decisions[arm]["bucket"] = profile["bucket"]
+    return variants, decisions
 
 
 def _order_flow_metadata(signal: Signal) -> dict[str, Any]:
@@ -3626,7 +3730,7 @@ def _squeeze_context_gate_rejection(
         squeeze_bars_4h = Decimal(str(metadata.get("squeeze_bars_4h") or "0"))
     except (ArithmeticError, TypeError, ValueError):
         squeeze_bars_4h = Decimal("0")
-    has_4h_squeeze = squeeze_bars_4h > 0
+    has_4h_squeeze = squeeze_bars_4h.is_finite() and squeeze_bars_4h > 0
 
     regime = str(metadata.get("regime") or "").strip().upper()
     blocked = {
@@ -3635,7 +3739,7 @@ def _squeeze_context_gate_rejection(
             strategy_config, "squeeze_context_gate_blocked_regimes", ["RANGE"]
         )
     }
-    has_directional_regime = bool(regime) and regime not in blocked
+    has_directional_regime = regime in {"TREND_UP", "TREND_DOWN", "MOMENTUM"} and regime not in blocked
 
     if has_4h_squeeze or has_directional_regime:
         return None
@@ -3651,8 +3755,12 @@ def _order_flow_entry_rejection_reason(
     strategy_config: "StrategyConfig | None" = None,
 ) -> tuple[str, str] | None:
     strategy = _signal_strategy(signal)
+    if strategy.startswith("P8_"):
+        return "SHADOW_ONLY", "P8 variants cannot enter the production admission path."
     order_flow = _order_flow_metadata(signal)
     if not order_flow:
+        if strategy in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
+            return "ORDER_FLOW", f"{strategy} blocked: missing order-flow metadata."
         return None
 
     alignment = str(order_flow.get("alignment") or "mixed")
@@ -3691,7 +3799,9 @@ def _order_flow_entry_rejection_reason(
         )
         if alignment == "against" and not observe_mode:
             return "ORDER_FLOW", f"{strategy} blocked: order-flow is against breakout."
-        if risk_flags.intersection(hard_flags) and score < hostile_floor:
+        if risk_flags.intersection(structural_hard_flags) or (
+            risk_flags.intersection(hard_flags) and score < hostile_floor
+        ):
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return "ORDER_FLOW", f"{strategy} blocked: hostile breakout flow ({flags}), score {score:.2f}."
         if "absorption_against" in risk_flags:

@@ -58,8 +58,9 @@ class OrderFlowAnnotator:
     that can later be reviewed in scorecards, dashboards, and ML datasets.
     """
 
-    def __init__(self, config: EdgeFilterConfig) -> None:
+    def __init__(self, config: EdgeFilterConfig, *, legacy_liquidity: bool = False) -> None:
         self.config = config
+        self.legacy_liquidity = legacy_liquidity
 
     def annotate(
         self,
@@ -153,6 +154,8 @@ class OrderFlowAnnotator:
         upper_distance, lower_distance = self._liquidity_distances(current, recent)
         liquidity_side = self._liquidity_side(upper_distance, lower_distance)
         if self._target_liquidity_near(direction, liquidity_side):
+            if self.legacy_liquidity:
+                score += Decimal("0.10")
             # ФИКС P8-03: бонус к score убран. Измеренный вклад признака
             # "target_liquidity_nearby" составил -0.282R к матожиданию: близкая
             # цель означает не потенциал, а едва состоявшийся пробой. Признак
@@ -294,6 +297,12 @@ class OrderFlowAnnotator:
             return None, None
         recent_high = max(c.high for c in recent)
         recent_low = min(c.low for c in recent)
+        if self.legacy_liquidity:
+            # Freeze the deployed control; corrected geometry belongs to P8.
+            return (
+                abs(recent_high - current.close) / current.close * Decimal("10000"),
+                abs(current.close - recent_low) / current.close * Decimal("10000"),
+            )
         upper: Decimal | None = None
         lower: Decimal | None = None
         if recent_high > current.close:

@@ -100,16 +100,13 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
     root = Path(__file__).resolve().parents[1]
     cfg = load_config(root / "config.yaml", root / ".env.example")
 
-    # P8-01: OF measurement bucket существовал только чтобы пропускать слабый
-    # mixed-flow мимо champion-гейта. В режиме observe это делает основная
-    # линия, поэтому bucket переведён в shadow как исторический контроль.
     assert cfg.strategy.execution_strategies(TradingMode.PAPER_TRADING) == [
         "MEAN_REVERSION",
         "SQUEEZE_BREAKOUT",
+        "SQUEEZE_BREAKOUT_OF_MEASURE",
     ]
     assert cfg.strategy.execution_strategies(TradingMode.MAINNET_LIVE) == []
     assert cfg.strategy.shadow_strategies() == [
-        "SQUEEZE_BREAKOUT_OF_MEASURE",
         "SQZ_STRICT_CONTROL_SHADOW",
         "SQZ_OF_AGAINST_SHADOW",
         "SQZ_OF_HOSTILE_SHADOW",

@@ -2811,7 +2811,10 @@ def _conditional_shadow_profile(row: Any) -> dict[str, Any]:
         measurement = metadata.get("measurement_shadow")
     if (
         not isinstance(measurement, dict)
-        or measurement.get("bucket") not in {"conditional_shadow_lab_v1", "conditional_shadow_lab_v2"}
+        or measurement.get("bucket") not in {
+            "conditional_shadow_lab_v1", "conditional_shadow_lab_v2",
+            "conditional_shadow_lab_p8_control", "conditional_shadow_lab_p8_observe",
+        }
     ):
         return {}
     profile = measurement.get("conditional_profile")

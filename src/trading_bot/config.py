@@ -217,6 +217,9 @@ class StrategyConfig:
     shadow_conditional_lab_v2_risk_cap_pct: Decimal = Decimal("0.0020")
     shadow_conditional_lab_v2_high_score: Decimal = Decimal("70")
     shadow_conditional_lab_v2_mid_score: Decimal = Decimal("50")
+    p8_shadow_enabled: bool = False
+    p8_shadow_cohort: str = ""
+    p8_shadow_risk_cap_pct: Decimal = Decimal("0.0020")
     mean_reversion_deviation_atr: Decimal = Decimal("2.0")
     mean_reversion_rsi_oversold: Decimal = Decimal("28")
     mean_reversion_rsi_overbought: Decimal = Decimal("72")
@@ -672,6 +675,27 @@ class AppConfig:
                     "order_flow_entry_gate_mode=observe requires "
                     "strategy.squeeze_context_gate_enabled=true."
                 )
+            if not self.strategy.squeeze_context_gate_require_4h_squeeze_or_trend:
+                raise ConfigError("observe requires squeeze_context_gate_require_4h_squeeze_or_trend=true.")
+            if self.strategy.execution_strategies(TradingMode.PAPER_TRADING):
+                raise ConfigError("observe is restricted to the isolated P8 shadow experiment.")
+        if self.strategy.shadow_conditional_neutralize_order_flow:
+            raise ConfigError("Neutralized scoring is restricted to P8; freeze existing V1/V2 controls.")
+        if any(
+            name.startswith("P8_") and mode != "shadow"
+            for name, mode in self.strategy.strategy_modes.items()
+        ):
+            raise ConfigError("P8 strategies must remain shadow-only.")
+        if self.strategy.p8_shadow_enabled:
+            if not self.strategy.p8_shadow_cohort or self.strategy.p8_shadow_cohort in {
+                self.strategy.shadow_conditional_lab_cohort,
+                self.strategy.shadow_conditional_lab_v2_cohort,
+            }:
+                raise ConfigError("P8 requires a new non-empty cohort, distinct from V1/V2.")
+            if not Decimal("0") < self.strategy.p8_shadow_risk_cap_pct <= min(
+                Decimal("0.0020"), self.risk.risk_per_trade_pct
+            ):
+                raise ConfigError("P8 shadow risk must be positive and no higher than 0.20% or base risk.")
         if not (Decimal("0") < self.strategy.order_flow_hostile_score_floor <= Decimal("1")):
             raise ConfigError("strategy.order_flow_hostile_score_floor must be within (0, 1].")
         if not (Decimal("0") < self.strategy.order_flow_mixed_score_floor <= Decimal("1")):
@@ -1378,6 +1402,9 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             shadow_conditional_lab_v2_mid_score=to_decimal(
                 raw["strategy"].get("shadow_conditional_lab_v2_mid_score", "50")
             ),
+            p8_shadow_enabled=bool(raw["strategy"].get("p8_shadow_enabled", False)),
+            p8_shadow_cohort=str(raw["strategy"].get("p8_shadow_cohort", "")).strip(),
+            p8_shadow_risk_cap_pct=to_decimal(raw["strategy"].get("p8_shadow_risk_cap_pct", "0.0020")),
             mean_reversion_deviation_atr=to_decimal(raw["strategy"].get("mean_reversion_deviation_atr", "2.0")),
             mean_reversion_rsi_oversold=to_decimal(raw["strategy"].get("mean_reversion_rsi_oversold", "28")),
             mean_reversion_rsi_overbought=to_decimal(raw["strategy"].get("mean_reversion_rsi_overbought", "72")),
