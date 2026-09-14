@@ -142,9 +142,30 @@ class StrategyConfig:
     # Режим OF-измерения. В "measure" только отдельный SQZ bucket может
     # обойти слабый mixed-flow; retest, структура, relative strength и hostile
     # flow всегда остаются жёсткими. Глобального bypass здесь нет.
+    # "observe" (P8-01): эмпирический режим. На выборке 200 независимых SQZ
+    # сигналов (июль-сентябрь 2026) направленные OF-гейты имели ОБРАТНЫЙ знак:
+    # alignment=aligned давал -0.01R, against/mixed +0.34R (p=0.023,
+    # устойчиво во всех трёх подпериодах). Компонентный разбор conditional
+    # score подтвердил: order_flow_alignment, order_flow_score, hostile_flags
+    # и soft_hostile_flags — все четыре предсказывают исход с обратным знаком.
+    # В "observe" снимаются только направленные OF-гейты. Структурные
+    # проверки (absorption_against, liquidation_cascade, relative strength,
+    # retest/release, structure break) остаются жёсткими.
     order_flow_entry_gate_mode: str = "strict"
     order_flow_hostile_score_floor: Decimal = Decimal("0.70")
     order_flow_mixed_score_floor: Decimal = Decimal("0.45")
+    # P8-02 контекстный гейт. squeeze_bars_4h>0 давал +0.694R против +0.027R
+    # без сжатия на 4h; режим RANGE давал +0.020R против +0.47..+0.85R в
+    # TREND/MOMENTUM. Гейт требует хотя бы одно из двух подтверждений.
+    squeeze_context_gate_enabled: bool = False
+    squeeze_context_gate_require_4h_squeeze_or_trend: bool = True
+    squeeze_context_gate_blocked_regimes: list[str] = field(
+        default_factory=lambda: ["RANGE"]
+    )
+    # P8-04: обнуляет направленные order-flow слагаемые исследовательского
+    # conditional score. Меняет только новые записи — прошлые когорты хранят
+    # свой score_version и остаются сопоставимыми внутри себя.
+    shadow_conditional_neutralize_order_flow: bool = False
     # Совместимый конфигурационный список для аудита. Новый measurement bucket
     # не принимает сигнал ни с одним risk flag.
     order_flow_always_hard_flags: list[str] = field(default_factory=lambda: ["liquidation_cascade"])
@@ -637,10 +658,20 @@ class AppConfig:
             raise ConfigError("default_leverage cannot exceed max_leverage.")
         if self.risk.max_concurrent_positions < 1:
             raise ConfigError("max_concurrent_positions must be >= 1.")
-        if self.strategy.order_flow_entry_gate_mode not in {"strict", "measure"}:
+        if self.strategy.order_flow_entry_gate_mode not in {"strict", "measure", "observe"}:
             raise ConfigError(
-                "strategy.order_flow_entry_gate_mode must be strict or measure; global OF bypass is disabled."
+                "strategy.order_flow_entry_gate_mode must be strict, measure or observe; "
+                "global OF bypass is disabled."
             )
+        if self.strategy.order_flow_entry_gate_mode == "observe":
+            # observe снимает направленные OF-гейты, поэтому структурный
+            # контекстный гейт обязателен — иначе в paper попадёт весь поток
+            # RANGE-пробоев с нулевым матожиданием.
+            if not self.strategy.squeeze_context_gate_enabled:
+                raise ConfigError(
+                    "order_flow_entry_gate_mode=observe requires "
+                    "strategy.squeeze_context_gate_enabled=true."
+                )
         if not (Decimal("0") < self.strategy.order_flow_hostile_score_floor <= Decimal("1")):
             raise ConfigError("strategy.order_flow_hostile_score_floor must be within (0, 1].")
         if not (Decimal("0") < self.strategy.order_flow_mixed_score_floor <= Decimal("1")):
@@ -1220,6 +1251,25 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             ).strip().lower(),
             order_flow_hostile_score_floor=to_decimal(
                 raw["strategy"].get("order_flow_hostile_score_floor", "0.70")
+            ),
+            squeeze_context_gate_enabled=bool(
+                raw["strategy"].get("squeeze_context_gate_enabled", False)
+            ),
+            squeeze_context_gate_require_4h_squeeze_or_trend=bool(
+                raw["strategy"].get(
+                    "squeeze_context_gate_require_4h_squeeze_or_trend", True
+                )
+            ),
+            squeeze_context_gate_blocked_regimes=[
+                str(item).strip().upper()
+                for item in raw["strategy"].get(
+                    "squeeze_context_gate_blocked_regimes", ["RANGE"]
+                )
+            ],
+            shadow_conditional_neutralize_order_flow=bool(
+                raw["strategy"].get(
+                    "shadow_conditional_neutralize_order_flow", False
+                )
             ),
             order_flow_mixed_score_floor=to_decimal(
                 raw["strategy"].get("order_flow_mixed_score_floor", "0.45")

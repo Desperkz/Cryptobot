@@ -153,7 +153,10 @@ class OrderFlowAnnotator:
         upper_distance, lower_distance = self._liquidity_distances(current, recent)
         liquidity_side = self._liquidity_side(upper_distance, lower_distance)
         if self._target_liquidity_near(direction, liquidity_side):
-            score += Decimal("0.10")
+            # ФИКС P8-03: бонус к score убран. Измеренный вклад признака
+            # "target_liquidity_nearby" составил -0.282R к матожиданию: близкая
+            # цель означает не потенциал, а едва состоявшийся пробой. Признак
+            # сохраняется в reasons как исследовательская аннотация.
             reasons.append("target_liquidity_nearby")
         elif self._adverse_liquidity_near(direction, liquidity_side):
             risk_flags.append("adverse_liquidity_nearby")
@@ -277,12 +280,26 @@ class OrderFlowAnnotator:
         return False, Direction.NONE
 
     def _liquidity_distances(self, current: Candle, recent: list[Candle]) -> tuple[Decimal | None, Decimal | None]:
+        """Distance to untouched liquidity above and below the current close.
+
+        ФИКС P8-03: раньше здесь стоял abs(), из-за чего уже пробитый уровень
+        возвращался как «ликвидность рядом». Для пробойной стратегии это почти
+        всегда так: цена входа по определению выше recent_high (LONG) или ниже
+        recent_low (SHORT), и abs() превращал пройденный уровень в мнимую цель
+        в нескольких bps. Отсюда бонус +0.10 «target_liquidity_nearby» на
+        каждом слабом пробое — компонент с измеренным вкладом -0.282R.
+        Пройденный уровень больше не является ликвидностью: возвращаем None.
+        """
         if not recent or current.close <= 0:
             return None, None
         recent_high = max(c.high for c in recent)
         recent_low = min(c.low for c in recent)
-        upper = abs(recent_high - current.close) / current.close * Decimal("10000")
-        lower = abs(current.close - recent_low) / current.close * Decimal("10000")
+        upper: Decimal | None = None
+        lower: Decimal | None = None
+        if recent_high > current.close:
+            upper = (recent_high - current.close) / current.close * Decimal("10000")
+        if current.close > recent_low:
+            lower = (current.close - recent_low) / current.close * Decimal("10000")
         return upper, lower
 
     def _liquidity_side(self, upper_bps: Decimal | None, lower_bps: Decimal | None) -> str:

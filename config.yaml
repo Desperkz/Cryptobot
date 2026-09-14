@@ -98,7 +98,7 @@ strategy:
   enabled_strategies: ["MEAN_REVERSION", "SQUEEZE_BREAKOUT"]  # SQZ/MR execute; retuned candidates are shadow-only
   strategy_modes:
     SQUEEZE_BREAKOUT: paper
-    SQUEEZE_BREAKOUT_OF_MEASURE: paper
+    SQUEEZE_BREAKOUT_OF_MEASURE: shadow
     SQZ_STRICT_CONTROL_SHADOW: shadow
     SQZ_OF_AGAINST_SHADOW: shadow
     SQZ_OF_HOSTILE_SHADOW: shadow
@@ -122,12 +122,41 @@ strategy:
   # Измерение OF не ослабляет champion-SQZ. Только отдельный paper bucket
   # принимает слабый mixed-flow и лишь после сохранённых retest, структуры и RS.
   # Через 150+ сделок сравни bucket с контрольным SQZ в scripts/edge_report.py.
-  order_flow_entry_gate_mode: "measure"
+  # P8-01. Разбор 200 независимых SQZ-сигналов за 2026-07..09 показал, что
+  # направленные order-flow гейты имели обратный знак:
+  #   alignment=aligned    n= 53  avgR -0.009
+  #   alignment=mixed      n= 85  avgR +0.363
+  #   alignment=against    n= 62  avgR +0.307
+  # Разница aligned против остальных = +0.348R, перестановочный тест p=0.023,
+  # знак устойчив во всех трёх подпериодах (+0.354 / +0.455 / +0.264).
+  # Экономически это ожидаемо для пробоя: согласованный поток на входе
+  # означает, что импульс уже выкуплен и топлива не осталось.
+  # В "observe" снимаются только направленные гейты. Структурные проверки —
+  # absorption_against (-0.405R), liquidation_cascade, adverse_liquidity,
+  # relative strength, retest/release, structure break — остаются жёсткими.
+  order_flow_entry_gate_mode: "observe"
   order_flow_hostile_score_floor: 0.70
   order_flow_mixed_score_floor: 0.45
+  # P8-02 контекстный гейт (обязателен при observe). Измерено:
+  #   без сжатия на 4h   n=134  avgR +0.027
+  #   сжатие на 4h есть  n= 66  avgR +0.694
+  #   режим RANGE        n=117  avgR +0.020   <- 58% всего потока
+  #   TREND_UP/DOWN/MOM  n= 83  avgR +0.47..+0.85
+  # Кандидат допускается, если есть хотя бы одно подтверждение.
+  squeeze_context_gate_enabled: true
+  squeeze_context_gate_require_4h_squeeze_or_trend: true
+  squeeze_context_gate_blocked_regimes: ["RANGE"]
+  # P8-04: исследовательский conditional score перестаёт штрафовать
+  # враждебный order flow. Обнуление подняло разделение верхней и нижней
+  # трети с +0.355R до +0.541R.
+  shadow_conditional_neutralize_order_flow: true
   # Measurement bucket отклоняет все risk_flags, этот список оставлен для аудита.
   order_flow_always_hard_flags: ["liquidation_cascade"]
-  squeeze_order_flow_measurement_enabled: true
+  # P8-01: отдельный measurement-bucket больше не нужен. Он существовал
+  # ровно для того, чтобы пропускать слабый mixed-flow в обход champion-гейта;
+  # в режиме observe слабый flow допускается основной линией, а bucket только
+  # дублировал бы сделки. Переведён в shadow как исторический контроль.
+  squeeze_order_flow_measurement_enabled: false
   squeeze_order_flow_measurement_min_score: 0.30
   squeeze_order_flow_measurement_risk_cap_pct: 0.005
   # P7-16: six parallel virtual SQZ cohorts identify one gate at a time.
@@ -306,7 +335,11 @@ market_filters:
 risk:
   risk_per_trade_pct: 0.005   # фиксированный риск на время измерения
   aggressive_risk_threshold_pct: 0.05
-  max_concurrent_positions: 4
+  # P8-05. Анализ одновременности на потоке HIGH+MID (медиана удержания 5.5 ч,
+  # среднее 9.3 ч): при лимите 4 отбрасывается 7.7% времени работы, при 6 —
+  # менее 1%. Риск на сделку не меняется, поэтому портфельный лимит
+  # max_portfolio_risk_pct остаётся главным ограничителем.
+  max_concurrent_positions: 6
   max_leverage: 5
   default_leverage: 2
   max_daily_loss_pct: 0.06
@@ -410,18 +443,25 @@ trade_management:
     # Фикс июль-2026: BE переносим уже после TP1, а не TP2. По факту paper:
     # 4 сделки «частичный тейк -> стоп» закрылись в среднем -0.54R; с BE после
     # TP1 такой исход становится ~+0.23R. TP2 до 1.6R доходил редко.
+    # P8-06. Достижимость уровней на 317 SQZ-сделках: >=1.5R 47.9%,
+    # >=2.0R 30.9%, >=2.1R 22.1%, >=2.2R 13.6%. RUNNER стоял ровно за
+    # обрывом достижимости, поэтому 40% объёма почти никогда не доходили
+    # до цели. Перенос на 2.0R и увеличение доли раннера дали в симуляции
+    # на фактических MFE +0.047R к матожиданию (+0.223 -> +0.270).
+    # Внимание: MFE цензурирован текущими выходами, поэтому лестница
+    # намеренно не переоптимизируется — сдвиг минимальный и однонаправленный.
     SQUEEZE_BREAKOUT:
       - name: "TP1"
         reward_risk: 1.0
-        fraction: 0.25
+        fraction: 0.20
         move_stop_to_breakeven: true
       - name: "TP2"
-        reward_risk: 1.6
-        fraction: 0.35
+        reward_risk: 1.5
+        fraction: 0.30
         activate_trailing: true
       - name: "RUNNER"
-        reward_risk: 2.2
-        fraction: 0.40
+        reward_risk: 2.0
+        fraction: 0.50
         activate_trailing: true
     # Keep exits identical to the strict SQZ control.  The experiment changes
     # only the weak-mixed OF admission rule.

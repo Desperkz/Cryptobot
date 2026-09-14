@@ -2450,6 +2450,13 @@ def _conditional_confirmation(
     return "EXT_WEAK", -6
 
 
+def _conditional_neutralize_order_flow(config: "StrategyConfig | None") -> bool:
+    """Whether conditional research scores must drop directional order-flow terms."""
+    return bool(
+        getattr(config, "shadow_conditional_neutralize_order_flow", False)
+    )
+
+
 def _shadow_conditional_profile(
     signal: Signal,
     config: StrategyConfig,
@@ -2469,29 +2476,41 @@ def _shadow_conditional_profile(
     regime = str(metadata.get("regime") or "UNKNOWN").upper()
     components: dict[str, int] = {}
 
+    # P8-04: направленные order-flow компоненты нейтрализуются, когда включён
+    # neutralize-режим. Измерение на 201 сигнале с записанным профилем:
+    # order_flow_score -0.432R, soft_hostile_flags -0.523R, hostile_flags
+    # -0.272R, order_flow_alignment -0.171R — все четыре предсказывали исход с
+    # обратным знаком. Обнуление подняло разделение верхней и нижней трети
+    # с +0.355R до +0.541R; инверсия давала только +0.380R, поэтому выбран
+    # нейтральный вес, а не смена знака.
+    neutralize_of = _conditional_neutralize_order_flow(config)
+
     components["regime"] = _conditional_regime_component(source, signal.direction, regime)
-    components["order_flow_alignment"] = {
+    components["order_flow_alignment"] = 0 if neutralize_of else {
         "aligned": 14,
         "mixed": -2,
         "against": -18,
     }.get(alignment, -6)
     if flow_score is None:
-        components["order_flow_score"] = -4
         flow_band = "MISSING"
+        of_score_component = -4
     elif flow_score >= Decimal("0.75"):
-        components["order_flow_score"] = 8
         flow_band = "HIGH"
+        of_score_component = 8
     elif flow_score >= Decimal("0.60"):
-        components["order_flow_score"] = 4
         flow_band = "OK"
+        of_score_component = 4
     elif flow_score < Decimal("0.40"):
-        components["order_flow_score"] = -8
         flow_band = "LOW"
+        of_score_component = -8
     else:
-        components["order_flow_score"] = 0
         flow_band = "MID"
+        of_score_component = 0
+    components["order_flow_score"] = 0 if neutralize_of else of_score_component
     hostile_count = len(risk_flags.intersection(SHADOW_CONDITIONAL_HOSTILE_FLAGS))
-    components["hostile_flags"] = -min(18, hostile_count * 6)
+    components["hostile_flags"] = (
+        0 if neutralize_of else -min(18, hostile_count * 6)
+    )
 
     components["relative_strength_alignment"] = {
         "aligned": 12,
@@ -2690,14 +2709,15 @@ def _shadow_conditional_profile_v2(
     else:
         regime_points = 0
 
+    neutralize_of = _conditional_neutralize_order_flow(config)
     components: dict[str, int] = {
         "regime": regime_points,
-        "order_flow_alignment": {
+        "order_flow_alignment": 0 if neutralize_of else {
             "ALIGNED": 4,
             "MIXED": 0,
             "AGAINST": -12,
         }.get(str(traits.get("of_alignment") or ""), -8),
-        "order_flow_score": {
+        "order_flow_score": 0 if neutralize_of else {
             "HIGH": 2,
             "OK": 1,
             "MID": 0,
@@ -2751,7 +2771,9 @@ def _shadow_conditional_profile_v2(
         "aggressive_delta_against",
         "book_imbalance_against",
     })
-    components["soft_hostile_flags"] = -min(6, len(soft_hostile) * 2)
+    components["soft_hostile_flags"] = (
+        0 if neutralize_of else -min(6, len(soft_hostile) * 2)
+    )
 
     raw_score = Decimal("50") + Decimal(sum(components.values()))
     score = max(Decimal("0"), min(Decimal("100"), raw_score))
@@ -2851,20 +2873,39 @@ def _is_strong_clean_squeeze_release(
     alignment: str,
     score: Decimal,
     risk_flags: set[str],
+    observe_mode: bool = False,
 ) -> bool:
+    """Whether a no-retest breakout is strong enough to enter on the release.
+
+    ФИКС P8-07: в режиме observe этот запасной путь больше не требует
+    alignment=="aligned" и высокий OF score. Требование было внутренне
+    противоречивым: основной гейт в observe признаёт направленный order flow
+    непредсказывающим, но исключение из retest-гейта опиралось именно на
+    него — и отсекало ровно те сильные релизы, которые приносили прибыль.
+    Сила самого релиза (state/timing/breakout_atr) и отсутствие структурных
+    risk-флагов проверяются в обоих режимах.
+    """
     metadata = signal.metadata or {}
     state = str(metadata.get("squeeze_state") or "")
     timing = str(metadata.get("squeeze_entry_timing") or "")
     breakout_atr = _optional_decimal(metadata.get("breakout_atr"))
-    return (
+    release_is_strong = (
         state == "release"
         and timing == "release_followthrough"
         and breakout_atr is not None
         and breakout_atr >= Decimal("1.50")
-        and alignment == "aligned"
-        and score >= Decimal("0.72")
-        and not risk_flags
     )
+    if not release_is_strong:
+        return False
+    if observe_mode:
+        structural_flags = {
+            "liquidation_cascade",
+            "structure_break_against",
+            "adverse_liquidity_nearby",
+            "absorption_against",
+        }
+        return not risk_flags.intersection(structural_flags)
+    return alignment == "aligned" and score >= Decimal("0.72") and not risk_flags
 
 
 def _controlled_paper_sqz_override(
@@ -3562,6 +3603,49 @@ def _shadow_candidate_context_rejection_reason(
     return None
 
 
+def _squeeze_context_gate_rejection(
+    signal: Signal,
+    strategy_config: "StrategyConfig | None" = None,
+) -> tuple[str, str] | None:
+    """P8-02: require multi-timeframe compression or a directional regime.
+
+    Measured on 200 independent SQZ signals (2026-07..09): breakouts without
+    4h compression returned +0.027R and RANGE-regime breakouts +0.020R, while
+    signals carrying either confirmation returned +0.69R / +0.47..+0.85R.
+    The gate admits a candidate when at least one confirmation is present.
+    """
+    if not getattr(strategy_config, "squeeze_context_gate_enabled", False):
+        return None
+    if not getattr(
+        strategy_config, "squeeze_context_gate_require_4h_squeeze_or_trend", True
+    ):
+        return None
+
+    metadata = signal.metadata or {}
+    try:
+        squeeze_bars_4h = Decimal(str(metadata.get("squeeze_bars_4h") or "0"))
+    except (ArithmeticError, TypeError, ValueError):
+        squeeze_bars_4h = Decimal("0")
+    has_4h_squeeze = squeeze_bars_4h > 0
+
+    regime = str(metadata.get("regime") or "").strip().upper()
+    blocked = {
+        str(item).strip().upper()
+        for item in getattr(
+            strategy_config, "squeeze_context_gate_blocked_regimes", ["RANGE"]
+        )
+    }
+    has_directional_regime = bool(regime) and regime not in blocked
+
+    if has_4h_squeeze or has_directional_regime:
+        return None
+    return (
+        "SQZ_CONTEXT",
+        f"{_signal_strategy(signal)} blocked: no 4h compression and regime {regime or 'unknown'} "
+        "is not directional.",
+    )
+
+
 def _order_flow_entry_rejection_reason(
     signal: Signal,
     strategy_config: "StrategyConfig | None" = None,
@@ -3584,23 +3668,39 @@ def _order_flow_entry_rejection_reason(
 
     if strategy in {"SQUEEZE_BREAKOUT", "SQUEEZE_BREAKOUT_DYNAMIC"}:
         reasons = {str(reason) for reason in order_flow.get("reasons") or []}
-        hard_flags = {
+        observe_mode = (
+            getattr(strategy_config, "order_flow_entry_gate_mode", "strict") == "observe"
+        )
+        # Направленные OF-флаги. В "observe" они только записываются в
+        # метаданные: на выборке 2026-07..09 их знак был обратным.
+        directional_flags = {
             "taker_flow_against",
             "aggressive_delta_against",
             "book_imbalance_against",
+        }
+        # Структурные флаги остаются жёсткими в любом режиме: absorption
+        # против пробоя давал -0.405R к матожиданию, каскад ликвидаций —
+        # безопасность, а не edge.
+        structural_hard_flags = {
             "liquidation_cascade",
             "structure_break_against",
             "adverse_liquidity_nearby",
         }
-        if alignment == "against":
+        hard_flags = structural_hard_flags | (
+            set() if observe_mode else directional_flags
+        )
+        if alignment == "against" and not observe_mode:
             return "ORDER_FLOW", f"{strategy} blocked: order-flow is against breakout."
         if risk_flags.intersection(hard_flags) and score < hostile_floor:
             flags = ",".join(sorted(risk_flags.intersection(hard_flags)))
             return "ORDER_FLOW", f"{strategy} blocked: hostile breakout flow ({flags}), score {score:.2f}."
         if "absorption_against" in risk_flags:
             return "ORDER_FLOW", f"{strategy} blocked: absorption against breakout, score {score:.2f}."
-        if alignment == "mixed" and score < mixed_floor:
+        if alignment == "mixed" and score < mixed_floor and not observe_mode:
             return "ORDER_FLOW", f"{strategy} blocked: weak mixed order-flow score {score:.2f}."
+        context_rejection = _squeeze_context_gate_rejection(signal, strategy_config)
+        if context_rejection is not None:
+            return context_rejection
         rs_alignment = _relative_strength_alignment(signal)
         if rs_alignment != "aligned":
             return (
@@ -3613,6 +3713,7 @@ def _order_flow_entry_rejection_reason(
             alignment=alignment,
             score=score,
             risk_flags=risk_flags,
+            observe_mode=observe_mode,
         ):
             return "SQZ_RETEST", f"{strategy} blocked: no retest and release is not strong enough."
         if strategy == "SQUEEZE_BREAKOUT" and "structure_break_aligned" not in reasons:
