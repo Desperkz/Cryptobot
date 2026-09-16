@@ -1,0 +1,68 @@
+# Mainnet public-data paper lab
+
+An isolated prospective SQZ experiment. It uses `https://fapi.binance.com` for
+candles, order book, trades, OI/funding and simulated exits. It never constructs
+the production bot, an order manager or an authenticated client. An unsigned
+GET allowlist blocks order, account, leverage and user-stream endpoints before
+transport. No exchange credentials are loaded by its client.
+
+## Four arms, two timing policies
+
+- BASELINE_2R: source stop, single 2R target.
+- CURRENT_GATE_2R: deployed SQZ admission helpers and authorized overrides,
+  single 2R target.
+- CURRENT_GATE_PROFILE: same admission, frozen partial exit profile.
+- P8_OBSERVE_PROFILE: corrected OF, frozen P8 observe admission, same partial exits.
+
+Each source is identified by SQZ + symbol + direction + closed 15m bar. Both its
+first observation and its first later admissible observation are measured in
+separate policies. These are correlated virtual copies, never independent
+trades to add together. Every observed signal stores all gate failures, the
+current first rejection, full P8 gate vector, OI availability/error, input candles,
+raw public responses and hashes. One active position per symbol/arm/policy and
+128 active positions total bound resource usage; capacity skips are recorded.
+
+This is an **admission experiment**, not an exact clone of the production bot's
+portfolio, adaptive filters, correlation, cooldown or risk sizing. Baseline has
+no structural admission veto because it is purely virtual. The fixed 32-symbol
+research universe comes from the audited source universe and is not a claim of
+unbiased market-wide sampling. The source uses existing SQZ generation rules;
+quote-volume/spread/book-liquidity floors apply before generating candidates.
+
+## Execution and preservation
+
+All arms admitted at the same observation use the next minute's open, 5bps entry
+slippage, and the original source stop. Exits use closed 1m candles on the SAME
+mainnet feed, conservative intrabar ordering, 4bps fees each side, 5bps exit
+slippage, and 24h maximum holding time. Funding uses the signed rate observed
+at entry as a continuous estimate; missing rates use an adverse 1bp/8h buffer.
+This is not exact historical settlement. Nominal risk is 2 virtual USDT per
+position, normalized by stop distance, with no compounding. Targets are rebased
+to the executable entry; first partial target enables breakeven, second enables
+0.4% trailing. Incomplete windows are OPEN, not realized timeout profits.
+
+Each database has a frozen code/config hash, cohort and actual start timestamp.
+Changed code or config refuses to reuse it. A process lock prevents duplicate
+instances. SQLite WAL/full sync, persisted source/arm uniqueness and minute data
+allow recovery after restart. Missing minute ranges are retried and never
+silently treated as continuous. A 1GiB database / 512MiB free-disk guard pauses
+new scans while allowing existing positions to be monitored.
+
+Existing demo services, history, positions and their price feed are untouched.
+The new lab has its own source snapshot, systemd unit and SQLite database.
+
+## Run
+
+```text
+python -m trading_bot.research.mainnet_paper --config config.yaml --settings mainnet_paper_lab_settings.json --data-dir /absolute/new/cohort/directory
+```
+
+`--once` executes one real public-data scan and paper-monitor iteration. It may
+create research records/virtual positions, never exchange orders. Status is
+written atomically to `data-dir/status.json`; source events and minute execution
+data live in `data-dir/mainnet_paper_lab.sqlite3`. Settings may not change within
+a running cohort. Read-only SQL can compare closed results by arm and policy;
+do not sum all copies or combine this history with demo history.
+
+Deployment uses a separate directory and service with resource limits. Rollback
+stops/disables only that new service and preserves its data for inspection.
