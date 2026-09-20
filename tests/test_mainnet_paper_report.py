@@ -24,6 +24,25 @@ def test_empty_report_has_no_claimed_returns_and_is_readonly(tmp_path):
     assert 'NO_DATA' in reporter.markdown(report)
 
 
+def test_runtime_context_rejection_array_keeps_later_gates_and_outcomes(tmp_path):
+    store = Store(tmp_path, {'cohort': 'test'})
+    payload = {'decisions': {'current_all_gate_failures':['STRUCTURE_BREAK'],
+        'p8_all_gates': {'context':['SQZ_CONTEXT','No 4h compression'],
+                        'relative_strength':False, 'structure_confirmation':False}},
+        'admission_outcomes':[{'policy':'FIRST_OBSERVATION','arm':'P8_OBSERVE_PROFILE','result':'GATE_REJECTED'}]}
+    with store.db:
+        store.db.execute('INSERT INTO observations(source_id,observed_ms,payload_zlib) VALUES(?,?,?)',
+                         ('s1',0,zlib.compress(json.dumps(payload).encode())))
+    report = reporter.build_report(store.path)
+    assert report['unreadable_first_observations'] == 0
+    assert report['first_observation_gate_failures'] == {
+        'current:STRUCTURE_BREAK':1, 'p8_context:SQZ_CONTEXT':1,
+        'p8:relative_strength':1, 'p8:structure_confirmation':1}
+    assert report['first_observation_admission_outcomes'] == [dict(
+        policy='FIRST_OBSERVATION',arm='P8_OBSERVE_PROFILE',outcome='GATE_REJECTED',count=1)]
+    store.db.close()
+
+
 def test_correlated_copies_open_marks_and_missing_results(tmp_path):
     store = Store(tmp_path, {'cohort': 'test'})
     rows = [('s1','BASELINE_2R',0,'CLOSED', {'status':'CLOSED','R':1,'model_pnl_usdt':2}),

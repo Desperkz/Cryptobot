@@ -109,7 +109,11 @@ def build_report(path, now_ms=None):
                 for flag in set(p8.get('structural_flags', [])):
                     failures['p8_structure:' + flag] += 1
                 if p8.get('context'):
-                    failures['p8_context:' + p8['context']] += 1
+                    # Runtime rejection helpers return (code, explanation),
+                    # serialized as a JSON array. Older fixtures used a code string.
+                    context = p8['context']
+                    code = context[0] if isinstance(context, list) else context
+                    failures['p8_context:' + code] += 1
                 for name in ('relative_strength', 'retest_or_strong', 'structure_confirmation'):
                     if p8.get(name) is False:
                         failures['p8:' + name] += 1
