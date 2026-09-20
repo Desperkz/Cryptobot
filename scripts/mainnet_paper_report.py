@@ -101,6 +101,8 @@ def build_report(path, now_ms=None):
             try:
                 payload = json.loads(zlib.decompress(row[0]))
                 decision = payload['decisions']
+                for reason in set(decision.get('early_all_gate_failures', [])):
+                    failures['early:' + reason] += 1
                 for reason in set(decision.get('current_all_gate_failures', [])):
                     failures['current:' + reason] += 1
                 for flag in set(decision.get('current_structural_flags', [])):

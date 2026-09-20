@@ -101,6 +101,8 @@ def gate_decisions(signal, config):
 
 class Store:
     def __init__(self, directory, manifest):
+        self.arms = tuple(manifest.get('arms', ARMS))
+        self.policies = tuple(manifest.get('policies', POLICIES))
         self.directory = Path(directory).resolve(); self.directory.mkdir(parents=True, exist_ok=True)
         self.path = self.directory / 'mainnet_paper_lab.sqlite3'
         self.db = sqlite3.connect(self.path, timeout=15); self.db.row_factory = sqlite3.Row
@@ -134,20 +136,27 @@ class Store:
         with self.db:
             self.db.execute('INSERT INTO coverage(at_ms,symbol,payload) VALUES(?,?,?)', (int(time.time()*1000),symbol,canonical(payload)))
 
+    def source_id(self, signal):
+        return f"SQZ:{signal.symbol}:{signal.direction.value}:{signal.metadata['signal_bar_close_time']}"
+
+    def symbol_busy(self, signal, policy, arm, source_id):
+        return self.db.execute("SELECT 1 FROM positions WHERE symbol=? AND policy=? AND arm=? AND status IN ('PENDING','OPEN')",
+                               (signal.symbol,policy,arm)).fetchone() is not None
+
     def admit(self, signal, observed_ms, decision, evidence, profiles, cohort):
-        source_id = f"SQZ:{signal.symbol}:{signal.direction.value}:{signal.metadata['signal_bar_close_time']}"
+        source_id = self.source_id(signal)
         outcomes = []
         with self.db:
             first = self.db.execute('INSERT OR IGNORE INTO sources VALUES(?,?)', (source_id, observed_ms)).rowcount == 1
-            for policy in POLICIES:
+            for policy in self.policies:
                 if policy == 'FIRST_OBSERVATION' and not first:
                     continue
-                for arm in ARMS:
+                for arm in self.arms:
                     if not decision['allowed'][arm]:
                         outcomes.append({'policy':policy,'arm':arm,'result':'GATE_REJECTED'}); continue
                     if self.db.execute('SELECT 1 FROM positions WHERE source_id=? AND policy=? AND arm=?', (source_id,policy,arm)).fetchone():
                         outcomes.append({'policy':policy,'arm':arm,'result':'ALREADY_RECORDED'}); continue
-                    if self.db.execute("SELECT 1 FROM positions WHERE symbol=? AND policy=? AND arm=? AND status IN ('PENDING','OPEN')", (signal.symbol,policy,arm)).fetchone():
+                    if self.symbol_busy(signal, policy, arm, source_id):
                         outcomes.append({'policy':policy,'arm':arm,'result':'SAME_SYMBOL_ACTIVE'}); continue
                     if self.db.execute("SELECT count(*) FROM positions WHERE status IN ('PENDING','OPEN')").fetchone()[0] >= 128:
                         outcomes.append({'policy':policy,'arm':arm,'result':'RESEARCH_CAPACITY_128'}); continue
@@ -178,6 +187,14 @@ class Store:
 
 
 class Lab:
+    arms = ARMS
+
+    def accepts(self, signal):
+        return True
+
+    def decisions(self, signal):
+        return gate_decisions(signal, self.gate_config)
+
     def __init__(self, config, symbols, store, cohort):
         if config.mode != TradingMode.PAPER_TRADING or config.safety.enable_mainnet_live:
             raise ValueError('Lab requires PAPER_TRADING and disabled mainnet live execution')
@@ -222,23 +239,24 @@ class Lab:
                 counts['eligible']+=1
                 frames={tf:await self.market.candles(symbol,tf,limit=500) for tf in ('15m','1h','4h')}
                 signal=self.strategy.generate(symbol,frames['15m'],frames['1h'],frames['4h'],metrics)
-                if signal is None:continue
+                if signal is None or not self.accepts(signal):continue
                 observed=int(time.time()*1000); counts['signals']+=1
                 flow=self.legacy.annotate(frames['15m'],signal.direction,metrics).to_metadata()
                 corrected=self.corrected.annotate(frames['15m'],signal.direction,metrics).to_metadata()
                 rs=annotate_relative_strength(frames['4h'],signal.direction,btc_change).to_metadata()
                 signal=replace(signal,metadata={**signal.metadata,'order_flow':flow,'p8_order_flow':corrected,
                     'relative_strength':rs,'venue':'BINANCE_USDM_MAINNET_PUBLIC','data_endpoint':PUBLIC_URL,
-                    'research_cohort':self.cohort,'observed_ms':observed})
+                    'research_cohort':self.cohort,'observed_ms':observed,
+                    'source_hour_close_time':frames['1h'][-1].close_time})
                 assert signal.metadata['signal_bar_close_time']<=observed
-                decisions=gate_decisions(signal,self.gate_config)
+                decisions=self.decisions(signal)
                 closed_frames={tf:[asdict(c) for c in cs] for tf,cs in frames.items()}
                 evidence={'closed_frames':closed_frames,'closed_frames_sha256':digest(closed_frames),
                     'btc_4h': [asdict(c) for c in btc], 'metrics':asdict(metrics),
                     'oi_state':oi_reason,'public_requests':dict(self.client.evidence)}
                 rr=float(signal.metadata.get('rr',2.4))
                 profile=[(min(x[0],rr),*x[1:]) for x in self.profile]
-                profiles={arm:([(2.,1.,False,False)] if arm.endswith('_2R') else profile) for arm in ARMS}
+                profiles={arm:([(2.,1.,False,False)] if arm.endswith('_2R') else profile) for arm in self.arms}
                 outcomes=self.store.admit(signal,observed,decisions,evidence,profiles,self.cohort)
                 log.info('Signal %s %s arms=%s',symbol,signal.direction.value,canonical(outcomes))
             except Exception as exc:
@@ -307,7 +325,7 @@ class Lab:
             await self.client.close();await execution_client.close();self.store.db.close()
 
 
-def main():
+def main(*, lab_class=Lab, store_class=Store, experiment=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',required=True);parser.add_argument('--settings',required=True)
     parser.add_argument('--data-dir',required=True);parser.add_argument('--once',action='store_true')
@@ -315,6 +333,8 @@ def main():
     config_path=Path(args.config).resolve(); settings=json.loads(Path(args.settings).read_text())
     if settings.get('execution_mode')!='LOCAL_PAPER_ONLY' or settings.get('market_data_base_url')!=PUBLIC_URL:
         raise ValueError('Settings must explicitly select public mainnet data and local paper execution')
+    if settings.get('experiment') != (experiment or {}).get('name'):
+        raise ValueError('Settings do not match the selected experiment entry point')
     cfg=load_config(config_path,config_path.parent/'NO_CREDENTIALS.env')
     if cfg.mode!=TradingMode.PAPER_TRADING or cfg.safety.enable_mainnet_live:raise ValueError('Paper-only configuration required')
     symbols=settings['symbols'];cohort=settings['cohort']
@@ -330,6 +350,9 @@ def main():
         'exit_slippage_bps':5,'funding':'entry_signed_rate_continuous_estimate_or_adverse_1bp_buffer',
         'maximum_holding_minutes':1440,'maximum_database_bytes':1024**3,
         'scope':'SQZ admission experiment, not a full production portfolio replay'}
+    if experiment:
+        manifest.update(experiment=experiment, arms=lab_class.arms,
+                        policies=('FIRST_OBSERVATION',), scope=experiment['scope'])
     lock_directory=Path(args.data_dir).resolve();lock_directory.mkdir(parents=True,exist_ok=True)
     lock_file=(lock_directory/'process.lock').open('a+b')
     import os
@@ -340,8 +363,8 @@ def main():
         import msvcrt
         lock_file.seek(0);lock_file.write(b'0');lock_file.flush();lock_file.seek(0)
         msvcrt.locking(lock_file.fileno(),msvcrt.LK_NBLCK,1)
-    store=Store(args.data_dir,manifest)
-    try:asyncio.run(Lab(cfg,symbols,store,cohort).run(args.once))
+    store=store_class(args.data_dir,manifest)
+    try:asyncio.run(lab_class(cfg,symbols,store,cohort).run(args.once))
     finally:lock_file.close()
 
 
