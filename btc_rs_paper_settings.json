@@ -1,0 +1,7 @@
+{
+  "cohort": "btc-rs-applicability-v1-20260924",
+  "experiment": "btc-rs-applicability-v1",
+  "execution_mode": "LOCAL_PAPER_ONLY",
+  "market_data_base_url": "https://fapi.binance.com",
+  "symbols": ["BTCUSDT"]
+}
