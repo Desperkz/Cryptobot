@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from trading_bot.operational import start_watchdog_thread
+from paper_pilots_api import api_paper_pilots
 
 HOST = os.getenv("BOT_CONTROL_HOST", "127.0.0.1")
 PORT = int(os.getenv("BOT_CONTROL_PORT", "8890"))
@@ -3677,6 +3678,7 @@ def _production_unlock_path() -> str:
 
 
 ROUTES = {
+    "/paper-pilots": api_paper_pilots,
     "/status": api_status,
     "/positions": api_positions,
     "/stats": api_stats,
