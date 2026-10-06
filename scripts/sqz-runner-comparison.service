@@ -1,0 +1,29 @@
+[Unit]
+Description=Isolated paired exit comparison for future main paper SQZ entries
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_runner_comparison/code
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecCondition=/root/bot_v2_1/.venv/bin/python /root/bot_runner_comparison/code/runner_resource_guard.py
+ExecStart=/usr/bin/flock -n /root/bot_runner_comparison/data/.cycle.lock /root/bot_v2_1/.venv/bin/python /root/bot_runner_comparison/code/runner_comparison.py --source-db /root/bot_v2_1/data/trading_bot_v2_1.sqlite3 --data-dir /root/bot_runner_comparison/data --settings /root/bot_runner_comparison/code/settings.json
+Restart=no
+TimeoutStartSec=75
+Nice=19
+CPUQuota=5%
+MemoryHigh=48M
+MemoryMax=64M
+MemorySwapMax=16M
+OOMScoreAdjust=650
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/bot_runner_comparison/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

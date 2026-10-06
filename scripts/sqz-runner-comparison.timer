@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic paired runner exit comparison, isolated local paper only
+
+[Timer]
+OnActiveSec=300s
+OnUnitActiveSec=300s
+AccuracySec=5s
+Unit=sqz-runner-comparison.service
+
+[Install]
+WantedBy=timers.target

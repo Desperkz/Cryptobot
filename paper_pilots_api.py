@@ -29,11 +29,7 @@ _CACHE_LOCK = threading.Lock()
 _CACHE: dict[str, Any] = {'expires': 0.0, 'data': None}
 
 
-def _object(raw: str | None) -> dict[str, Any]:
-    if not raw:
-        return {}
-    if len(raw) > 65536:
-        raise ValueError('OVERSIZED_RECORD')
+def _strict_json(raw):
     def finite_float(value: str) -> float:
         number = float(value)
         if not math.isfinite(number):
@@ -43,7 +39,15 @@ def _object(raw: str | None) -> dict[str, Any]:
     def invalid_constant(value: str) -> None:
         raise ValueError('NONFINITE_RECORD')
 
-    value = json.loads(raw, parse_float=finite_float, parse_constant=invalid_constant)
+    return json.loads(raw, parse_float=finite_float, parse_constant=invalid_constant)
+
+
+def _object(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    if len(raw) > 65536:
+        raise ValueError('OVERSIZED_RECORD')
+    value = _strict_json(raw)
     if not isinstance(value, dict):
         raise ValueError('INVALID_JSON_OBJECT')
     return value
@@ -182,3 +186,26 @@ def api_paper_pilots() -> dict[str, Any]:
         data = build_paper_pilots()
         _CACHE.update(data=data, expires=time.monotonic() + CACHE_SECONDS)
         return data
+
+
+def api_runner_comparison(path: Path = Path('/root/bot_runner_comparison/data/status.json'), *, now_ms: int | None = None) -> dict[str, Any]:
+    """A saved paired study, separate from the public-mainnet pilot databases."""
+    unavailable = {'health': 'UNAVAILABLE', 'mode': 'LOCAL_PAPER_ONLY', 'order_capability': False}
+    try:
+        with path.open('rb') as file:
+            raw = file.read(512*1024+1)
+        if len(raw)>512*1024:
+            raise ValueError('OVERSIZED_STATUS')
+        data = _strict_json(raw)
+        if not isinstance(data,dict) or not isinstance(data.get('protocol'),dict) or data.get('mode')!='LOCAL_PAPER_ONLY' or data.get('order_capability') is not False or data['protocol'].get('name')!='main-paper-runner-paired-v1-20261006':
+            raise ValueError('UNEXPECTED_STUDY')
+        now_ms=now_ms if now_ms is not None else int(time.time()*1000)
+        generated=_number(data.get('generated_at_ms'))
+        if generated is None:
+            raise ValueError('INVALID_TIMESTAMP')
+        data['age_seconds']=max(0,(now_ms-generated)/1000)
+        if data['age_seconds']>900:
+            data['health']='STALE'
+        return data
+    except (OSError,ValueError,TypeError) as exc:
+        return {**unavailable,'source_error':type(exc).__name__}
