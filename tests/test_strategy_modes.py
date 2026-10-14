@@ -123,19 +123,20 @@ def test_runtime_config_executes_mean_reversion_in_paper_only() -> None:
         "MOMENTUM_CONTINUATION",
         "RANGE_GRID",
         "TREND_FOLLOWING",
+        "TREND_BREAKOUT_4H",
     ]
     assert cfg.strategy.shadow_gate_counterfactual_enabled is False
     assert cfg.strategy.shadow_parallel_lab_enabled is True
-    assert cfg.strategy.shadow_parallel_lab_cohort == "2026-08-14-parallel-lab"
+    assert cfg.strategy.shadow_parallel_lab_cohort == "2026-10-14-mainnet-parallel-lab"
     assert "STRICT" in cfg.strategy.shadow_parallel_lab_arms
     assert "OF_HOSTILE+MISSING_OI" in cfg.strategy.shadow_parallel_lab_arms
     assert cfg.strategy.shadow_conditional_lab_enabled is True
-    assert cfg.strategy.shadow_conditional_lab_cohort == "2026-08-25-conditional-v1"
+    assert cfg.strategy.shadow_conditional_lab_cohort == "2026-10-14-mainnet-conditional-v1"
     assert cfg.strategy.shadow_conditional_lab_risk_cap_pct == Decimal("0.0020")
     assert cfg.strategy.shadow_conditional_lab_mid_score == Decimal("50")
     assert cfg.strategy.shadow_conditional_lab_high_score == Decimal("70")
     assert cfg.strategy.shadow_conditional_lab_v2_enabled is True
-    assert cfg.strategy.shadow_conditional_lab_v2_cohort == "2026-09-03-conditional-v2"
+    assert cfg.strategy.shadow_conditional_lab_v2_cohort == "2026-10-14-mainnet-conditional-v2"
     assert cfg.strategy.shadow_conditional_lab_v2_risk_cap_pct == Decimal("0.0020")
     assert cfg.strategy.shadow_conditional_lab_v2_mid_score == Decimal("50")
     assert cfg.strategy.shadow_conditional_lab_v2_high_score == Decimal("70")

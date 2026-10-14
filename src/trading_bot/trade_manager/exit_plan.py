@@ -75,6 +75,16 @@ class ExitPlanBuilder:
                 break
 
         callback = self.config.trailing_callback_rate_pct.get(style.value, Decimal("0.6"))
+        # A strategy may carry its own ATR-derived trail (e.g. 3 x ATR(4h) for
+        # TREND_BREAKOUT_4H); Binance accepts callback rates of 0.1%..10%.
+        strategy_callback = (signal.metadata or {}).get("trailing_callback_rate_pct")
+        if strategy_callback not in (None, "", "None"):
+            try:
+                value = to_decimal(strategy_callback)
+            except Exception:
+                value = Decimal("0")
+            if value > 0:
+                callback = min(max(value, Decimal("0.1")), Decimal("10"))
         return ProtectionPlan(
             initial_stop=to_decimal(signal.stop_loss),
             breakeven_price=breakeven,

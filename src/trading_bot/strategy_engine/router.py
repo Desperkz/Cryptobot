@@ -17,6 +17,7 @@ from trading_bot.strategy_engine.mean_reversion import MeanReversionStrategy
 from trading_bot.strategy_engine.multi_timeframe import MultiTimeframeStrategy
 from trading_bot.strategy_engine.squeeze_breakout import SqueezeBreakoutStrategy
 from trading_bot.strategy_engine.trend_pullback import TrendPullbackStrategy
+from trading_bot.strategy_engine.trend_breakout_4h import TrendBreakout4hStrategy
 
 
 ROUTER_CONFLICT_MIN_CONFIDENCE_GAP = Decimal("0.08")
@@ -34,6 +35,7 @@ class StrategyRouter:
         vwap_reversion: VwapReversionStrategy | None = None,
         momentum_continuation: MomentumContinuationStrategy | None = None,
         range_grid: RangeGridStrategy | None = None,
+        trend_breakout_4h: TrendBreakout4hStrategy | None = None,
         shadow_strategies: list[str] | None = None,
         config: StrategyConfig | None = None,
     ) -> None:
@@ -45,6 +47,7 @@ class StrategyRouter:
         self.vwap_reversion = vwap_reversion
         self.momentum_continuation = momentum_continuation
         self.range_grid = range_grid
+        self.trend_breakout_4h = trend_breakout_4h
         self.enabled = {name.upper() for name in enabled_strategies}
         self.shadow_enabled = {name.upper() for name in (shadow_strategies or [])}
         self.config = config
@@ -124,6 +127,11 @@ class StrategyRouter:
 
         if "RANGE_GRID" in enabled and self.range_grid:
             signal = self.range_grid.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
+            if signal:
+                candidates.append(signal)
+
+        if "TREND_BREAKOUT_4H" in enabled and self.trend_breakout_4h:
+            signal = self.trend_breakout_4h.generate(symbol, candles_15m, candles_1h, candles_4h, metrics)
             if signal:
                 candidates.append(signal)
 

@@ -19,6 +19,15 @@ class MarketDataProvider:
             candles.pop()
         return candles
 
+    async def current_mid_price(self, symbol: str) -> Decimal | None:
+        """Fresh best bid/ask midpoint, used to re-anchor entries before sizing."""
+        book = await self.binance.book_ticker(symbol)
+        bid = to_decimal(book.get("bidPrice") or "0")
+        ask = to_decimal(book.get("askPrice") or "0")
+        if bid <= 0 or ask <= 0 or ask < bid:
+            return None
+        return (bid + ask) / Decimal("2")
+
     async def symbol_metrics(self, symbol: str) -> MarketMetrics:
         book = await self.binance.book_ticker(symbol)
         ticker = await self.binance.ticker_24h(symbol)

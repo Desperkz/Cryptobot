@@ -8,6 +8,10 @@ exchange:
   recv_window_ms: 5000
   request_timeout_sec: 15
   max_retries: 4
+  # PAPER/DRY_RUN/BACKTEST читают публичные данные НАСТОЯЩЕГО рынка. Раньше
+  # бот в paper брал свечи, стакан, taker flow и OI с demo-fapi (testnet),
+  # где рынок не настоящий - edge, найденный там, не переносится.
+  paper_market_data_base_url: "https://fapi.binance.com"
 
 safety:
   enable_mainnet_live: false
@@ -116,12 +120,20 @@ strategy:
     MOMENTUM_CONTINUATION: shadow
     RANGE_GRID: shadow
     TREND_FOLLOWING: shadow
+    # 4h time-series momentum: широкий стоп (издержки ~0.05R вместо 0.1-0.3R),
+    # трейлинг 3xATR(4h), потолок остатка 8R. Сначала shadow.
+    TREND_BREAKOUT_4H: shadow
   # Shadow records candidates that strict order-flow would reject, tagged in metadata.
-  # Paper keeps its order-flow gate unchanged.
+  # Main paper uses squeeze_admission_profile; research keeps the legacy gate.
   shadow_order_flow_hard_gate: false
   # Измерение OF не ослабляет champion-SQZ. Только отдельный paper bucket
   # принимает слабый mixed-flow и лишь после сохранённых retest, структуры и RS.
   # Через 150+ сделок сравни bucket с контрольным SQZ в scripts/edge_report.py.
+  # Профиль допуска основного SQZ. edge_v1: направленный OF не гейт (в вашей
+  # выборке 200 SQZ-сигналов его знак был обратным), обязателен контекст
+  # 4h-сжатие ИЛИ трендовый режим, структурные флаги жёсткие, RS режет только
+  # "against", BTC освобождён от RS против самого себя. legacy = старый стек.
+  squeeze_admission_profile: "edge_v1"
   order_flow_entry_gate_mode: "measure"
   order_flow_hostile_score_floor: 0.70
   order_flow_mixed_score_floor: 0.45
@@ -151,7 +163,7 @@ strategy:
   # strategies reopen only in isolated virtual cohorts; paper/live admission,
   # structural safety gates and cooldowns stay unchanged.
   shadow_revalidation_enabled: true
-  shadow_revalidation_cohort: "2026-08-01"
+  shadow_revalidation_cohort: "2026-10-14-mainnet-revalidation"
   shadow_revalidation_risk_cap_pct: 0.0025
   shadow_revalidation_strategies:
     - TREND_PULLBACK
@@ -165,7 +177,7 @@ strategy:
   shadow_gate_counterfactual_enabled: false
   # The previous cohort inherited observe-only OF and is retained as historical
   # evidence. This clean cohort enforces every non-relaxed gate.
-  shadow_gate_counterfactual_cohort: "2026-08-07-clean-of"
+  shadow_gate_counterfactual_cohort: "2026-10-14-mainnet-clean-of"
   shadow_gate_counterfactual_risk_cap_pct: 0.0025
   shadow_gate_counterfactual_gates:
     - RS_NEUTRAL
@@ -177,7 +189,7 @@ strategy:
   # control and a fixed matrix of single/pair relaxed policies. All entries are
   # virtual, use identical realistic execution, and cannot reach paper/live.
   shadow_parallel_lab_enabled: true
-  shadow_parallel_lab_cohort: "2026-08-14-parallel-lab"
+  shadow_parallel_lab_cohort: "2026-10-14-mainnet-parallel-lab"
   shadow_parallel_lab_risk_cap_pct: 0.0025
   shadow_parallel_lab_arms:
     - STRICT
@@ -200,17 +212,17 @@ strategy:
   # candidate enters exactly one virtual HIGH/MID/LOW cohort. Paper/live gates
   # are untouched; the score is research evidence, never an execution permit.
   shadow_conditional_lab_enabled: true
-  shadow_conditional_lab_cohort: "2026-08-25-conditional-v1"
+  shadow_conditional_lab_cohort: "2026-10-14-mainnet-conditional-v1"
   shadow_conditional_lab_risk_cap_pct: 0.0020
   shadow_conditional_lab_high_score: 70
   shadow_conditional_lab_mid_score: 50
   # P7-23: новая SQZ-only калибровка работает параллельно с v1 и набирает
   # только будущую OOS-выборку. Она не имеет права открыть paper/live сделку.
   shadow_conditional_lab_v2_enabled: true
-  shadow_conditional_lab_v2_cohort: "2026-09-03-conditional-v2"
+  shadow_conditional_lab_v2_cohort: "2026-10-14-mainnet-conditional-v2"
   # P8 uses separate future-only control/observe arms; paper and V1/V2 stay frozen.
   p8_shadow_enabled: true
-  p8_shadow_cohort: "2026-09-14-p8-v1"
+  p8_shadow_cohort: "2026-10-14-mainnet-p8-v1"
   p8_shadow_risk_cap_pct: 0.0020
   shadow_conditional_lab_v2_risk_cap_pct: 0.0020
   shadow_conditional_lab_v2_high_score: 70
@@ -317,6 +329,12 @@ risk:
   cooldown_after_losses: 2
   cooldown_minutes: 120
   symbol_cooldown_after_loss_minutes: 180
+  # Вход по текущей mid-цене, а не по close закрытой 1h-свечи. Если цена
+  # уже ушла дальше 0.35R от сигнала — не догоняем, сигнал отклоняется.
+  rebase_entry_to_market: true
+  max_entry_drift_r: 0.35
+  # Свежие OF/OI/funding для монеты с сигналом (кэш universe живёт 30 мин).
+  refresh_metrics_on_signal: true
   strategy_reentry_cooldown_minutes: 180
   strategy_reentry_winning_cooldown_minutes: 90
   scale_in_enabled: false
@@ -494,6 +512,18 @@ trade_management:
         reward_risk: 2.0
         fraction: 0.35
         activate_trailing: true
+    # Трендовая система: мелкий частичный фикс на 2R с переносом в BE и
+    # включением трейлинга; остальное едет трейлингом до 8R-потолка.
+    TREND_BREAKOUT_4H:
+      - name: "TP1"
+        reward_risk: 2.0
+        fraction: 0.25
+        move_stop_to_breakeven: true
+        activate_trailing: true
+      - name: "RUNNER"
+        reward_risk: 8.0
+        fraction: 0.75
+        activate_trailing: true
     MEAN_REVERSION:
       - name: "TP1"
         reward_risk: 0.8
@@ -565,11 +595,11 @@ analytics:
   rsi_bucket_size: 4
   atr_bucket_size_pct: 0.4
   bad_segment_expectancy_r: -0.35
-  # Эпоха статистики (measurement SQZ, 26 июля 2026): self-learning выводит правила только из
+  # Новая эпоха публичного mainnet и edge_v1: self-learning выводит правила только из
   # сделок, закрытых после этой даты. Ставь дату деплоя изменений логики,
   # иначе блокировки символов/часов выводятся из сделок СТАРОЙ конфигурации.
   # null = использовать всю историю (старое поведение).
-  stats_epoch: "2026-07-26T03:11:47+00:00"
+  stats_epoch: "2026-10-14T08:07:56+00:00"
 
 database:
   url: "sqlite+aiosqlite:///data/trading_bot.sqlite3"

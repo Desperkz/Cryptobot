@@ -16,6 +16,7 @@ from trading_bot.config import AppConfig, StrategyConfig
 from trading_bot.data_provider import BinanceUSDMClient, CoinGeckoClient, MarketDataProvider
 from trading_bot.database import Database
 from trading_bot.execution import ExecutionReconciler
+from trading_bot.execution.entry_pricing import rebase_signal_to_market
 from trading_bot.execution.reconciler import restart_recovery_evidence
 from trading_bot.analytics import SQZCohortMilestoneReporter, SelfLearningEngine
 from trading_bot.market_regime_detector import MarketRegimeDetector
@@ -48,6 +49,7 @@ from trading_bot.strategy_engine.multi_timeframe import MultiTimeframeStrategy
 from trading_bot.strategy_engine.router import StrategyRouter
 from trading_bot.strategy_engine.squeeze_breakout import SqueezeBreakoutStrategy
 from trading_bot.strategy_engine.trend_pullback import TrendPullbackStrategy
+from trading_bot.strategy_engine.trend_breakout_4h import TrendBreakout4hStrategy
 from trading_bot.style_selector import StyleSelector
 from trading_bot.telegram_notifier import TelegramNotifier
 from trading_bot.trade_manager.protection import ProtectionManager
@@ -104,10 +106,13 @@ class TradingBot:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.db = Database(config.database.url)
+        # Non-live modes never sign requests; they read the REAL market's public
+        # data (mainnet by default) instead of the demo/testnet tape, and carry
+        # no credentials so no signed call can reach that venue by accident.
         self.binance = BinanceUSDMClient(
-            base_url=config.rest_base_url,
-            api_key=config.api_key,
-            api_secret=config.api_secret,
+            base_url=config.rest_base_url if config.is_live else config.market_data_base_url,
+            api_key=config.api_key if config.is_live else None,
+            api_secret=config.api_secret if config.is_live else None,
             recv_window_ms=config.exchange.recv_window_ms,
             timeout_sec=config.exchange.request_timeout_sec,
             max_retries=config.exchange.max_retries,
@@ -140,6 +145,7 @@ class TradingBot:
             vwap_reversion=self._vwap_reversion,
             momentum_continuation=self._momentum_continuation,
             range_grid=self._range_grid,
+            trend_breakout_4h=TrendBreakout4hStrategy(),
             enabled_strategies=config.strategy.execution_strategies(config.mode),
             shadow_strategies=config.strategy.shadow_strategies(),
             config=config.strategy,
@@ -417,9 +423,34 @@ class TradingBot:
             self.corr_filter.update(asset.symbol, candles_1h)
             shadow_signals = self.strategy.generate_shadow(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
             await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
+            signal = self.strategy.generate(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
+            await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
+            # Universe metrics are cached for cache_ttl_sec (30 min). Order-flow,
+            # OI and funding gates must not judge a fresh signal on a snapshot
+            # that old, so refresh them for symbols that actually signalled.
+            metrics = asset.metrics
+            if (signal or shadow_signals) and self.config.risk.refresh_metrics_on_signal:
+                try:
+                    metrics = await self.market_data.symbol_metrics(asset.symbol)
+                except Exception as exc:
+                    logger.warning("Fresh metrics unavailable for %s, using cached: %s", asset.symbol, exc)
             for shadow_signal in shadow_signals:
+                if _signal_strategy(shadow_signal) in REBASED_SHADOW_STRATEGIES:
+                    # New strategies get realistic virtual fills from the start;
+                    # frozen research cohorts keep their registered fill model.
+                    try:
+                        mid = await self.market_data.current_mid_price(asset.symbol)
+                    except Exception:
+                        mid = None
+                    rebased, rebase_reason = rebase_signal_to_market(
+                        shadow_signal, mid, self.config.risk.max_entry_drift_r
+                    )
+                    if rebased is None:
+                        logger.info("Shadow entry price guard %s: %s", asset.symbol, rebase_reason)
+                        continue
+                    shadow_signal = rebased
                 shadow_signal = self._annotate_signal_mode(shadow_signal, "shadow", shadow_only=True)
-                shadow_signal, annotation = self._annotate_order_flow(shadow_signal, candles_15m, asset.metrics)
+                shadow_signal, annotation = self._annotate_order_flow(shadow_signal, candles_15m, metrics)
                 await self._record_order_flow_annotation(shadow_signal, annotation)
                 shadow_signal, relative_strength = self._annotate_relative_strength(
                     shadow_signal,
@@ -428,15 +459,13 @@ class TradingBot:
                 )
                 await self._record_relative_strength_annotation(shadow_signal, relative_strength)
                 await self._record_shadow_signal(shadow_signal, asset.filters)
-            signal = self.strategy.generate(asset.symbol, candles_15m, candles_1h, candles_4h, asset.metrics)
-            await self._record_strategy_diagnostics(self.strategy.drain_diagnostics())
             if not signal:
                 continue
             signal = self._annotate_signal_mode(
                 signal,
                 self.config.strategy.mode_for_strategy(signal.metadata.get("strategy", "")),
             )
-            signal, annotation = self._annotate_order_flow(signal, candles_15m, asset.metrics)
+            signal, annotation = self._annotate_order_flow(signal, candles_15m, metrics)
             await self._record_order_flow_annotation(signal, annotation)
             signal, relative_strength = self._annotate_relative_strength(signal, candles_4h, btc_4h_change)
             await self._record_relative_strength_annotation(signal, relative_strength)
@@ -448,7 +477,7 @@ class TradingBot:
                     asset.symbol,
                 )
                 continue
-            order_flow_rejection = _order_flow_entry_rejection_reason(
+            order_flow_rejection = _production_entry_rejection_reason(
                 signal, self.config.strategy
             )
             controlled_paper_signal = _controlled_paper_sqz_override(
@@ -493,6 +522,18 @@ class TradingBot:
                 logger.info("Order-flow gate rejected %s: %s", signal.symbol, reason)
                 await self._record_ml_feature_snapshot(signal, "REJECTED_ORDER_FLOW_GATE", reason)
                 continue
+            if (
+                _signal_strategy(signal) == "SQUEEZE_BREAKOUT"
+                and self.config.strategy.squeeze_admission_profile == "edge_v1"
+            ):
+                signal = replace(
+                    signal,
+                    metadata={
+                        **dict(signal.metadata or {}),
+                        "sqz_admission_profile": "edge_v1",
+                        "strategy_logic_version": "sqz_edge_v1",
+                    },
+                )
             mr_context_rejection = _mean_reversion_context_rejection_reason(
                 signal,
                 btc_4h_change,
@@ -536,7 +577,7 @@ class TradingBot:
                     pass
                 await self._record_ml_feature_snapshot(signal, "REJECTED_MR_EXPECTANCY_GATE", reason)
                 continue
-            oi_chg = asset.metrics.open_interest_change_pct if asset.metrics else None
+            oi_chg = metrics.open_interest_change_pct if metrics else None
             symbol_4h_change = _symbol_4h_change_pct(
                 candles_4h,
                 self.config.market_filters.symbol_4h_trend_lookback_bars,
@@ -650,6 +691,32 @@ class TradingBot:
                     pass
                 await self._record_ml_feature_snapshot(signal, "REJECTED_REENTRY_POLICY", reentry_reason)
                 continue
+            if self.config.risk.rebase_entry_to_market:
+                try:
+                    market_price = await self.market_data.current_mid_price(signal.symbol)
+                except Exception as exc:
+                    logger.warning("Current price unavailable for %s: %s", signal.symbol, exc)
+                    market_price = None
+                rebased, rebase_reason = rebase_signal_to_market(
+                    signal, market_price, self.config.risk.max_entry_drift_r
+                )
+                if rebased is None:
+                    reason = f"Entry price guard: {rebase_reason}"
+                    logger.info("Entry price guard rejected %s: %s", signal.symbol, rebase_reason)
+                    try:
+                        await self.db.insert_filter_rejection(
+                            symbol=signal.symbol,
+                            direction=signal.direction.value,
+                            strategy=_signal_strategy(signal),
+                            confidence=str(signal.confidence),
+                            filter_type="ENTRY_PRICE",
+                            reason=reason,
+                        )
+                    except Exception:
+                        pass
+                    await self._record_ml_feature_snapshot(signal, "REJECTED_ENTRY_PRICE", reason)
+                    continue
+                signal = rebased
             await self.db.insert_signal(signal)
             await self.telegram.signal(signal.symbol, signal.direction.value, signal.style.value, signal.reason)
             try:
@@ -780,6 +847,8 @@ class TradingBot:
         metadata = {
             **dict(signal.metadata),
             "strategy_mode": strategy_mode,
+            "market_data_base_url": self.config.market_data_base_url,
+            "market_data_epoch": self.config.analytics.stats_epoch,
         }
         strategy_logic_version = _strategy_logic_version(strategy)
         if strategy_logic_version:
@@ -1837,6 +1906,9 @@ def _protection_prices(orders: list[dict[str, Any]]) -> tuple[Decimal | None, De
 def _signal_strategy(signal: Signal) -> str:
     metadata = signal.metadata or {}
     return str(metadata.get("strategy") or "UNKNOWN")
+
+
+REBASED_SHADOW_STRATEGIES = frozenset({"TREND_BREAKOUT_4H"})
 
 
 def _risk_plan_exit_metadata(plan: Any) -> dict[str, Any]:
@@ -3748,6 +3820,82 @@ def _squeeze_context_gate_rejection(
         f"{_signal_strategy(signal)} blocked: no 4h compression and regime {regime or 'unknown'} "
         "is not directional.",
     )
+
+
+SQZ_EDGE_V1_STRUCTURAL_FLAGS = frozenset(
+    {
+        "liquidation_cascade",
+        "structure_break_against",
+        "adverse_liquidity_nearby",
+        "absorption_against",
+    }
+)
+
+
+def _squeeze_edge_v1_rejection_reason(
+    signal: Signal,
+    risk_flags: set[str],
+    strategy_config: "StrategyConfig | None",
+) -> tuple[str, str] | None:
+    """SQZ admission built from measured evidence instead of stacked vetoes.
+
+    Evidence (bot's own 200 independent SQZ sources, 2026-07..09, see
+    ``StrategyConfig.order_flow_entry_gate_mode`` notes):
+      * directional order-flow had the INVERSE sign (aligned -0.01R,
+        against/mixed +0.34R), so it is recorded but never gates;
+      * 4h compression or a directional regime separated +0.47..+0.85R
+        from ~+0.02R, so that context is mandatory;
+      * absorption against the breakout cost -0.40R; structural danger
+        flags remain hard vetoes.
+    Retest and 15m structure-break are recorded as metadata only: requiring
+    them together with RS left 238 SQZ clusters with zero admissions.
+    """
+    flags = risk_flags.intersection(SQZ_EDGE_V1_STRUCTURAL_FLAGS)
+    if flags:
+        return (
+            "ORDER_FLOW",
+            f"SQUEEZE_BREAKOUT edge_v1 blocked: structural danger ({','.join(sorted(flags))}).",
+        )
+    context_config = replace(
+        strategy_config,
+        squeeze_context_gate_enabled=True,
+        squeeze_context_gate_require_4h_squeeze_or_trend=True,
+    ) if strategy_config is not None else None
+    if context_config is None:
+        return ("SQZ_CONTEXT", "SQUEEZE_BREAKOUT edge_v1 blocked: missing strategy config.")
+    context_rejection = _squeeze_context_gate_rejection(signal, context_config)
+    if context_rejection is not None:
+        return context_rejection
+    if signal.symbol != "BTCUSDT":
+        rs_alignment = _relative_strength_alignment(signal)
+        if rs_alignment in {"against", "unknown", ""}:
+            return (
+                "RELATIVE_STRENGTH",
+                f"SQUEEZE_BREAKOUT edge_v1 blocked: relative strength is {rs_alignment or 'missing'}.",
+            )
+    return None
+
+
+def _production_entry_rejection_reason(
+    signal: Signal,
+    strategy_config: "StrategyConfig | None" = None,
+) -> tuple[str, str] | None:
+    """Admission used by the executing (paper/live) path only.
+
+    Frozen research cohorts keep calling ``_order_flow_entry_rejection_reason``
+    directly, so switching the production profile never alters their
+    control arms.
+    """
+    if (
+        _signal_strategy(signal) == "SQUEEZE_BREAKOUT"
+        and getattr(strategy_config, "squeeze_admission_profile", "legacy") == "edge_v1"
+    ):
+        order_flow = _order_flow_metadata(signal)
+        if not order_flow:
+            return "ORDER_FLOW", "SQUEEZE_BREAKOUT blocked: missing order-flow metadata."
+        risk_flags = {str(flag) for flag in order_flow.get("risk_flags") or []}
+        return _squeeze_edge_v1_rejection_reason(signal, risk_flags, strategy_config)
+    return _order_flow_entry_rejection_reason(signal, strategy_config)
 
 
 def _order_flow_entry_rejection_reason(

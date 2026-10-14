@@ -37,6 +37,10 @@ class ExchangeConfig:
     recv_window_ms: int = 5000
     request_timeout_sec: int = 15
     max_retries: int = 4
+    # Market data for PAPER_TRADING / DRY_RUN / BACKTEST.  Empty -> mainnet
+    # public data.  The demo/testnet tape (candles, book, taker flow, OI) is
+    # not the real market, so edge measured on it does not transfer.
+    paper_market_data_base_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -158,6 +162,15 @@ class StrategyConfig:
     # без сжатия на 4h; режим RANGE давал +0.020R против +0.47..+0.85R в
     # TREND/MOMENTUM. Гейт требует хотя бы одно из двух подтверждений.
     squeeze_context_gate_enabled: bool = False
+    # Admission profile for the paper/live SQUEEZE_BREAKOUT path.
+    #   "legacy"  - strict directional OF + RS aligned + retest/strong release
+    #               + 15m structure break (the stack that admitted ~0 trades).
+    #   "edge_v1" - built from the bot's own 200-source SQZ study: directional
+    #               OF (inverse sign there) is not a gate; the 4h-compression /
+    #               directional-regime context IS required; structural danger
+    #               flags stay hard; RS only blocks "against"; BTC is exempt
+    #               from the RS self-benchmark (always neutral against itself).
+    squeeze_admission_profile: str = "legacy"
     squeeze_context_gate_require_4h_squeeze_or_trend: bool = True
     squeeze_context_gate_blocked_regimes: list[str] = field(
         default_factory=lambda: ["RANGE"]
@@ -378,6 +391,14 @@ class RiskConfig:
     require_liquidation_check_in_live: bool
     max_funding_impact_bps: Decimal = Decimal("8.0")
     funding_impact_holding_hours: Decimal = Decimal("8")
+    # Re-anchor entries to the fresh mid price before sizing (was: stale
+    # close of the last closed 1h candle).  Entries whose price already moved
+    # more than this many R away from the signal are rejected, not chased.
+    rebase_entry_to_market: bool = True
+    max_entry_drift_r: Decimal = Decimal("0.35")
+    # Refresh order-flow/OI/funding metrics for a symbol when it produces a
+    # signal; the universe cache otherwise makes them up to cache_ttl_sec old.
+    refresh_metrics_on_signal: bool = True
     adaptive_kelly_enabled: bool = True
     kelly_min_sample_trades: int = 50
     kelly_lookback_trades: int = 50
@@ -576,6 +597,13 @@ class AppConfig:
         return self.exchange.testnet_base_url
 
     @property
+    def market_data_base_url(self) -> str:
+        """Where non-live modes read prices. Live modes trade and read on one venue."""
+        if self.is_live:
+            return self.rest_base_url
+        return self.exchange.paper_market_data_base_url or self.exchange.mainnet_base_url
+
+    @property
     def websocket_base_url(self) -> str:
         if self.mode == TradingMode.MAINNET_LIVE:
             return self.exchange.websocket_mainnet_url
@@ -661,6 +689,8 @@ class AppConfig:
             raise ConfigError("default_leverage cannot exceed max_leverage.")
         if self.risk.max_concurrent_positions < 1:
             raise ConfigError("max_concurrent_positions must be >= 1.")
+        if self.strategy.squeeze_admission_profile not in {"legacy", "edge_v1"}:
+            raise ConfigError("strategy.squeeze_admission_profile must be legacy or edge_v1.")
         if self.strategy.order_flow_entry_gate_mode not in {"strict", "measure", "observe"}:
             raise ConfigError(
                 "strategy.order_flow_entry_gate_mode must be strict, measure or observe; "
@@ -1276,6 +1306,9 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             order_flow_hostile_score_floor=to_decimal(
                 raw["strategy"].get("order_flow_hostile_score_floor", "0.70")
             ),
+            squeeze_admission_profile=str(
+                raw["strategy"].get("squeeze_admission_profile", "legacy")
+            ).strip().lower(),
             squeeze_context_gate_enabled=bool(
                 raw["strategy"].get("squeeze_context_gate_enabled", False)
             ),
@@ -1605,6 +1638,9 @@ def load_config(config_path: str | Path = "config.yaml", env_path: str | Path = 
             cooldown_after_losses=int(raw["risk"]["cooldown_after_losses"]),
             cooldown_minutes=int(raw["risk"]["cooldown_minutes"]),
             symbol_cooldown_after_loss_minutes=int(raw["risk"].get("symbol_cooldown_after_loss_minutes", 120)),
+            rebase_entry_to_market=bool(raw["risk"].get("rebase_entry_to_market", True)),
+            max_entry_drift_r=to_decimal(raw["risk"].get("max_entry_drift_r", "0.35")),
+            refresh_metrics_on_signal=bool(raw["risk"].get("refresh_metrics_on_signal", True)),
             strategy_reentry_cooldown_minutes=int(raw["risk"].get("strategy_reentry_cooldown_minutes", 45)),
             strategy_reentry_winning_cooldown_minutes=int(
                 raw["risk"].get("strategy_reentry_winning_cooldown_minutes", 90)
