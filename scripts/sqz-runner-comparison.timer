@@ -2,9 +2,9 @@
 Description=Periodic paired runner exit comparison, isolated local paper only
 
 [Timer]
-OnActiveSec=300s
-OnUnitActiveSec=300s
-AccuracySec=5s
+OnActiveSec=15s
+OnUnitInactiveSec=60s
+AccuracySec=1s
 Unit=sqz-runner-comparison.service
 
 [Install]

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly size check for server log rotation
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120s
+Persistent=true
+Unit=bot-log-rotation.service
+
+[Install]
+WantedBy=timers.target

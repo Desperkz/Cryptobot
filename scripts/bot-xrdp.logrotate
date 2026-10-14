@@ -1,0 +1,11 @@
+/var/log/xrdp.log
+/var/log/xrdp-sesman.log
+{
+    daily
+    maxsize 50M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    copytruncate
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Bounded rotation of server access and system logs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate /etc/logrotate.d/rsyslog /etc/logrotate.d/bot-xrdp
+SuccessExitStatus=3
+Nice=19
+CPUQuota=10%
+MemoryMax=64M
+TimeoutStartSec=15min

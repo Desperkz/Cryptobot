@@ -51,7 +51,11 @@ mainnet pilot. No real orders, credentials, new entry filters or increased risk.
 
 ## Operation, resources and rollback
 
-One isolated serialized oneshot cycle every 300 seconds under `sqz-runner-comparison`.
+One isolated serialized oneshot cycle no more often than every 300 seconds under
+`sqz-runner-comparison`. The timer retries the cheap guard 60 seconds after the
+service becomes inactive, including an ExecCondition deferral. A saved-status
+timestamp prevents these retries from increasing worker frequency. This avoids
+permanent phase locking with the separate 300-second promotion timer.
 Own code/data root `/root/bot_runner_comparison`; immutable protocol and code hashes
 are stored before collecting. Source code/config drift pauses admissions. Existing
 study positions retain their frozen inputs. No changes to other cohorts.
@@ -70,6 +74,12 @@ metrics, recent sources, control discrepancies, lag and the frozen protocol.
 Rollback: stop/disable only this timer and stop its oneshot service; preserve its
 database. Restore the saved dashboard/controller/read-only API files if needed and
 restart only the dashboard controller. Old trading services need no restart.
+
+If collection is interrupted before any sources are admitted, preserve the empty
+original database/protocol in a dated archive and register a new forward-only
+collection at recovery. Save the old and new timestamps/watermarks in a recovery
+record. Entries from the outage must not be silently replayed as prospective
+observations, and the new review clock starts at the recovery registration.
 
 Validation covers identical pre-runner paths and losses, long/short continuation,
 gap fills, stop-first ambiguity, costs, future-only admission, source DB integrity,
