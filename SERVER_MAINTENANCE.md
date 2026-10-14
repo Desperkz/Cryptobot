@@ -16,6 +16,8 @@ the live log inode. Future copytruncate rotations have the normal small copy/tru
 race; these are server-access diagnostics, not the bot's trading database.
 Change the existing rsyslog rule from weekly/4/delaycompress to daily/14/50MB and
 immediate compression, preserving its file list, permissions and reopen hook.
+Both standalone rules explicitly retain the distribution's `su root adm` setting;
+rsyslog also retains `create` with each source file's existing owner/mode.
 The extra hourly timer invokes only these two rules with the standard shared
 logrotate state/lock. Exit status 3 means another rotation owns the lock.
 

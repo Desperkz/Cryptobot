@@ -1,6 +1,7 @@
 /var/log/xrdp.log
 /var/log/xrdp-sesman.log
 {
+    su root adm
     daily
     maxsize 50M
     rotate 14
