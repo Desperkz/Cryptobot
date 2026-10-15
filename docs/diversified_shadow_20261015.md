@@ -71,7 +71,8 @@ trades into a fictional portfolio.
 - Save raw snapshots and rejection reasons once per symbol/rule/closed bar.
   Freeze all Python source files, baseline config and settings by SHA-256.
 - At 512MiB storage, stop admissions while continuing exits. Retain evidence.
-- One-shot every >=300s, retry resource guards each minute. CPU 10%, memory high
+- One-shot every >=300s, retry resource guards every 47s to avoid phase-lock with
+  the existing 60s runner timer. CPU 10%, memory high
   64MiB/max 80MiB, swap 32MiB, timeout 150s. Defer during the promotion/runner worker
   or low memory/swap. A guard deferral is not a successful market scan.
 - Dashboard Research tab reads saved JSON only. Missing/stale/degraded states

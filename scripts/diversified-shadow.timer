@@ -2,8 +2,9 @@
 Description=Retry diversified shadow research when resources are available
 
 [Timer]
-OnActiveSec=15s
-OnUnitInactiveSec=60s
+OnActiveSec=23s
+# Different cadence avoids phase-lock with the existing 60s runner guard.
+OnUnitInactiveSec=47s
 AccuracySec=1s
 Unit=diversified-shadow.service
 
