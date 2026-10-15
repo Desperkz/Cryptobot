@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from trading_bot.models import Candle
-from trading_bot.research.diversified_shadow import PublicClient,advance,connect,fill_plan,admit,settle,decode,validate_settings
+from trading_bot.research.diversified_shadow import PublicClient,advance,connect,fill_plan,admit,settle,decode,validate_settings,monitor,scan
 from trading_bot.strategy_engine.diversified import DEFAULTS,ResearchPlan,evaluate,parameters
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -148,4 +148,46 @@ def test_session_has_at_most_one_entry_per_direction_per_day(tmp_path):
         assert admit(db,p,100,DAY+8*3600000+1,SETTINGS,1)=='OPENED'
         db.execute("UPDATE positions SET status='CLOSED'")
         assert admit(db,p,100,DAY+10*3600000,SETTINGS,2)=='SESSION_ALREADY_TAKEN'
+    finally:db.close()
+
+
+def test_monitor_persists_stop_exit_with_its_costs(tmp_path):
+    root=tmp_path/'code';(root/'src').mkdir(parents=True)
+    (root/'config.yaml').write_text('x');(root/'settings.json').write_text(json.dumps(SETTINGS))
+    db,_=connect(tmp_path/'data',SETTINGS,root,100)
+    try:
+        assert admit(db,plan(),100,120001,SETTINGS,1)=='OPENED';db.commit()
+        class Client:
+            async def klines(self,*args,**kwargs):return [[180000,100,101,97,98,10,239999]]
+        asyncio.run(monitor(db,Client(),240001))
+        row=dict(db.execute('SELECT * FROM positions').fetchone())
+        assert row['status']=='CLOSED' and row['reason']=='STOP'
+        assert row['net_usdt']<0 and json.loads(row['costs'])['fees']>0
+        assert row['closed_ms']==239999
+    finally:db.close()
+
+
+def test_prospective_scan_skips_pre_registration_bars_and_deduplicates(tmp_path,monkeypatch):
+    import trading_bot.research.diversified_shadow as lab
+    from decimal import Decimal
+    from types import SimpleNamespace
+    root=tmp_path/'code';(root/'src').mkdir(parents=True)
+    (root/'config.yaml').write_text('x');(root/'settings.json').write_text(json.dumps(SETTINGS))
+    settings={**SETTINGS,'symbols':['BTCUSDT']};db,manifest=connect(tmp_path/'data',settings,root,10000000)
+    bars,_,_=series();stamp=[9999999]
+    async def source(*args):return {'observed_ms':stamp[0]+1}
+    monkeypatch.setattr(lab,'snapshot',source)
+    monkeypatch.setattr(lab,'decode',lambda *args:([replace(bars[-1],close_time=stamp[0])],[],[],SimpleNamespace(spread_bps=Decimal('1')),100))
+    monkeypatch.setattr(lab,'baseline_rules',lambda config:{name:SimpleNamespace(generate=lambda *a:None) for name in lab.BASELINES})
+    monkeypatch.setattr(lab,'evaluate',lambda name,*a,**kw:(replace(plan(),strategy=name,bar_close_ms=stamp[0]),{'reason':'SIGNAL'}))
+    try:
+        assert asyncio.run(scan(db,None,manifest,settings,None,10000000))==[]
+        assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==0
+        stamp[0]=10800000
+        assert asyncio.run(scan(db,None,manifest,settings,None,10800001))==[]
+        assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==1
+        assert db.execute('SELECT count(*) FROM observations').fetchone()[0]==11
+        assert db.execute('SELECT count(*) FROM positions').fetchone()[0]==6
+        asyncio.run(scan(db,None,manifest,settings,None,10800002))
+        assert db.execute('SELECT count(*) FROM positions').fetchone()[0]==6
     finally:db.close()
