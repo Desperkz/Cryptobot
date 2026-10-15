@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry diversified shadow research when resources are available
+
+[Timer]
+OnActiveSec=15s
+OnUnitInactiveSec=60s
+AccuracySec=1s
+Unit=diversified-shadow.service
+
+[Install]
+WantedBy=timers.target

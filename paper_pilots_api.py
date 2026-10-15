@@ -209,3 +209,21 @@ def api_runner_comparison(path: Path = Path('/root/bot_runner_comparison/data/st
         return data
     except (OSError,ValueError,TypeError) as exc:
         return {**unavailable,'source_error':type(exc).__name__}
+
+
+def api_diversified_shadow(path: Path = Path('/root/bot_diversified_shadow/data/status.json'), *, now_ms: int | None = None) -> dict[str, Any]:
+    """Bounded saved-status read only; no source DB access or research execution."""
+    unavailable={'health':'UNAVAILABLE','mode':'SHADOW_ONLY','order_capability':False,'auto_promotion':False}
+    try:
+        with path.open('rb') as file:raw=file.read(512*1024+1)
+        if len(raw)>512*1024:raise ValueError('OVERSIZED_STATUS')
+        data=_strict_json(raw)
+        if not isinstance(data,dict) or data.get('mode')!='SHADOW_ONLY' or data.get('order_capability') is not False or data.get('auto_promotion') is not False:
+            raise ValueError('UNEXPECTED_STUDY')
+        if not isinstance(data.get('groups'),list) or len(data['groups'])>11 or not isinstance(data.get('protocol'),dict):raise ValueError('INVALID_GROUPS')
+        stamp=_number(data.get('generated_at_ms'));now_ms=now_ms if now_ms is not None else int(time.time()*1000)
+        if stamp is None or stamp>now_ms+60000:raise ValueError('INVALID_TIMESTAMP')
+        data['age_seconds']=max(0,(now_ms-stamp)/1000)
+        if data['age_seconds']>1200:data['health']='STALE'
+        return data
+    except (OSError,ValueError,TypeError):return unavailable

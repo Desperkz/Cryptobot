@@ -1,0 +1,30 @@
+[Unit]
+Description=Isolated diversified strategy shadow research
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_diversified_shadow/code
+Environment=PYTHONPATH=/root/bot_diversified_shadow/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecCondition=/root/bot_v2_1/.venv/bin/python -m trading_bot.research.diversified_guard
+ExecStart=/usr/bin/flock -n /root/bot_diversified_shadow/data/.cycle.lock /root/bot_v2_1/.venv/bin/python -m trading_bot.research.diversified_shadow --code-root /root/bot_diversified_shadow/code --data-dir /root/bot_diversified_shadow/data
+Restart=no
+TimeoutStartSec=150
+Nice=19
+CPUQuota=10%
+MemoryHigh=64M
+MemoryMax=80M
+MemorySwapMax=32M
+OOMScoreAdjust=650
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/bot_diversified_shadow/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

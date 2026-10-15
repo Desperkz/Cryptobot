@@ -1,0 +1,11 @@
+{
+  "cohort": "2026-10-15-diversified-shadow-v1",
+  "symbols": ["BTCUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "DOGEUSDT", "LTCUSDT"],
+  "risk_usdt": 2.0,
+  "max_open": 24,
+  "max_store_mb": 512,
+  "max_drift_r": 0.35,
+  "min_net_rr": 0.8,
+  "scan_interval_sec": 300,
+  "parameters": {}
+}
