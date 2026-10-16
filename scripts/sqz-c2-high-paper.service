@@ -1,6 +1,6 @@
 [Unit]
 Description=Prospective SQZ v2 HIGH paper follower without network access
-After=sqz-promotion-paper.service
+After=local-fs.target
 
 [Service]
 Type=oneshot

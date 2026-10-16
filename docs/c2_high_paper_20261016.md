@@ -38,8 +38,9 @@ admission, not promotion to the main paper portfolio or real trading.
 
 ## Operation
 
-`sqz-c2-high-paper.timer` polls every ~61 seconds, after the original service
-when both are scheduled. The worker has CPU quota 5%, memory high/max 32/48 MiB,
+`sqz-c2-high-paper.timer` polls every ~61 seconds. A read-only SQLite snapshot
+allows polling while the source scanner runs, without waiting for its long
+start job. The worker has CPU quota 5%, memory high/max 32/48 MiB,
 swap max 16 MiB, 60-second timeout, a local lock and no permanent process. It
 does not acquire new exchange data. Source scan and monitor timestamps are
 preserved in the dashboard, so polling cannot make stale evidence look fresh.
