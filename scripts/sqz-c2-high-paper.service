@@ -1,0 +1,30 @@
+[Unit]
+Description=Prospective SQZ v2 HIGH paper follower without network access
+After=sqz-promotion-paper.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_sqz_c2_high_paper/code
+Environment=PYTHONPATH=/root/bot_sqz_c2_high_paper/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/flock -n /root/bot_sqz_c2_high_paper/data/process.lock /root/bot_v2_1/.venv/bin/python -m trading_bot.research.conditional_high_paper --settings /root/bot_sqz_c2_high_paper/code/settings.json --data-dir /root/bot_sqz_c2_high_paper/data
+Restart=no
+TimeoutStartSec=60
+Nice=19
+CPUQuota=5%
+MemoryHigh=32M
+MemoryMax=48M
+MemorySwapMax=16M
+OOMScoreAdjust=650
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/bot_sqz_promotion_paper/data
+ReadWritePaths=/root/bot_sqz_c2_high_paper/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -21,6 +21,7 @@ PILOTS = (
     ('direction', 'Направление SQZ', 'bot_sqz_direction_paper'),
     ('confirmation', 'Подтверждение SQZ', 'bot_sqz_confirmation_paper'),
     ('promotion', 'Перенос кандидатов в paper', 'bot_sqz_promotion_paper'),
+    ('c2_high', 'SQZ · v2 HIGH · paper-проверка', 'bot_sqz_c2_high_paper'),
 )
 RECENT_LIMIT = 50
 OPEN_LIMIT = 128

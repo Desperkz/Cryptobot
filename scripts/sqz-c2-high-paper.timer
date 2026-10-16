@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll frozen SQZ transfer feed for prospective v2 HIGH paper entries
+
+[Timer]
+OnActiveSec=17s
+OnUnitInactiveSec=61s
+AccuracySec=1s
+Unit=sqz-c2-high-paper.service
+
+[Install]
+WantedBy=timers.target

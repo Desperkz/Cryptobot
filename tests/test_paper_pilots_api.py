@@ -49,7 +49,7 @@ def test_policies_and_correlated_arms_are_separate_and_zero_entry_arms_present(t
 
 def test_read_only_missing_does_not_create_files_and_failure_is_local(tmp_path):
     result=api.build_paper_pilots(tmp_path,now_ms=NOW)
-    assert result['combined_pnl'] is None and len(result['pilots'])==6
+    assert result['combined_pnl'] is None and len(result['pilots'])==7
     assert all(p['error']=='DATABASE_MISSING' for p in result['pilots'])
     assert not list(tmp_path.iterdir())
 

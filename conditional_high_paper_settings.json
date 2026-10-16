@@ -1,0 +1,7 @@
+{
+  "experiment": "sqz-c2-high-forward-v1-20261016",
+  "cohort": "sqz-c2-high-forward-v1-20261016",
+  "risk_usdt": 2,
+  "source_database": "/root/bot_sqz_promotion_paper/data/mainnet_paper_lab.sqlite3",
+  "source_manifest_sha256": "1fc25f66b8bcbfb8c06e1fbcc512fdd51eef8b9c6946e5045e040bd7401d2abb"
+}
