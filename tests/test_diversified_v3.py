@@ -190,3 +190,11 @@ def test_registration_watermark_excludes_existing_snapshot_ids(tmp_path,monkeypa
         assert db.execute("SELECT value FROM meta WHERE key='feed_cursor'").fetchone()[0]=='5'
         assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==0
     finally:db.close();source.close()
+
+
+@pytest.mark.parametrize('available,busy,expected',[(90,False,True),(90,True,False),(140,True,True),(70,False,False)])
+def test_small_read_only_follower_does_not_lose_fresh_inputs_behind_busy_pilot(monkeypatch,available,busy,expected):
+    import trading_bot.research.diversified_v3_guard as guard
+    monkeypatch.setattr(guard.Path,'read_text',lambda self:f'MemAvailable: {available*1024} kB\nSwapFree: 300000 kB\n')
+    monkeypatch.setattr(guard.subprocess,'check_output',lambda *a,**k:'activating\n' if busy else 'inactive\n')
+    assert guard.ready() is expected

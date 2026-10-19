@@ -102,7 +102,11 @@ Missing-minute backlog, stale/unhealthy feed, memory/storage limits or manifest
 changes stop new admissions. Monitoring can continue while admissions are paused.
 
 New unit: Nice19, CPU5%, memory64/80MiB, swap32MiB, timeout100s. Guard requires
-80MiB available RAM, 256MiB free swap, original source/runner/promotion inactive.
+80MiB available RAM when other studies are idle, or 128MiB when one is active,
+and 256MiB free swap. Read-only SQLite snapshots may run concurrently. Initial
+blanket serialization skipped the 120s fresh-input window behind long pilots;
+the empty initial V3 epoch is archived and replaced by the `-r1` zero-start epoch.
+Trading rules/costs and source freshness limits were not changed by this fix.
 The 61-second timer avoids phase locking and does not wait for a two-minute
 upstream systemd job via an `After=` dependency.
 
