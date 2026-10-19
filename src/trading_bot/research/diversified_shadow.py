@@ -64,7 +64,10 @@ def code_hashes(code_root):
     files=list((code_root/'src').rglob('*.py'))+[code_root/'config.yaml',code_root/'settings.json']
     return {str(p.relative_to(code_root)):sha(p) for p in files}
 
-def connect(directory,settings,code_root,now):
+def connect(directory,settings,code_root,now,*,protocol=None):
+    protocol=protocol or {}
+    if set(protocol)-{'comparison','scope','rules','source_manifest_sha256','previous_cohort'}:
+        raise ValueError('Unsupported protocol metadata')
     validate_settings(settings);directory.mkdir(mode=0o700,parents=True,exist_ok=True)
     db=sqlite3.connect(directory/'shadow.sqlite3',timeout=3);db.row_factory=sqlite3.Row
     db.execute('PRAGMA journal_mode=WAL');db.execute('PRAGMA busy_timeout=3000')
@@ -76,7 +79,7 @@ def connect(directory,settings,code_root,now):
     hashes=code_hashes(code_root);row=db.execute("SELECT value FROM meta WHERE key='manifest'").fetchone()
     if row:
         manifest=json.loads(row[0])
-        if manifest['settings']!=settings or manifest['code_sha256']!=hashes:
+        if manifest['settings']!=settings or manifest['code_sha256']!=hashes or any(manifest.get(k)!=v for k,v in protocol.items()):
             db.close();raise ValueError('Frozen cohort changed; create a new cohort directory')
     else:
         manifest={'registered_ms':now,'cohort':settings['cohort'],'settings':settings,'code_sha256':hashes,'venue':VENUE,'mode':'SHADOW_ONLY','order_capability':False,'auto_promotion':False,
@@ -84,6 +87,7 @@ def connect(directory,settings,code_root,now):
             'execution':'Fresh observed book midpoint; exits use contiguous closed 1m bars starting at first FULL minute after entry; stop first if ambiguous; timeout at closed bar',
             'comparison':'Native baseline signal rules plus separately named V2 hypotheses; common lab execution, not a replay of the main bot admission/partial-exit pipeline',
             'scope':'Correlated virtual observations, not an additive portfolio; no historical entries admitted'}
+        manifest.update(protocol)
         db.execute('INSERT INTO meta VALUES(?,?)',('manifest',canonical(manifest)));db.commit()
     return db,manifest
 
@@ -221,9 +225,9 @@ async def scan(db,client,manifest,settings,config,now):
             db.rollback();errors.append(symbol+': '+str(exc)[:250])
     return errors
 
-def status(db,manifest,directory,errors):
+def status(db,manifest,directory,errors,*,strategies=None,extra=None):
     now=int(time.time()*1000);groups=[]
-    for name in [x+'_CONTROL' for x in BASELINES]+list(DEFAULTS):
+    for name in strategies if strategies is not None else [x+'_CONTROL' for x in BASELINES]+list(DEFAULTS):
         rows=[dict(r) for r in db.execute('SELECT status,net_usdt,risk_usdt FROM positions WHERE strategy=?',(name,))]
         closed=[r for r in rows if r['status']=='CLOSED'];wins=[r['net_usdt'] for r in closed if r['net_usdt']>0];losses=[r['net_usdt'] for r in closed if r['net_usdt']<0]
         groups.append({'strategy':name,'control':name.endswith('_CONTROL'),'entries':len(rows),'closed':len(closed),'open':len(rows)-len(closed),'net_usdt':sum(r['net_usdt'] for r in closed) if closed else None,'avg_r':sum(r['net_usdt']/r['risk_usdt'] for r in closed)/len(closed) if closed else None,'profit_factor':sum(wins)/-sum(losses) if losses else None})
@@ -231,6 +235,9 @@ def status(db,manifest,directory,errors):
     active=[dict(r) for r in db.execute("SELECT id,strategy,symbol,direction,opened_ms,entry,stop,target,next_ms,last_ms FROM positions WHERE status='OPEN' ORDER BY id LIMIT 24")]
     recent=[dict(r) for r in db.execute("SELECT id,strategy,symbol,direction,opened_ms,closed_ms,net_usdt,reason FROM positions WHERE status='CLOSED' ORDER BY id DESC LIMIT 30")]
     result={'generated_at_ms':now,'health':'DEGRADED' if errors else 'OK','mode':'SHADOW_ONLY','order_capability':False,'auto_promotion':False,'cohort':manifest['cohort'],'registered_ms':manifest['registered_ms'],'venue':VENUE,'combined_pnl':None,'combined_pnl_reason':'CORRELATED_VIRTUAL_OBSERVATIONS','groups':groups,'diagnostics':reasons,'open_positions':active,'recent_positions':recent,'errors':errors,'protocol':manifest,'cycle_interval_sec':manifest['settings']['scan_interval_sec']}
+    if extra:
+        if set(extra)&result.keys():raise ValueError('Cannot override protocol status fields')
+        result.update(extra)
     tmp=directory/'.status.tmp';tmp.write_text(canonical(result));os.replace(tmp,directory/'status.json')
     return result
 

@@ -1,0 +1,31 @@
+[Unit]
+Description=Revised diversified V3 shadow with separate zero-start statistics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_diversified_v3/code
+Environment=PYTHONPATH=/root/bot_diversified_v3/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecCondition=/root/bot_v2_1/.venv/bin/python -m trading_bot.research.diversified_v3_guard
+ExecStart=/usr/bin/flock -n /root/bot_diversified_v3/data/.cycle.lock /root/bot_v2_1/.venv/bin/python -m trading_bot.research.diversified_v3_shadow --code-root /root/bot_diversified_v3/code --data-dir /root/bot_diversified_v3/data
+Restart=no
+TimeoutStartSec=100
+Nice=19
+CPUQuota=5%
+MemoryHigh=64M
+MemoryMax=80M
+MemorySwapMax=32M
+OOMScoreAdjust=650
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/bot_diversified_shadow/data
+ReadWritePaths=/root/bot_diversified_v3/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

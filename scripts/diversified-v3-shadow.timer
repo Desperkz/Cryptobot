@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll revised diversified shadow after source snapshots become available
+
+[Timer]
+OnActiveSec=19
+OnUnitInactiveSec=61
+AccuracySec=1
+Unit=diversified-v3-shadow.service
+
+[Install]
+WantedBy=timers.target

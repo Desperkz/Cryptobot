@@ -212,7 +212,7 @@ def api_runner_comparison(path: Path = Path('/root/bot_runner_comparison/data/st
         return {**unavailable,'source_error':type(exc).__name__}
 
 
-def api_diversified_shadow(path: Path = Path('/root/bot_diversified_shadow/data/status.json'), *, now_ms: int | None = None) -> dict[str, Any]:
+def api_diversified_shadow(path: Path = Path('/root/bot_diversified_v3/data/status.json'), *, now_ms: int | None = None) -> dict[str, Any]:
     """Bounded saved-status read only; no source DB access or research execution."""
     unavailable={'health':'UNAVAILABLE','mode':'SHADOW_ONLY','order_capability':False,'auto_promotion':False}
     try:
