@@ -6,7 +6,7 @@ opens a bot database or runs any bot module. Only filesystem/resource sandbox
 properties are copied from --unit; all paths are remapped to the fixture.
 
 Example (root, Linux):
-  python3 probe_wal_sandbox.py --unit /etc/systemd/system/diversified-v3-shadow.service
+  python3 check_diversified_v3_feed_access.py --unit /etc/systemd/system/diversified-v3-shadow.service
 
 The fixture is retained for inspection. The JSON report contains its path and
 unit checksum. Every transient service is collected automatically after exit.
