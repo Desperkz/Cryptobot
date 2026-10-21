@@ -110,6 +110,34 @@ Trading rules/costs and source freshness limits were not changed by this fix.
 The 61-second timer avoids phase locking and does not wait for a two-minute
 upstream systemd job via an `After=` dependency.
 
+### 21 October feed-access repair
+
+The directory-level read-only mount prevented SQLite from recreating WAL/SHM
+coordination files after the source writer closed its last connection. Initial
+healthy cycles did not establish sustained fresh-input processing. The V3 feed
+subsequently reported `unable to open database file` with no trades collected.
+
+The service now permits writes in the source data directory for SQLite sidecars,
+while read-only bind mounts protect the source database and status files. The
+reader still uses `mode=ro`, `query_only`, transactions and normal WAL locking;
+`immutable` and `nolock` are deliberately not used on the live database.
+This is an operational correction only: frozen strategy code, costs, cohort,
+registration timestamp, existing observations and trade history are retained.
+Expired input cursors may be advanced only over rows already excluded by the
+unchanged 120-second freshness rule, with before/after cursor values recorded.
+No missed-period trades are reconstructed. Forward performance starts with the
+first genuinely processed fresh snapshots, which must be verified on the live
+timer after repair.
+
+The Linux systemd integration check covers sidecar recreation after clean close,
+committed WAL visibility while a writer remains open, and denied database/status
+writes under the service's actual sandbox paths. It also reproduces the old
+directory-read-only failure on a separate fixture, never on the live source.
+Run `python scripts/check_diversified_v3_feed_access.py --unit /etc/systemd/system/diversified-v3-shadow.service`
+as root on Linux. The 21 October VPS check reproduced the old failure and passed
+all four positive checks; all 36 V3 unit tests also passed. SQLite documents the
+sidecar requirement in its [read-only WAL section](https://www.sqlite.org/wal.html#read_only_databases).
+
 ## Reset, archive and rollback
 
 The reset creates a new database; it never truncates/deletes old trades or marks

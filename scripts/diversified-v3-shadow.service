@@ -23,8 +23,10 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadOnlyPaths=/root/bot_diversified_shadow/data
-ReadWritePaths=/root/bot_diversified_v3/data
+# WAL readers need to create/reopen -wal and -shm after the writer exits.
+# Keep the database and feed status themselves read-only in this namespace.
+ReadOnlyPaths=/root/bot_diversified_shadow/data/shadow.sqlite3 /root/bot_diversified_shadow/data/status.json
+ReadWritePaths=/root/bot_diversified_v3/data /root/bot_diversified_shadow/data
 UMask=0077
 
 [Install]
