@@ -1,5 +1,5 @@
 {
-  "cohort": "2026-10-19-diversified-v3-shadow-r1",
+  "cohort": "2026-10-21-diversified-v3-shadow-r2",
   "symbols": ["BTCUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "DOGEUSDT", "LTCUSDT"],
   "risk_usdt": 2.0,
   "max_open": 24,

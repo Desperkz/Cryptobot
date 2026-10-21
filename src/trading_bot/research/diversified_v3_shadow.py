@@ -57,8 +57,8 @@ def registration(db,source_path=SOURCE):
 
 
 def scan_feed(db,manifest,settings,*,now_ms=None,source_path=SOURCE,source_status=SOURCE_STATUS):
-    now=int(time.time()*1000) if now_ms is None else now_ms
     health=json.loads(source_status.read_text())
+    now=int(time.time()*1000) if now_ms is None else now_ms
     age=now-health['generated_at_ms']
     if health['health']!='OK' or not 0<=age<=900000 or health['cohort']!=SOURCE_COHORT:
         raise ValueError('SOURCE_NOT_FRESH_AND_HEALTHY')
@@ -66,7 +66,16 @@ def scan_feed(db,manifest,settings,*,now_ms=None,source_path=SOURCE,source_statu
     with closing(open_source(source_path)) as src:
         validate_source(src)
         batch=[dict(row) for row in src.execute('SELECT * FROM snapshots WHERE id>? ORDER BY id LIMIT 6',(cursor,))]
+        # A source writer can commit while this cycle is starting. Use the time
+        # after the read, rather than the earlier cycle-start clock, for freshness.
+        now=int(time.time()*1000) if now_ms is None else now_ms
+        age=now-health['generated_at_ms']
+        if not 0<=age<=900000:raise ValueError('SOURCE_NOT_FRESH_AND_HEALTHY')
+    processed=0
     for row in batch:
+        # Clock skew or a commit racing this read must not lose the row (or any
+        # later IDs) by advancing the cursor. Retry it with the next fresh clock.
+        if row['observed_ms']>now:break
         with db:
             cursor=row['id']
             eligible=(row['bar_ms']>manifest['registered_ms'] and row['observed_ms']>=manifest['registered_ms']
@@ -96,8 +105,9 @@ def scan_feed(db,manifest,settings,*,now_ms=None,source_path=SOURCE,source_statu
                     db.execute('INSERT INTO observations(snapshot_id,strategy,symbol,bar_ms,reason,detail) VALUES(?,?,?,?,?,?)',
                         (row['id'],name,row['symbol'],row['bar_ms'],reason,canonical(detail)))
             db.execute("UPDATE meta SET value=? WHERE key='feed_cursor'",(str(cursor),))
+        processed+=1
     return {'source_cohort':SOURCE_COHORT,'source_age_ms':age,'feed_cursor':cursor,
-            'processed_snapshots':len(batch),'maximum_entry_publication_delay_ms':MAX_SOURCE_AGE_MS}
+            'processed_snapshots':processed,'maximum_entry_publication_delay_ms':MAX_SOURCE_AGE_MS}
 
 
 async def cycle(directory,code_root,*,init_only=False):
@@ -117,7 +127,7 @@ async def cycle(directory,code_root,*,init_only=False):
             if backlog:errors.append('MINUTE_BACKLOG: new admissions paused')
             elif size>settings['max_store_mb']*1024**2:errors.append('STORAGE_LIMIT: new admissions paused')
             else:
-                try:feed=scan_feed(db,manifest,settings,now_ms=now)
+                try:feed=scan_feed(db,manifest,settings)
                 except Exception as exc:db.rollback();errors.append('FEED: '+str(exc)[:200])
             try:await monitor(db,client,now)
             except Exception as exc:db.rollback();errors.append('MONITOR: '+str(exc)[:200])

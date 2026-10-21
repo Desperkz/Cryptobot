@@ -107,8 +107,9 @@ and 256MiB free swap. Read-only SQLite snapshots may run concurrently. Initial
 blanket serialization skipped the 120s fresh-input window behind long pilots;
 the empty initial V3 epoch is archived and replaced by the `-r1` zero-start epoch.
 Trading rules/costs and source freshness limits were not changed by this fix.
-The 61-second timer avoids phase locking and does not wait for a two-minute
-upstream systemd job via an `After=` dependency.
+The timer does not wait for a two-minute upstream systemd job via an `After=`
+dependency. It originally retried 61 seconds after each completed/skipped unit;
+the 21 October repair shortens this to 19 seconds, as described below.
 
 ### 21 October feed-access repair
 
@@ -137,6 +138,33 @@ Run `python scripts/check_diversified_v3_feed_access.py --unit /etc/systemd/syst
 as root on Linux. The 21 October VPS check reproduced the old failure and passed
 all four positive checks; all 36 V3 unit tests also passed. SQLite documents the
 sidecar requirement in its [read-only WAL section](https://www.sqlite.org/wal.html#read_only_databases).
+
+The first post-repair source cycle also exposed a scheduling limitation: the
+resource guard missed the available-memory threshold by less than 1MiB while
+another pilot was busy, and the next 61-second retry lost the remaining fresh
+input window. Temporary verification processes were removed. The timer now
+retries after 19 seconds to sample short available-memory windows more often.
+The guard thresholds, 5% CPU quota, memory/swap hard caps, timeout and 120-second
+input freshness limit remain unchanged. A skipped guard does not consume source
+rows; old rows are still rejected after expiry. This reduces avoidable polling
+delay but does not guarantee admissions during sustained memory pressure.
+
+A second input-loss bug was found before accepting the repaired launch: V3 used
+the cycle-start time even after loading/hashing its package and reading the
+source batch. A snapshot committed during startup could appear to be from the
+future, yet its cursor was advanced. The follower now measures time after the
+source batch read, rechecks both freshness limits, and defers any future-dated
+row plus later IDs without advancing the cursor. Three regression cases fail
+against the old implementation and pass against the repair (39 V3 tests total).
+
+Because the follower implementation is part of the frozen manifest, the empty
+R1 epoch was archived intact and replaced by `2026-10-21-diversified-v3-shadow-r2`
+at 21 October 09:59:43.710 UTC+5. Its source registration watermark excludes all
+previous snapshots. Only the worker implementation and cohort setting changed;
+all strategy code, guard code, costs and risk retain their exact previous hashes.
+This is a prospective technical restart, not an extension of the 19 October
+observation period or a reconstruction of missing trades.
+Full project validation after these changes: 770 tests passed in 28.94 seconds.
 
 ## Reset, archive and rollback
 

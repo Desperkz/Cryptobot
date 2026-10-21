@@ -192,6 +192,70 @@ def test_registration_watermark_excludes_existing_snapshot_ids(tmp_path,monkeypa
     finally:db.close();source.close()
 
 
+def reachable_feed(monkeypatch):
+    from types import SimpleNamespace
+    from trading_bot.strategy_engine.diversified import ResearchPlan
+    monkeypatch.setattr(follower,'decode',lambda *a:([SimpleNamespace(close_time=2000)],[],[],SimpleNamespace(spread_bps=1),100))
+    monkeypatch.setattr(follower,'evaluate',lambda name,symbol,*a:(ResearchPlan(name,symbol,'LONG',2000,100,97,106,6),{'reason':'SIGNAL'}))
+
+
+def test_future_first_row_defers_cursor_and_later_ids_then_accepts_once(tmp_path,monkeypatch):
+    source,path,db,m,state=fixture(tmp_path,monkeypatch)
+    reachable_feed(monkeypatch)
+    try:
+        # An eligible later ID must also wait behind the not-yet-observed first
+        # row. No cursor jump may silently discard that first source observation.
+        source.executemany('INSERT INTO snapshots VALUES(?,?,?,?,?)',[
+            (1,'BTCUSDT',2000,2002,zlib.compress(b'{"observed_ms":2002}')),
+            (2,'BNBUSDT',2000,2001,zlib.compress(b'{"observed_ms":2001}'))])
+        source.commit()
+        delayed=follower.scan_feed(db,m,SETTINGS,now_ms=2001,source_path=path,source_status=state)
+        assert delayed['processed_snapshots']==0 and delayed['feed_cursor']==0
+        assert db.execute("SELECT value FROM meta WHERE key='feed_cursor'").fetchone()[0]=='0'
+        assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==0
+        assert db.execute('SELECT count(*) FROM observations').fetchone()[0]==0
+        for _ in range(2):follower.scan_feed(db,m,SETTINGS,now_ms=2002,source_path=path,source_status=state)
+        assert db.execute("SELECT value FROM meta WHERE key='feed_cursor'").fetchone()[0]=='2'
+        assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==2
+        assert db.execute('SELECT count(*) FROM observations').fetchone()[0]==12
+        assert db.execute('SELECT count(*) FROM positions').fetchone()[0]==10
+        assert set(tuple(row) for row in db.execute('SELECT DISTINCT symbol,opened_ms FROM positions'))=={
+            ('BTCUSDT',2002),('BNBUSDT',2001)}
+    finally:db.close();source.close()
+
+
+@pytest.mark.parametrize('read_completed_ms',[200000,1000000])
+def test_clock_after_source_read_rechecks_snapshot_and_source_freshness(tmp_path,monkeypatch,read_completed_ms):
+    source,path,db,m,state=fixture(tmp_path,monkeypatch)
+    reachable_feed(monkeypatch)
+    clock=[2001]
+    original_open=follower.open_source
+    class ClockAdvancingSource:
+        def __init__(self,connection):self.connection=connection
+        def execute(self,sql,*args):
+            result=self.connection.execute(sql,*args)
+            if sql.startswith('SELECT * FROM snapshots'):clock[0]=read_completed_ms
+            return result
+        def close(self):self.connection.close()
+    monkeypatch.setattr(follower.time,'time',lambda:clock[0]/1000)
+    monkeypatch.setattr(follower,'open_source',lambda path:ClockAdvancingSource(original_open(path)))
+    try:
+        source.execute('INSERT INTO snapshots VALUES(1,?,?,?,?)',('BTCUSDT',2000,2001,zlib.compress(b'{"observed_ms":2001}')))
+        source.commit()
+        if read_completed_ms==1000000:
+            with pytest.raises(ValueError,match='SOURCE_NOT_FRESH_AND_HEALTHY'):
+                follower.scan_feed(db,m,SETTINGS,source_path=path,source_status=state)
+            assert db.execute("SELECT value FROM meta WHERE key='feed_cursor'").fetchone()[0]=='0'
+        else:
+            result=follower.scan_feed(db,m,SETTINGS,source_path=path,source_status=state)
+            assert result['source_age_ms']==read_completed_ms-2000
+            assert result['feed_cursor']==1 and result['processed_snapshots']==1
+        assert db.execute('SELECT count(*) FROM snapshots').fetchone()[0]==0
+        assert db.execute('SELECT count(*) FROM positions').fetchone()[0]==0
+        assert db.execute('SELECT count(*) FROM observations').fetchone()[0]==0
+    finally:db.close();source.close()
+
+
 @pytest.mark.parametrize('available,busy,expected',[(90,False,True),(90,True,False),(140,True,True),(70,False,False)])
 def test_small_read_only_follower_does_not_lose_fresh_inputs_behind_busy_pilot(monkeypatch,available,busy,expected):
     import trading_bot.research.diversified_v3_guard as guard

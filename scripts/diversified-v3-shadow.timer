@@ -3,7 +3,7 @@ Description=Poll revised diversified shadow after source snapshots become availa
 
 [Timer]
 OnActiveSec=19
-OnUnitInactiveSec=61
+OnUnitInactiveSec=19
 AccuracySec=1
 Unit=diversified-v3-shadow.service
 
