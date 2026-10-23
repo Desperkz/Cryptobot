@@ -119,6 +119,7 @@ def source_reader(source, output, expected):
         marker.write_text(json.dumps(result))
     except Exception as exc:
         result.update(ok=False, error=repr(exc),
+                      sqlite_exception_type=type(exc).__name__, sqlite_message=str(exc),
                       sqlite_errorname=getattr(exc, 'sqlite_errorname', None),
                       sqlite_errorcode=getattr(exc, 'sqlite_errorcode', None))
     print(json.dumps(result), flush=True)
@@ -155,6 +156,17 @@ def invoke_reader(script, interpreter, properties, fixture, expected, label):
 def require_success(value):
     if not value['ok'] or value['returncode'] != 0:
         raise AssertionError(value)
+
+
+def expected_cantopen(value):
+    """Python 3.10 does not expose sqlite_errorcode on exceptions yet."""
+    if value.get('ok'):
+        return False
+    code = value.get('sqlite_errorcode')
+    if isinstance(code, int):
+        return code & 255 == 14  # SQLite's primary SQLITE_CANTOPEN code.
+    return (value.get('sqlite_exception_type') == 'OperationalError'
+            and value.get('sqlite_message') == 'unable to open database file')
 
 
 def run_probe(args):
@@ -198,8 +210,7 @@ def run_probe(args):
         old_properties['ReadWritePaths'] = str(fixture / 'output')
         broken = invoke_reader(script, args.python, old_properties, fixture, [1], 'negative_all_source_readonly')
         report['checks'].append(broken)
-        assert (not broken['ok'] and broken.get('sqlite_errorcode') is not None
-                and broken['sqlite_errorcode'] & 255 == sqlite3.SQLITE_CANTOPEN), broken
+        assert expected_cantopen(broken), broken
 
         before = {'database': digest(database), 'status': digest(state)}
         first = invoke_reader(script, args.python, properties, fixture, [1], 'clean_close_without_sidecars')
