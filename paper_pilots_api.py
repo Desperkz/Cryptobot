@@ -228,3 +228,58 @@ def api_diversified_shadow(path: Path = Path('/root/bot_diversified_v3/data/stat
         if data['age_seconds']>1200:data['health']='STALE'
         return data
     except (OSError,ValueError,TypeError):return unavailable
+
+
+def api_breakout_recheck_shadow(
+    path: Path = Path('/root/bot_breakout_recheck_shadow/data/status.json'),
+    *, now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Read one bounded saved result; never open the source DB or run a study."""
+    unavailable = {'health': 'UNAVAILABLE', 'study': 'sqz-entry-recheck-shadow-v1',
+                   'mode': 'SHADOW', 'order_capability': False}
+    try:
+        with path.open('rb') as saved:
+            raw = saved.read(512 * 1024 + 1)
+        if len(raw) > 512 * 1024:
+            raise ValueError('OVERSIZED_STATUS')
+        data = _strict_json(raw)
+        if (not isinstance(data, dict) or data.get('study') != unavailable['study']
+                or data.get('mode') != 'SHADOW' or data.get('order_capability') is not False
+                or data.get('cohort') != '2026-10-23-sqz-entry-recheck-shadow-v1'
+                or data.get('health') not in ('OK', 'DEGRADED')):
+            raise ValueError('UNEXPECTED_STUDY')
+
+        def finite_number(value):
+            return isinstance(value, (int, float)) and not isinstance(value, bool) and _number(value) is not None
+
+        current = int(time.time() * 1000) if now_ms is None else now_ms
+        registered, generated = data.get('registered_ms'), data.get('generated_at_ms')
+        if (not finite_number(registered) or not finite_number(generated)
+                or not 0 < registered <= generated <= current + 60_000):
+            raise ValueError('INVALID_TIMESTAMP')
+        counts, pnl, review = data.get('counts'), data.get('pnl'), data.get('review')
+        if not all(isinstance(item, dict) for item in (counts, pnl, review, data.get('transitions'))):
+            raise ValueError('INVALID_RESULTS')
+        for key in ('sources', 'waiting_entry', 'decided', 'kept', 'rejected',
+                    'unscorable', 'open_controls', 'closed_pairs'):
+            value = counts.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError('INVALID_COUNTS')
+        for key in ('control_net_usdt', 'recheck_net_usdt', 'delta_usdt',
+                    'avoided_losses_usdt', 'lost_profits_usdt'):
+            if not finite_number(pnl.get(key)):
+                raise ValueError('INVALID_PNL')
+        if (not finite_number(review.get('elapsed_days')) or review['elapsed_days'] < 0
+                or review.get('required_days') != 14 or review.get('required_closed_pairs') != 50
+                or not isinstance(review.get('ready'), bool)
+                or (review['ready'] and (review['elapsed_days'] < 14 or counts['closed_pairs'] < 50))
+                or not isinstance(data.get('errors'), list)
+                or any(not isinstance(error, (str, dict)) for error in data['errors'])):
+            raise ValueError('INVALID_REVIEW_OR_ERRORS')
+        data['age_seconds'] = max(0, (current - generated) / 1000)
+        data['stale_after_seconds'] = 900
+        if data['age_seconds'] > data['stale_after_seconds']:
+            data['health'] = 'STALE'
+        return data
+    except (OSError, ValueError, TypeError, OverflowError, RecursionError) as exc:
+        return {**unavailable, 'source_error': type(exc).__name__}

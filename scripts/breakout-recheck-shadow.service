@@ -1,0 +1,33 @@
+[Unit]
+Description=Future-only SQZ entry-breakout paired shadow comparison
+After=mainnet-paper-lab.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/bot_breakout_recheck_shadow/code
+Environment=PYTHONPATH=/root/bot_breakout_recheck_shadow/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=breakout-recheck-shadow
+RuntimeDirectoryMode=0700
+ExecCondition=/usr/bin/python3 /root/bot_breakout_recheck_shadow/code/breakout_recheck_resource_guard.py
+ExecStart=/usr/bin/flock -n /run/breakout-recheck-shadow/lock /usr/bin/python3 -m trading_bot.research.breakout_recheck_shadow --code-root /root/bot_breakout_recheck_shadow/code --source-db /root/bot_mainnet_paper/data/mainnet_paper_lab.sqlite3 --data-dir /root/bot_breakout_recheck_shadow/data
+Nice=19
+CPUQuota=5%
+MemoryHigh=64M
+MemoryMax=80M
+MemorySwapMax=32M
+TasksMax=4
+TimeoutStartSec=100
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/bot_breakout_recheck_shadow/code
+ReadWritePaths=/root/bot_breakout_recheck_shadow/data /root/bot_mainnet_paper/data
+ReadOnlyPaths=/root/bot_mainnet_paper/data/mainnet_paper_lab.sqlite3 /root/bot_mainnet_paper/data/status.json
+
+[Install]
+WantedBy=multi-user.target
