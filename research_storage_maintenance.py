@@ -108,6 +108,7 @@ def maintain(*, force=False, keep_backups=False, verify_restore=False):
     previous = json.loads(old_status.read_text()) if old_status.exists() else {}
     value = {'study': 'research-storage-maintenance-v1', 'order_capability': False,
              'generated_at_ms': now, 'last_success_ms': previous.get('last_success_ms'),
+             'report': previous.get('report'),
              'health': 'IDLE', 'errors': [], 'labs': summary(),
              'free_disk_bytes': shutil.disk_usage('/root').free}
     chosen = [name for name, _ in LABS if force or file_bytes(name) >= TRIGGER]
@@ -206,6 +207,8 @@ def maintain(*, force=False, keep_backups=False, verify_restore=False):
             except OSError as exc:
                 value['errors'].append('TEMP_BACKUP_CLEANUP: '+str(exc))
                 value['health'] = 'DEGRADED'
+        value['generated_at_ms'] = int(time.time()*1000)
+        value['free_disk_bytes'] = shutil.disk_usage('/root').free
         write_json(old_status, value)
     return value
 
