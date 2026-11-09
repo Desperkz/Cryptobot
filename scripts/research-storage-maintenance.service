@@ -25,7 +25,7 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/root/bot_research_storage/code /root/bot_diversified_shadow/code /root/bot_diversified_v3/code
 ReadWritePaths=/root/bot_research_storage/data /root/bot_research_storage/archives /root/bot_research_storage/backups /root/bot_research_storage/temporary /root/bot_research_storage/reports
-ReadWritePaths=/root/bot_diversified_shadow/data /root/bot_diversified_v3/data
+ReadWritePaths=/root/bot_diversified_shadow /root/bot_diversified_v3
 
 [Install]
 WantedBy=multi-user.target

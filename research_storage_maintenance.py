@@ -57,7 +57,10 @@ def checkpoint(path):
 
 def restore_backup(source, backup):
     checkpoint(source)
-    temporary = OPS/'temporary'/('rollback_'+source.parent.parent.name+'.sqlite3')
+    # Separate ReadWritePaths are distinct bind mounts even when st_dev agrees.
+    # Keep replacement files inside the lab's same writable mount, outside data.
+    temporary = source.parent.parent/'.storage-temporary'/'rollback.sqlite3'
+    temporary.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(backup, temporary)
     os.chmod(temporary, 0o600)
     storage._fsync_file(temporary)
@@ -150,7 +153,7 @@ def maintain(*, force=False, keep_backups=False, verify_restore=False):
                     cutoff_ms=now-storage.RETENTION_MS,
                     consumer_cursor=cursor if name == 'bot_diversified_shadow' else None,
                     now_ms=now)
-                compact = OPS/'temporary'/(stamp+'_'+name+'_compact.sqlite3')
+                compact = source.parent.parent/'.storage-temporary'/(stamp+'_compact.sqlite3')
                 operation['compact'] = storage.compact_database(source, compact,
                     expected_nonraw_digest=operation['archive']['nonraw_digest'])
                 operation['coverage'] = storage.verify_archive(source, archive)

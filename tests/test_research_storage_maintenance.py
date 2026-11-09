@@ -53,3 +53,16 @@ def test_low_disk_stops_before_stopping_a_single_service(tmp_path, monkeypatch):
         maintenance.maintain()
     assert not calls
     assert json.loads((tmp_path/'data/status.json').read_text())['health'] == 'DEGRADED'
+
+
+def test_rollback_stages_in_same_lab_mount_outside_active_data(tmp_path, monkeypatch):
+    source=tmp_path/'lab/data/shadow.sqlite3';source.parent.mkdir(parents=True)
+    source.write_bytes(b'partial-hot-state')
+    backup=tmp_path/'operations/backups/old.sqlite3';backup.parent.mkdir(parents=True)
+    backup.write_bytes(b'complete-history')
+    monkeypatch.setattr(maintenance,'OPS',tmp_path/'operations')
+    monkeypatch.setattr(maintenance,'checkpoint',lambda p:None)
+    maintenance.restore_backup(source,backup)
+    assert source.read_bytes()==b'complete-history'
+    assert (source.parent.parent/'.storage-temporary').is_dir()
+    assert not (tmp_path/'operations/temporary').exists()

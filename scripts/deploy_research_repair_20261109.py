@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 import zipfile
 
@@ -43,27 +44,37 @@ def main():
     spec.loader.exec_module(util)
     expected = json.loads((stage/'ui_before.json').read_text())
     assert all(sha(ROOT/n) == expected[n] for n in PAGES), 'Live UI changed since preflight'
-    assert not LAB.exists() and not OPS.exists(), 'Never overwrite an existing study/archive'
-    assert all(not (Path('/etc/systemd/system')/n).exists() for n in UNITS)
+    resuming = '--resume' in sys.argv
+    if resuming:
+        assert (BASE/'ui_backup/before.json').exists()
+        assert OPS.exists() and LAB.exists()
+        assert not list((LAB/'data').glob('*.sqlite3')), 'Never reset a registered quality series'
+        assert sha(OPS/'code/research_storage.py') == hashes['operations/research_storage.py']
+    else:
+        assert not LAB.exists() and not OPS.exists(), 'Never overwrite an existing study/archive'
+        assert all(not (Path('/etc/systemd/system')/n).exists() for n in UNITS)
     assert shutil.disk_usage('/root').free > 1536*1024**2
     before = util.audit()
     assert all(s['ActiveState'] == 'active' for s in before['services'].values())
     backup = BASE/'ui_backup'
-    backup.mkdir(mode=0o700)
-    (backup/'before.json').write_text(json.dumps(before, indent=2))
+    backup.mkdir(mode=0o700, exist_ok=resuming)
+    if not resuming:
+        (backup/'before.json').write_text(json.dumps(before, indent=2))
     for n in PAGES:
         shutil.copy2(ROOT/n, backup/n)
-    OPS.mkdir(mode=0o700)
-    shutil.copytree(stage/'operations', OPS/'code')
+    OPS.mkdir(mode=0o700, exist_ok=resuming)
+    shutil.copytree(stage/'operations', OPS/'code', dirs_exist_ok=resuming)
     for name in ('data', 'archives', 'backups', 'temporary', 'reports'):
-        (OPS/name).mkdir(mode=0o700)
-    LAB.mkdir(mode=0o700)
-    shutil.copytree(stage/'quality', LAB/'code')
-    (LAB/'data').mkdir(mode=0o700)
+        (OPS/name).mkdir(mode=0o700, exist_ok=resuming)
+    LAB.mkdir(mode=0o700, exist_ok=resuming)
+    shutil.copytree(stage/'quality', LAB/'code', dirs_exist_ok=resuming)
+    (LAB/'data').mkdir(mode=0o700, exist_ok=resuming)
     run('systemd-analyze', 'verify', *(str(stage/'scripts'/n) for n in UNITS))
     for n in UNITS:
         util.replace(stage/'scripts'/n, Path('/etc/systemd/system')/n)
     run('systemctl', 'daemon-reload')
+    run('/usr/bin/python3', str(stage/'scripts/check_research_storage_mounts.py'),
+        '/etc/systemd/system/research-storage-maintenance.service', timeout=100)
     storage_ok = False
     ui_changed = False
     try:
@@ -71,13 +82,14 @@ def main():
         # Only this invocation requests full restore proofs and both cohorts.
         override = Path('/run/systemd/system/research-storage-maintenance.service.d/initial.conf')
         override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_text('[Service]\nExecStart=\nExecStart=/usr/bin/flock -n /run/research-storage-maintenance/lock /usr/bin/python3 /root/bot_research_storage/code/research_storage_maintenance.py --force --verify-restore\n')
+        override.write_text('[Service]\nCPUQuota=25%\nTimeoutStartSec=1800\nExecStart=\nExecStart=/usr/bin/flock -n /run/research-storage-maintenance/lock /usr/bin/python3 /root/bot_research_storage/code/research_storage_maintenance.py --force --verify-restore\n')
         try:
             run('systemctl', 'daemon-reload')
             print(json.dumps({'stage': 'storage_repair_started'}), flush=True)
             run('systemctl', 'start', 'research-storage-maintenance.service', timeout=1000)
         finally:
             override.unlink()
+            run('systemctl', 'set-property', '--runtime', 'research-storage-maintenance.service', 'CPUQuota=10%')
             run('systemctl', 'daemon-reload')
         storage_status = json.loads((OPS/'data/status.json').read_text())
         assert storage_status['health'] == 'OK'
