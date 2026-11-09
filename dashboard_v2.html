@@ -92,6 +92,9 @@ td:not(:first-child) { font-variant-numeric:tabular-nums; }
 .research-note p + p { margin-top:8px; }
 .quality-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:18px 0; }
 .quality-metrics .metric-value { font-size:30px; overflow-wrap:anywhere; }
+.quality-metrics.carry-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
+@media(max-width:1100px) { .quality-metrics.carry-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:760px) { .quality-metrics.carry-metrics { grid-template-columns:1fr; } }
 .quality-counts { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; }
 .quality-buckets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
 .quality-bucket { border:1px solid var(--border); border-radius:9px; padding:16px; min-width:0; }
@@ -206,7 +209,7 @@ footer { padding:0 28px 24px; color:var(--text-muted); font-size:14px; }
       <p class="research-note">Покупка spot и равная короткая позиция фьючерса. Проверяем новые начисления funding после комиссий и исполнения. Виртуальный капитал 1000 USDT, ориентир 100 USDT на монету. Результат считается отдельно от основного paper-баланса.</p>
       <p id="carry-status" class="muted">Ожидание данных новой серии</p>
       <p id="carry-alert" class="alert detail-block" role="status" hidden></p>
-      <div class="metrics quality-metrics">
+      <div class="metrics quality-metrics carry-metrics">
         <div class="metric-card"><div class="metric-label">Результат с учётом выхода</div><div class="metric-value" id="carry-net">—</div><div class="metric-sub">USDT · включает оценку открытых пар</div></div>
         <div class="metric-card"><div class="metric-label">Начислено funding</div><div class="metric-value" id="carry-funding">—</div><div class="metric-sub">USDT · наблюдаемые расчёты биржи</div></div>
         <div class="metric-card"><div class="metric-label">Комиссии и исполнение</div><div class="metric-value" id="carry-costs">—</div><div class="metric-sub">USDT · модельные расходы и спред</div></div>
