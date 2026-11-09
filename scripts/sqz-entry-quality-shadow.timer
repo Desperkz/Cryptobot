@@ -1,0 +1,12 @@
+[Unit]
+Description=Update paired SQZ entry quality once per minute
+
+[Timer]
+OnBootSec=53
+OnUnitInactiveSec=59
+AccuracySec=1
+RandomizedDelaySec=2
+Unit=sqz-entry-quality-shadow.service
+
+[Install]
+WantedBy=timers.target

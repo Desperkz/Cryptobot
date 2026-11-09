@@ -283,3 +283,106 @@ def api_breakout_recheck_shadow(
         return data
     except (OSError, ValueError, TypeError, OverflowError, RecursionError) as exc:
         return {**unavailable, 'source_error': type(exc).__name__}
+
+
+def api_sqz_entry_quality_shadow(
+    path: Path = Path('/root/bot_sqz_entry_quality_shadow/data/status.json'),
+    *, now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Bounded saved-status reader for the separate future-only quality study."""
+    unavailable = {'health': 'UNAVAILABLE', 'study': 'sqz-entry-quality-shadow-v1',
+                   'mode': 'SHADOW', 'order_capability': False}
+    try:
+        with path.open('rb') as saved:
+            raw = saved.read(512 * 1024 + 1)
+        if len(raw) > 512 * 1024:
+            raise ValueError('OVERSIZED_STATUS')
+        data = _strict_json(raw)
+        if (not isinstance(data, dict) or data.get('study') != unavailable['study']
+                or data.get('mode') != 'SHADOW' or data.get('order_capability') is not False
+                or data.get('cohort') != '2026-11-09-sqz-entry-quality-v1'
+                or data.get('health') not in ('OK', 'DEGRADED')):
+            raise ValueError('UNEXPECTED_STUDY')
+        finite = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and _number(x) is not None
+        count = lambda x: isinstance(x, int) and not isinstance(x, bool) and x >= 0
+        current = int(time.time() * 1000) if now_ms is None else now_ms
+        registered, generated = data.get('registered_ms'), data.get('generated_at_ms')
+        if not finite(registered) or not finite(generated) or not 0 < registered <= generated <= current + 60_000:
+            raise ValueError('INVALID_TIMESTAMP')
+        counts, pnl, review = (data.get(k) for k in ('counts', 'pnl', 'review'))
+        if not all(isinstance(x, dict) for x in (counts, pnl, review)):
+            raise ValueError('INVALID_RESULTS')
+        for key in ('sources', 'waiting_entry', 'decided', 'kept', 'rejected',
+                    'unscorable', 'open_controls', 'closed_pairs'):
+            if not count(counts.get(key)):
+                raise ValueError('INVALID_COUNTS')
+        pnl_keys = ('control_net_usdt', 'recheck_net_usdt', 'delta_usdt',
+                    'avoided_losses_usdt', 'lost_profits_usdt')
+        if any(not finite(pnl.get(k)) for k in pnl_keys):
+            raise ValueError('INVALID_PNL')
+        if (review.get('required_days') != 14 or review.get('required_closed_pairs') != 50
+                or not finite(review.get('elapsed_days')) or review['elapsed_days'] < 0
+                or not count(review.get('accepted_closed'))
+                or review['accepted_closed'] > counts['closed_pairs']
+                or not isinstance(review.get('ready'), bool)
+                or (review['ready'] and (review['elapsed_days'] < 14 or counts['closed_pairs'] < 50))):
+            raise ValueError('INVALID_REVIEW')
+        if data.get('quality_rule') != {'min_volume_ratio': 2.5, 'min_breakout_atr': 0.3,
+                                        'comparison': 'AND', 'inclusive': True}:
+            raise ValueError('UNEXPECTED_RULE')
+        buckets = data.get('quality_buckets')
+        expected = {'BOTH_PASS', 'VOLUME_ONLY_FAIL', 'BREAKOUT_ONLY_FAIL', 'BOTH_FAIL'}
+        if not isinstance(buckets, list) or len(buckets) != 4:
+            raise ValueError('INVALID_BUCKETS')
+        seen = set()
+        for bucket in buckets:
+            if not isinstance(bucket, dict) or bucket.get('bucket') not in expected or bucket['bucket'] in seen:
+                raise ValueError('INVALID_BUCKETS')
+            seen.add(bucket['bucket'])
+            if (not count(bucket.get('n_sources')) or not count(bucket.get('n_closed'))
+                    or bucket['n_closed'] > bucket['n_sources']
+                    or any(not finite(bucket.get(k)) for k in pnl_keys if k != 'delta_usdt')):
+                raise ValueError('INVALID_BUCKET_RESULTS')
+        if not isinstance(data.get('errors'), list):
+            raise ValueError('INVALID_ERRORS')
+        data['age_seconds'] = max(0, (current - generated) / 1000)
+        data['stale_after_seconds'] = 900
+        if data['age_seconds'] > 900:
+            data['health'] = 'STALE'
+        return data
+    except (OSError, ValueError, TypeError, OverflowError, RecursionError) as exc:
+        return {**unavailable, 'source_error': type(exc).__name__}
+
+
+def api_research_storage(path: Path = Path('/root/bot_research_storage/data/status.json'),
+                         *, now_ms: int | None = None) -> dict[str, Any]:
+    """Saved maintenance health only; never start maintenance in a request."""
+    absent = {'study': 'research-storage-maintenance-v1', 'health': 'UNAVAILABLE',
+              'order_capability': False}
+    try:
+        with path.open('rb') as saved:
+            raw = saved.read(256*1024+1)
+        if len(raw) > 256*1024:
+            raise ValueError('OVERSIZED_STATUS')
+        data = _strict_json(raw)
+        if (not isinstance(data, dict) or data.get('study') != absent['study']
+                or data.get('order_capability') is not False
+                or data.get('health') not in ('OK', 'IDLE', 'DEGRADED')
+                or not isinstance(data.get('errors'), list)):
+            raise ValueError('INVALID_MAINTENANCE_STATUS')
+        current = int(time.time()*1000) if now_ms is None else now_ms
+        for key in ('generated_at_ms', 'free_disk_bytes'):
+            if isinstance(data.get(key), bool) or _number(data.get(key)) is None or data[key] < 0:
+                raise ValueError('INVALID_TIMESTAMP_OR_DISK')
+        if data['generated_at_ms'] > current+60_000:
+            raise ValueError('FUTURE_TIMESTAMP')
+        if data.get('last_success_ms') is not None and (
+                isinstance(data['last_success_ms'], bool) or _number(data['last_success_ms']) is None
+                or not 0 < data['last_success_ms'] <= data['generated_at_ms']):
+            raise ValueError('INVALID_LAST_SUCCESS')
+        data['age_seconds'] = max(0, (current-data['generated_at_ms'])/1000)
+        if data['age_seconds'] > 48*3600:
+            data['health'] = 'STALE'
+        return data
+    except (OSError, ValueError, TypeError, OverflowError, RecursionError):
+        return absent

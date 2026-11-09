@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily capacity check and lossless research snapshot archival
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+Unit=research-storage-maintenance.service
+
+[Install]
+WantedBy=timers.target
