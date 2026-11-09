@@ -200,6 +200,22 @@ footer { padding:0 28px 24px; color:var(--text-muted); font-size:14px; }
 </section>
 
 <section id="view-research" role="tabpanel" aria-labelledby="tab-research" hidden>
+  <details class="card" id="carry-card">
+    <summary class="card-content"><strong>Funding BTC / ETH · отдельный Shadow</strong></summary>
+    <div class="card-content">
+      <p class="research-note">Покупка spot и равная короткая позиция фьючерса. Проверяем новые начисления funding после комиссий и исполнения. Виртуальный капитал 1000 USDT, ориентир 100 USDT на монету. Результат считается отдельно от основного paper-баланса.</p>
+      <p id="carry-status" class="muted">Ожидание данных новой серии</p>
+      <p id="carry-alert" class="alert detail-block" role="status" hidden></p>
+      <div class="metrics quality-metrics">
+        <div class="metric-card"><div class="metric-label">Результат с учётом выхода</div><div class="metric-value" id="carry-net">—</div><div class="metric-sub">USDT · включает оценку открытых пар</div></div>
+        <div class="metric-card"><div class="metric-label">Начислено funding</div><div class="metric-value" id="carry-funding">—</div><div class="metric-sub">USDT · наблюдаемые расчёты биржи</div></div>
+        <div class="metric-card"><div class="metric-label">Комиссии и исполнение</div><div class="metric-value" id="carry-costs">—</div><div class="metric-sub">USDT · модельные расходы и спред</div></div>
+        <div class="metric-card"><div class="metric-label">Открытых хедж-пар</div><div class="metric-value" id="carry-pairs">—</div><div class="metric-sub">Spot Long = Futures Short</div></div>
+      </div>
+      <p id="carry-next" class="muted"></p><div id="carry-holdings"></div>
+      <details class="detail-block"><summary>Параметры и состояние новой серии</summary><div id="carry-protocol"></div></details>
+    </div>
+  </details>
   <div class="card" id="quality-card">
     <div class="card-header"><h2>SQZ · качество входа</h2><span class="card-badge">Новая серия Shadow</span></div>
     <div class="card-content">
@@ -276,7 +292,7 @@ const INTERVAL=30,PAGE_SIZE=10;
 let activeView='overview',refreshInFlight=null,refreshQueued=false,cdownVal=INTERVAL,cdownTimer,lastCurve=[],startEquity=250,statusMisses=0,lastHealthyStatusAt=0,resizeRaf=0;
 function setHTML(id,html){const el=$(id);if(el.innerHTML!==html)el.innerHTML=html;}
 function stamp(route){return updated[route]?'Данные: '+new Date(updated[route]).toLocaleTimeString('ru-RU'):'Ожидание данных';}
-const routeNames={'/sqz-entry-quality-shadow':'качество входа SQZ','/research-storage':'архив истории исследований','/breakout-recheck-shadow':'проверка пробоя SQZ','/runner-comparison':'сравнение выходов','/paper-pilots':'paper-пилоты','/status':'состояние бота','/config':'конфигурация','/stats':'основная статистика','/positions':'позиции','/trades':'история сделок','/strategy-scorecard':'стратегии и shadow','/strategy-allocator':'рекомендации по риску','/monthly-target-plan':'месячный сценарий','/signals':'сигналы','/logs':'журнал','/rejections':'отказы','/rejection-stats':'счётчики отказов'};
+const routeNames={'/funding-carry-shadow':'funding BTC / ETH','/sqz-entry-quality-shadow':'качество входа SQZ','/research-storage':'архив истории исследований','/breakout-recheck-shadow':'проверка пробоя SQZ','/runner-comparison':'сравнение выходов','/paper-pilots':'paper-пилоты','/status':'состояние бота','/config':'конфигурация','/stats':'основная статистика','/positions':'позиции','/trades':'история сделок','/strategy-scorecard':'стратегии и shadow','/strategy-allocator':'рекомендации по риску','/monthly-target-plan':'месячный сценарий','/signals':'сигналы','/logs':'журнал','/rejections':'отказы','/rejection-stats':'счётчики отказов'};
 async function get(path){const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),15000);try{const r=await fetch(API+path,{cache:'no-store',signal:ctrl.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const data=await r.json();if(data?.error||Array.isArray(data)&&data[0]?.error)throw new Error('Источник вернул ошибку');cache[path]=data;updated[path]=Date.now();errors.delete(path);return data;}catch(e){errors.set(path,e.message||'Нет связи');throw e;}finally{clearTimeout(timer);}}
 function renderErrors(){const entries=[...errors.keys()];$('data-alert').hidden=!entries.length;if(entries.length)$('data-alert').textContent='Не обновлены: '+entries.map(k=>routeNames[k]||k).join(', ')+'. Последние сохранённые значения могут быть устаревшими.';}
 function toggleTheme(){const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;$('theme-btn').textContent=theme==='dark'?'Светлая тема':'Тёмная тема';try{localStorage.setItem('botTheme',theme);}catch{}drawEquity(lastCurve);}
@@ -307,6 +323,33 @@ function renderMonthly(){const d=cache['/monthly-target-plan'];if(!d)return;cons
 function renderSignals(){const rows=cache['/signals'];if(!rows)return;setHTML('sig-body',rows.slice(0,20).map(s=>{const m=metadata(s.metadata),sm=m.signal_metadata||m;return `<div class="sig-row"><span class="sig-time">${fmtLocalTime(s.created_at)}</span><strong>${esc(s.symbol)}</strong><span class="${dirCls(s.direction)}">${dirLabel(s.direction)}</span><span class="sig-reason">${sm.strategy_mode==='shadow'?'<span class="badge">Shadow</span> ':''}${esc(s.reason||'Причина не указана')}</span></div>`;}).join('')||'<div class="empty">Нет сигналов в ответе API</div>');}
 function renderRejections(){const data=cache['/rejections'],stats=cache['/rejection-stats'];if(stats){$('rj-total').textContent=(stats.total??0)+' за всю историю';setHTML('rj-stats',Object.entries(stats.by_type||{}).map(([k,v])=>`<span class="rj-badge">${esc(k)} <span class="rj-count">${v}</span></span>`).join(''));}if(!data)return;const visible=paginate(data.slice(0,50),'rejection','rejection-pagination');setHTML('rj-body',visible.length?visible.map(r=>`<tr><td>${fmtLocalTime(r.created_at)}</td><td>${esc(r.symbol)}</td><td>${dirLabel(r.direction)}</td><td>${esc(stratName(r.strategy))}</td><td>${esc(r.filter_type)}</td><td>${esc(r.reason||'Не указана')}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">Нет отказов в ответе API</td></tr>');}
 function renderLogs(){const data=cache['/logs'];if(!data)return;setHTML('log-wrap',data.slice(-80).map(line=>`<div class="ll ${line.includes('ERROR')||line.includes('Traceback')?'err':line.includes('WARNING')?'warn':''}">${esc(line)}</div>`).join('')||'<p class="muted">Нет строк журнала</p>');const sq={};data.forEach(line=>{const m=line.match(/SQZ\s+([A-Z0-9]+):\s+squeeze=(True|False)(?:\s+release=(True|False))?\s+bars=(\d+)(?:\s+min=(\d+))?/);if(m)sq[m[1]]={active:m[2]==='True',release:m[3]==='True',bars:Number(m[4])};});setHTML('sq-grid',Object.entries(sq).slice(0,8).map(([sym,s])=>`<div class="sq-item"><div class="sq-sym">${esc(sym)}</div><div class="sq-val">${s.bars}</div><div class="sq-label">${s.release?'Релиз':s.active?'Баров сжатия':'Нет сжатия'}</div></div>`).join('')||'<div class="empty">Нет squeeze-данных в последних строках лога</div>');}
+function renderFundingCarry(){
+ const route='/funding-carry-shadow',d=cache[route],alert=$('carry-alert');
+ if(!d&&!errors.has(route))return;
+ const available=d&&d.health!=='UNAVAILABLE'&&d.counts;
+ if(!available){
+  $('carry-status').textContent='Нет подтверждённых данных funding-серии';
+  alert.hidden=false;alert.textContent='Источник недоступен. Результат не считается нулевым.';
+  ['carry-net','carry-funding','carry-costs','carry-pairs'].forEach(id=>{$(id).textContent='—';$(id).className='metric-value';});
+  ['carry-holdings','carry-protocol'].forEach(id=>setHTML(id,''));$('carry-next').textContent='';return;
+ }
+ const delayed=d.health==='STALE'||errors.has(route),p=d.pnl,c=d.counts;
+ alert.hidden=d.health==='OK'&&!delayed;
+ alert.textContent=delayed?'Данные задержаны; ниже последнее сохранённое состояние.':
+  'Оценка требует проверки. Новые входы при ошибках источника не создаются.';
+ $('carry-status').textContent=(delayed?'Данные задержаны':d.health==='OK'?'Наблюдение работает':'Требует проверки')+
+  ' · Серия с '+msTime(d.registered_ms)+' · Обновлено '+msTime(d.generated_at_ms);
+ const metric=(id,n,show,signed)=>{$(id).textContent=show?(signed?signedFmt(n):fmt(n)):'—';$(id).className='metric-value '+(show&&signed?pnlCls(n):'');};
+ metric('carry-net',p?.net_usdt,!!p&&c.orders>0,true);
+ metric('carry-funding',p?.actual_funding_cash_usdt,!!p&&c.funding_payments>0,true);
+ metric('carry-costs',p?p.model_fees_usdt+p.model_slippage_usdt+p.observed_spread_usdt:null,!!p&&c.orders>0,false);
+ $('carry-pairs').textContent=d.open_hedge_pairs;
+ $('carry-next').textContent=(c.orders?'Изменений хеджа: '+c.orders+' · Начислений: '+c.funding_payments:
+  'Первых входов ещё нет; доходность новой серии не оценена.')+' · Следующее окно: '+msTime(d.next_execution_ms);
+ setHTML('carry-holdings',(d.holdings||[]).map(h=>'<p><strong>'+esc(h.symbol)+'</strong> · Spot Long '+esc(fmt(h.spot_long_quantity,6))+
+  ' · Futures Short '+esc(fmt(h.perp_short_quantity,6))+'</p>').join(''));
+ setHTML('carry-protocol','<pre>'+esc(JSON.stringify(d,null,2))+'</pre>');
+}
 function renderSqzEntryQuality(){
  const route='/sqz-entry-quality-shadow',d=cache[route],alert=$('quality-alert');
  if(!d&&!errors.has(route))return;
@@ -392,8 +435,8 @@ function renderDiversified(){
  setHTML('lab-controls',(revised?'<p class="muted">Предыдущая серия V2 сохранена отдельно и продолжает работать как контроль. Её сделки не входят в новые счётчики. Риск 2 USDT, комиссии и модель проскальзывания сохранены.</p>':'<p class="muted">Контроли: исходные правила сигналов, общее исполнение лаборатории. Повторные виртуальные наблюдения не суммируются в портфель.</p>')+groups.filter(g=>g.control).map(g=>`<p>${esc(g.strategy.replace('_CONTROL',''))}: входов ${g.entries}, закрыто ${g.closed}, чистый результат ${g.closed?signedFmt(g.net_usdt):'—'}</p>`).join(''));
  setHTML('lab-positions',(d.open_positions||[]).map(p=>`<p><strong>${esc(p.symbol)}</strong> · ${esc(names[p.strategy]||p.strategy)} · ${esc(p.direction)} · ${msTime(p.opened_ms)}</p>`).join('')||'<p class="muted">Открытых позиций нет</p>');
 }
-function renderAll(){renderSqzEntryQuality();renderResearchStorage();renderBreakoutRecheck();renderDiversified();renderRunner();renderPilots();renderStatus();renderStats();renderPositions();renderTrades();renderStrategies();renderMonthly();renderSignals();renderRejections();renderLogs();renderErrors();}
-async function refreshAll(){if(refreshInFlight)return refreshInFlight;const selected=activeView;$('refresh-btn').disabled=true;$('last-update').textContent='Обновляем…';const routes=['/status','/stats','/positions'];if(!cache['/config'])routes.push('/config');if(selected==='trades')routes.push('/trades');if(selected==='pilots')routes.push('/paper-pilots','/runner-comparison');if(selected==='strategies'||selected==='research')routes.push('/strategy-scorecard');if(selected==='research')routes.push('/monthly-target-plan','/diversified-shadow','/breakout-recheck-shadow','/sqz-entry-quality-shadow','/research-storage');if(selected==='diagnostics')routes.push('/signals','/logs','/rejections','/rejection-stats');refreshInFlight=(async()=>{const result=await Promise.allSettled(routes.map(get));const failedStatus=result[routes.indexOf('/status')].status==='rejected';if(failedStatus){statusMisses++;value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Состояние не подтверждено';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}else{const bot=cache['/status']?.bot;if(bot==='active'||['activating','reloading'].includes(bot)){statusMisses=0;lastHealthyStatusAt=Date.now();}else statusMisses++;}renderAll();if(failedStatus){value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Последний статус мог устареть';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}$('last-update').textContent=result.every(r=>r.status==='fulfilled')?'Обновлено '+new Date().toLocaleTimeString('ru-RU'):'Обновлено частично';resetCountdown();})().finally(()=>{refreshInFlight=null;$('refresh-btn').disabled=false;if(refreshQueued||selected!==activeView){refreshQueued=false;refreshAll();}});return refreshInFlight;}
+function renderAll(){renderFundingCarry();renderSqzEntryQuality();renderResearchStorage();renderBreakoutRecheck();renderDiversified();renderRunner();renderPilots();renderStatus();renderStats();renderPositions();renderTrades();renderStrategies();renderMonthly();renderSignals();renderRejections();renderLogs();renderErrors();}
+async function refreshAll(){if(refreshInFlight)return refreshInFlight;const selected=activeView;$('refresh-btn').disabled=true;$('last-update').textContent='Обновляем…';const routes=['/status','/stats','/positions'];if(!cache['/config'])routes.push('/config');if(selected==='trades')routes.push('/trades');if(selected==='pilots')routes.push('/paper-pilots','/runner-comparison');if(selected==='strategies'||selected==='research')routes.push('/strategy-scorecard');if(selected==='research')routes.push('/funding-carry-shadow','/monthly-target-plan','/diversified-shadow','/breakout-recheck-shadow','/sqz-entry-quality-shadow','/research-storage');if(selected==='diagnostics')routes.push('/signals','/logs','/rejections','/rejection-stats');refreshInFlight=(async()=>{const result=await Promise.allSettled(routes.map(get));const failedStatus=result[routes.indexOf('/status')].status==='rejected';if(failedStatus){statusMisses++;value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Состояние не подтверждено';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}else{const bot=cache['/status']?.bot;if(bot==='active'||['activating','reloading'].includes(bot)){statusMisses=0;lastHealthyStatusAt=Date.now();}else statusMisses++;}renderAll();if(failedStatus){value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Последний статус мог устареть';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}$('last-update').textContent=result.every(r=>r.status==='fulfilled')?'Обновлено '+new Date().toLocaleTimeString('ru-RU'):'Обновлено частично';resetCountdown();})().finally(()=>{refreshInFlight=null;$('refresh-btn').disabled=false;if(refreshQueued||selected!==activeView){refreshQueued=false;refreshAll();}});return refreshInFlight;}
 function resetCountdown(){clearInterval(cdownTimer);cdownVal=INTERVAL;$('cdown').textContent=cdownVal+' с';cdownTimer=setInterval(()=>{cdownVal--;$('cdown').textContent=cdownVal+' с';if(cdownVal<=0){clearInterval(cdownTimer);refreshAll();}},1000);}
 // Existing control endpoints are unchanged; no control action is called on load.
 async function emergencyStop(){if(!confirm('Активировать аварийную остановку?'))return;await fetch(API+'/emergency-stop',{method:'POST'});alert('Аварийная остановка активирована');refreshAll();}

@@ -354,6 +354,85 @@ def api_sqz_entry_quality_shadow(
         return {**unavailable, 'source_error': type(exc).__name__}
 
 
+def api_funding_carry_shadow(
+    path: Path = Path('/root/bot_funding_carry_shadow/data/status.json'),
+    *, now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Read the separate paired-leg balance; never add it to main paper PnL."""
+    absent = {'study': 'funding-carry-shadow-v1', 'health': 'UNAVAILABLE',
+              'mode': 'SHADOW', 'order_capability': False, 'combined_with_main_balance': False}
+    try:
+        with path.open('rb') as saved:
+            raw = saved.read(128 * 1024 + 1)
+        if len(raw) > 128 * 1024:
+            raise ValueError('OVERSIZED_STATUS')
+        data = _strict_json(raw)
+        if (not isinstance(data, dict) or data.get('study') != absent['study']
+                or data.get('cohort') != '2026-11-09-btc-eth-funding-carry-v1'
+                or data.get('mode') != 'SHADOW' or data.get('order_capability') is not False
+                or data.get('combined_with_main_balance') is not False
+                or data.get('health') not in ('OK', 'DEGRADED')
+                or data.get('capital_usdt') != 1000 or data.get('target_spot_notional_usdt') != 100
+                or data.get('symbols') != ['BTCUSDT', 'ETHUSDT']
+                or data.get('spot_fee_bps') != 10 or data.get('perp_fee_bps') != 4
+                or data.get('adverse_slippage_bps_each_leg') != 5):
+            raise ValueError('UNEXPECTED_CARRY_PROTOCOL')
+        valid = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and _number(x) is not None
+        count = lambda x: isinstance(x, int) and not isinstance(x, bool) and x >= 0
+        now = int(time.time() * 1000) if now_ms is None else now_ms
+        registered, generated, next_at = (data.get(k) for k in ('registered_ms', 'generated_at_ms', 'next_execution_ms'))
+        if (not all(valid(x) for x in (registered, generated, next_at))
+                or not 0 < registered <= generated <= now + 60_000
+                or not registered <= next_at <= generated + 2 * 86400000):
+            raise ValueError('INVALID_CARRY_CLOCK')
+        counts = data.get('counts')
+        if (not isinstance(counts, dict) or any(not count(counts.get(k)) for k in
+                ('orders', 'funding_payments', 'missed_days', 'minimum_order_skips'))
+                or not count(data.get('open_hedge_pairs')) or data['open_hedge_pairs'] > 2
+                or not isinstance(data.get('errors'), list) or not isinstance(data.get('blocked'), bool)):
+            raise ValueError('INVALID_CARRY_COUNTS')
+        holdings = data.get('holdings')
+        if not isinstance(holdings, list) or len(holdings) != data['open_hedge_pairs']:
+            raise ValueError('INVALID_HEDGES')
+        seen = set()
+        for row in holdings:
+            if not isinstance(row, dict):
+                raise ValueError('INVALID_HEDGE_ROW')
+            symbol = row.get('symbol')
+            long, short, opened = (row.get(k) for k in ('spot_long_quantity', 'perp_short_quantity', 'opened_ms'))
+            if (symbol not in data['symbols'] or symbol in seen
+                    or not all(valid(x) for x in (long, short, opened))
+                    or long <= 0 or long != short or not registered <= opened <= generated):
+                raise ValueError('UNMATCHED_HEDGE')
+            seen.add(symbol)
+        pnl = data.get('pnl')
+        if pnl is None:
+            if data['health'] == 'OK':
+                raise ValueError('HEALTHY_WITHOUT_VALUE')
+        else:
+            keys = ('balance_usdt', 'net_usdt', 'capital_return_pct', 'actual_funding_cash_usdt',
+                    'model_fees_usdt', 'model_slippage_usdt', 'observed_spread_usdt', 'basis_pnl_usdt', 'stress_net_usdt')
+            if not isinstance(pnl, dict) or any(not valid(pnl.get(k)) for k in keys):
+                raise ValueError('INVALID_CARRY_VALUE')
+            if any(pnl[k] < 0 for k in ('model_fees_usdt', 'model_slippage_usdt', 'observed_spread_usdt')):
+                raise ValueError('NEGATIVE_MODEL_COST')
+            total = pnl['basis_pnl_usdt'] + pnl['actual_funding_cash_usdt'] - sum(pnl[k] for k in
+                    ('model_fees_usdt', 'model_slippage_usdt', 'observed_spread_usdt'))
+            if (abs(total - pnl['net_usdt']) > 1e-6 or abs(pnl['balance_usdt'] - 1000 - pnl['net_usdt']) > 1e-6
+                    or abs(pnl['capital_return_pct'] - pnl['net_usdt']/10) > 1e-6
+                    or pnl['stress_net_usdt'] > pnl['net_usdt'] + 1e-6):
+                raise ValueError('CARRY_CASH_IDENTITY_FAILED')
+        if counts['orders'] == 0 and (counts['funding_payments'] or holdings):
+            raise ValueError('INCOME_BEFORE_HEDGE')
+        data['age_seconds'] = max(0, (now-generated)/1000)
+        data['stale_after_seconds'] = 180
+        if data['age_seconds'] > 180:
+            data['health'] = 'STALE'
+        return data
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError) as exc:
+        return {**absent, 'source_error': type(exc).__name__}
+
+
 def api_research_storage(path: Path = Path('/root/bot_research_storage/data/status.json'),
                          *, now_ms: int | None = None) -> dict[str, Any]:
     """Saved maintenance health only; never start maintenance in a request."""

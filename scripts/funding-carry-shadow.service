@@ -1,0 +1,32 @@
+[Unit]
+Description=Separate public-data funding carry shadow, no exchange orders
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/bot_funding_carry_shadow/code
+Environment=PYTHONPATH=/root/bot_funding_carry_shadow/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=funding-carry-shadow
+RuntimeDirectoryMode=0700
+ExecCondition=/usr/bin/python3 /root/bot_funding_carry_shadow/code/scripts/funding_carry_resource_guard.py
+ExecStart=/usr/bin/flock -n /run/funding-carry-shadow/lock /usr/bin/python3 -m trading_bot.research.funding_carry_shadow --data-dir /root/bot_funding_carry_shadow/data --filters /root/bot_funding_carry_shadow/code/funding_carry_shadow_filters.json
+Nice=19
+CPUQuota=5%
+MemoryHigh=48M
+MemoryMax=64M
+MemorySwapMax=16M
+TasksMax=4
+TimeoutStartSec=48
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/bot_funding_carry_shadow/code
+ReadWritePaths=/root/bot_funding_carry_shadow/data
+
+[Install]
+WantedBy=multi-user.target
