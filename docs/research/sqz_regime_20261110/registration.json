@@ -1,0 +1,57 @@
+{
+  "name": "sqz-regime-and-structure-20261110-v1",
+  "registered_utc": "2026-11-10T08:57:51.256237+00:00",
+  "classification": "EXPLORATORY_FOLLOWUP_ON_PREVIOUSLY_EXAMINED_PRICES; NOT INDEPENDENT VALIDATION",
+  "previous_results_known": true,
+  "new_variant_outcomes_seen": false,
+  "dataset": {
+    "sources_sha256": "d24a700f73a006db35810ac5963847b7730f6eb144d98150ae945f78fbe6a58c",
+    "minutes_manifest_sha256": "d98c353954b6e0efe50949ca32a84722ef32d867d190397aabd91bbd1d16aa1a",
+    "hourly_manifest_sha256": "982d5da6309328ed5711c328c38f72d363fd6bdc76d76687f5c6c0f8b008db74",
+    "symbols": [
+      "BTCUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "SOLUSDT",
+      "DOGEUSDT",
+      "LTCUSDT"
+    ],
+    "start_ms": 1776297600000,
+    "end_exclusive_ms": 1792145160000
+  },
+  "cohort": "All frozen 1384 source candidates; first drift<=0.35R per symbol, followed by FIXED72h embargo independent of outcomes. Same opportunities for all four arms; no replacement after rejection.",
+  "features": "Only completed1h bars at source decision; full causal EMA50/200, EMA-ATR14, EMA50 slope24h, coin minus BTC return24h. Minimum500 preceding hourly bars.",
+  "gate": "direction*(EMA50-EMA200)>=0.5*ATR14 AND direction*slope24>0 AND direction*(BTCclose-BTCema200)>0 AND direction*(coinreturn24-BTCreturn24)>=0; BTC relative gate exempt.",
+  "arms": {
+    "CONTROL": "Original current partial profile, capped72h; same execution pure functions.",
+    "REGIME": "Same CONTROL, only fixed gate accepted, rejected cash0.",
+    "STRUCTURE": "Same entries, original stop,25% at1R with same BE and35% at1.6R; remaining40% has no fixed2.2R cap, no minute trail, five-COMPLETED-hour structure stop afterTP2, applied next minute; maximum72h.",
+    "REGIME_STRUCTURE": "Fixed gate plus STRUCTURE."
+  },
+  "size": "2/(original_stop_distance+next_minute_open*.0014); same quantities in all variants and cost stress; signal stop distance translated to observed next open.",
+  "costs": {
+    "fee_each_side_bps": 4,
+    "adverse_slip_each_side_bps": 5,
+    "stress_slip_bps": 10,
+    "funding": "adverse1bp/8h pro-rata BOTH directions"
+  },
+  "sequencing": "Conservative stop-first; gap stop at adverse open; partial BE applies next minute; structure uses hours ending<=minute_open;72h exit at last completed minute close; incomplete data tail censored separately.",
+  "periods": {
+    "FIRST_HALF": [
+      1776297600000,
+      1784368800000
+    ],
+    "SECOND_HALF": [
+      1784368800000,
+      1792145160000
+    ]
+  },
+  "report": "Counts, net after liquidation marks/costs, closed-only PF/meanR, every coin/half/direction, prevented losses AND lost profits, hold/exit changes, 10bp stress; no portfolio ROI or account drawdown claim.",
+  "eligibility_for_further_future_shadow": "Both fixed halves positive net and stress; >=20 closed eachhalf; leave-one-symbol-out net positive eachhalf. All considered exploratory even on pass, no production promotion.",
+  "threshold_search": "NONE. Freeze once; preserve failed outcomes.",
+  "protected": "Main trading code, configuration, original cohorts and risk unchanged.",
+  "rules_sha256": "07468fa93d1743abb63809675f15ab3471da78131ef4435bed1e55ad7cf33e30",
+  "old_execution_sha256": "a718a474f2361b3b6f81b26652990beb5c2e2ed84cbdf526e2169cfcd8ce32b4",
+  "runner_sha256": "f4d6e2779f58d5b7b2c24a4272d530c4c80ba1e73801dd700601e78089834f24",
+  "monitor_sha256": "464b709f32781248714d43b9c1bd8abe3047c791894e4db248aacd600a42c3b5"
+}

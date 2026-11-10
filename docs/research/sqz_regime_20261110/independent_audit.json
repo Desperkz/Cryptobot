@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "observations": 141,
+  "independent_checks": 3488,
+  "old_control_identical_common_sources": 139,
+  "registration_sha256": "f7a913c2633660074c341637ed8ba11d8abba2a3ac7fc00d79cbb9649f9596b7",
+  "results_sha256": "0efb3100e5439ed7e4ac03f08ee8b3a9868b8e37835858c91ba177563619feb6"
+}

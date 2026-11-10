@@ -1,0 +1,39 @@
+[Unit]
+Description=Isolated public market evidence collector (no trading)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/root/bot_market_evidence/code
+Environment=PYTHONPATH=/root/bot_market_evidence/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/python3 /root/bot_market_evidence/code/scripts/market_evidence_resource_guard.py
+ExecStart=/root/bot_v2_1/.venv/bin/python -m trading_bot.research.market_evidence_collector --data-dir /root/bot_market_evidence/data
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=20
+Nice=19
+CPUQuota=10%
+MemoryHigh=48M
+MemoryMax=64M
+MemorySwapMax=16M
+TasksMax=12
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/bot_market_evidence/data
+ReadOnlyPaths=/root/bot_market_evidence/code
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

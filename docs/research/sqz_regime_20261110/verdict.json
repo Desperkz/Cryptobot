@@ -1,0 +1,74 @@
+{
+  "CONTROL": {
+    "gates": {
+      "FIRST_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": true,
+        "leave_one_symbol_out_positive": false
+      },
+      "SECOND_HALF": {
+        "net_positive": true,
+        "stress_positive": false,
+        "minimum20closed": true,
+        "leave_one_symbol_out_positive": true
+      }
+    },
+    "eligible_for_further_future_only_shadow": false,
+    "production_promotion": false
+  },
+  "REGIME": {
+    "gates": {
+      "FIRST_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": false,
+        "leave_one_symbol_out_positive": false
+      },
+      "SECOND_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": false,
+        "leave_one_symbol_out_positive": false
+      }
+    },
+    "eligible_for_further_future_only_shadow": false,
+    "production_promotion": false
+  },
+  "STRUCTURE": {
+    "gates": {
+      "FIRST_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": true,
+        "leave_one_symbol_out_positive": false
+      },
+      "SECOND_HALF": {
+        "net_positive": true,
+        "stress_positive": true,
+        "minimum20closed": true,
+        "leave_one_symbol_out_positive": true
+      }
+    },
+    "eligible_for_further_future_only_shadow": false,
+    "production_promotion": false
+  },
+  "REGIME_STRUCTURE": {
+    "gates": {
+      "FIRST_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": false,
+        "leave_one_symbol_out_positive": false
+      },
+      "SECOND_HALF": {
+        "net_positive": false,
+        "stress_positive": false,
+        "minimum20closed": false,
+        "leave_one_symbol_out_positive": false
+      }
+    },
+    "eligible_for_further_future_only_shadow": false,
+    "production_promotion": false
+  }
+}

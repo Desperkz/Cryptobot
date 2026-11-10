@@ -1,0 +1,1195 @@
+{
+  "registration_sha256": "f7a913c2633660074c341637ed8ba11d8abba2a3ac7fc00d79cbb9649f9596b7",
+  "implementation_sha256": "bce28434fe30eed003c8c35393aee89ebac99d353220cfe9fe9cf8d1616e75fb",
+  "source_candidates": 1384,
+  "common_cohort": 141,
+  "skips": {
+    "FIXED_72H_EMBARGO": 1027,
+    "DRIFT": 216
+  },
+  "audit_checks": 1322,
+  "arms": {
+    "CONTROL": {
+      "base": {
+        "admitted": 141,
+        "closed": 141,
+        "censored": 0,
+        "net_usdt": -37.97708977234145,
+        "closed_net_usdt": -37.97708977234145,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.1346705311075938,
+        "profit_factor": 0.7461071329222274,
+        "wins": 66,
+        "mean_holding_hours": 9.170921985815603,
+        "symbols": {
+          "BNBUSDT": -1.1286727672826748,
+          "BTCUSDT": -5.336779031924632,
+          "DOGEUSDT": -9.570658100829473,
+          "LTCUSDT": 0.23357262015110655,
+          "SOLUSDT": -7.372452847459001,
+          "XRPUSDT": -14.802099644996781
+        },
+        "exit_reasons": {
+          "STOP": 131,
+          "PARTIAL": 10
+        }
+      },
+      "stress": {
+        "admitted": 141,
+        "closed": 141,
+        "censored": 0,
+        "net_usdt": -60.596666692907164,
+        "closed_net_usdt": -60.596666692907164,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.21488179678335875,
+        "profit_factor": 0.6266459173328085,
+        "wins": 58,
+        "mean_holding_hours": 9.170921985815603,
+        "symbols": {
+          "BNBUSDT": -6.321192633225576,
+          "BTCUSDT": -9.256731588373338,
+          "DOGEUSDT": -12.555800048203007,
+          "LTCUSDT": -3.4191350663548854,
+          "SOLUSDT": -10.462211654373737,
+          "XRPUSDT": -18.581595702376625
+        },
+        "exit_reasons": {
+          "STOP": 131,
+          "PARTIAL": 10
+        }
+      }
+    },
+    "REGIME": {
+      "base": {
+        "admitted": 34,
+        "closed": 34,
+        "censored": 0,
+        "net_usdt": -28.261921218503037,
+        "closed_net_usdt": -28.261921218503037,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.4156164885073976,
+        "profit_factor": 0.4050259599907392,
+        "wins": 11,
+        "mean_holding_hours": 10.432843137254903,
+        "symbols": {
+          "BNBUSDT": -2.129721535487737,
+          "BTCUSDT": -11.365790197433146,
+          "DOGEUSDT": -5.563908297266258,
+          "LTCUSDT": 2.2434149301329374,
+          "SOLUSDT": -1.2760018646612106,
+          "XRPUSDT": -10.169914253787624
+        },
+        "exit_reasons": {
+          "STOP": 34
+        }
+      },
+      "stress": {
+        "admitted": 34,
+        "closed": 34,
+        "censored": 0,
+        "net_usdt": -33.046034432443356,
+        "closed_net_usdt": -33.046034432443356,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.48597109459475524,
+        "profit_factor": 0.3476051736068275,
+        "wins": 10,
+        "mean_holding_hours": 10.432843137254903,
+        "symbols": {
+          "BNBUSDT": -2.382517404867231,
+          "BTCUSDT": -12.963679998946969,
+          "DOGEUSDT": -6.585668873600642,
+          "LTCUSDT": 1.4700214660994753,
+          "SOLUSDT": -2.027486236451164,
+          "XRPUSDT": -10.556703384676824
+        },
+        "exit_reasons": {
+          "STOP": 34
+        }
+      }
+    },
+    "STRUCTURE": {
+      "base": {
+        "admitted": 141,
+        "closed": 141,
+        "censored": 0,
+        "net_usdt": -20.215264904985194,
+        "closed_net_usdt": -20.215264904985194,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.07168533654250069,
+        "profit_factor": 0.8648524256010435,
+        "wins": 66,
+        "mean_holding_hours": 12.385579196217494,
+        "symbols": {
+          "BNBUSDT": 3.629405833779468,
+          "BTCUSDT": -3.1808381328946322,
+          "DOGEUSDT": -8.136539830380249,
+          "LTCUSDT": 4.504165208722325,
+          "SOLUSDT": -10.640113107551334,
+          "XRPUSDT": -6.391344876660772
+        },
+        "exit_reasons": {
+          "STOP": 141
+        }
+      },
+      "stress": {
+        "admitted": 141,
+        "closed": 141,
+        "censored": 0,
+        "net_usdt": -42.84725170285109,
+        "closed_net_usdt": -42.84725170285109,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.15194060887535846,
+        "profit_factor": 0.7360053410957554,
+        "wins": 58,
+        "mean_holding_hours": 12.385579196217494,
+        "symbols": {
+          "BNBUSDT": -1.565047384344331,
+          "BTCUSDT": -7.102398333491803,
+          "DOGEUSDT": -11.12390686636844,
+          "LTCUSDT": 0.8489330955460109,
+          "SOLUSDT": -13.729627001909552,
+          "XRPUSDT": -10.175205212282973
+        },
+        "exit_reasons": {
+          "STOP": 141
+        }
+      }
+    },
+    "REGIME_STRUCTURE": {
+      "base": {
+        "admitted": 34,
+        "closed": 34,
+        "censored": 0,
+        "net_usdt": -31.430070786614326,
+        "closed_net_usdt": -31.430070786614326,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.46220692333256364,
+        "profit_factor": 0.33832961853116833,
+        "wins": 11,
+        "mean_holding_hours": 11.865686274509804,
+        "symbols": {
+          "BNBUSDT": -2.129721535487737,
+          "BTCUSDT": -11.35719053932395,
+          "DOGEUSDT": -6.222627608761294,
+          "LTCUSDT": 0.6942697671338016,
+          "SOLUSDT": -2.244886616387525,
+          "XRPUSDT": -10.169914253787624
+        },
+        "exit_reasons": {
+          "STOP": 34
+        }
+      },
+      "stress": {
+        "admitted": 34,
+        "closed": 34,
+        "censored": 0,
+        "net_usdt": -36.21413018838244,
+        "closed_net_usdt": -36.21413018838244,
+        "censored_mark_usdt": 0,
+        "mean_closed_r": -0.5325607380644477,
+        "profit_factor": 0.2850606257907158,
+        "wins": 10,
+        "mean_holding_hours": 11.865686274509804,
+        "symbols": {
+          "BNBUSDT": -2.382517404867231,
+          "BTCUSDT": -12.955084614789302,
+          "DOGEUSDT": -7.244711924682669,
+          "LTCUSDT": -0.07892772662689906,
+          "SOLUSDT": -2.9961851327395186,
+          "XRPUSDT": -10.556703384676824
+        },
+        "exit_reasons": {
+          "STOP": 34
+        }
+      }
+    }
+  },
+  "periods": {
+    "FIRST_HALF": {
+      "CONTROL": {
+        "base": {
+          "admitted": 70,
+          "closed": 70,
+          "censored": 0,
+          "net_usdt": -49.112060104324726,
+          "closed_net_usdt": -49.112060104324726,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.3508004293166052,
+          "profit_factor": 0.451200346370076,
+          "wins": 26,
+          "mean_holding_hours": 10.288571428571428,
+          "symbols": {
+            "BNBUSDT": -7.941402116569868,
+            "BTCUSDT": -8.644964968123519,
+            "DOGEUSDT": -9.829909414921774,
+            "LTCUSDT": -8.349987279835453,
+            "SOLUSDT": -2.6288119214020362,
+            "XRPUSDT": -11.716984403472077
+          },
+          "exit_reasons": {
+            "STOP": 68,
+            "PARTIAL": 2
+          }
+        },
+        "stress": {
+          "admitted": 70,
+          "closed": 70,
+          "censored": 0,
+          "net_usdt": -60.18236606241907,
+          "closed_net_usdt": -60.18236606241907,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4298740433029934,
+          "profit_factor": 0.37994133045088635,
+          "wins": 22,
+          "mean_holding_hours": 10.288571428571428,
+          "symbols": {
+            "BNBUSDT": -10.525551654454704,
+            "BTCUSDT": -10.482137559151859,
+            "DOGEUSDT": -11.088111275612482,
+            "LTCUSDT": -10.199725495455679,
+            "SOLUSDT": -4.17578473858754,
+            "XRPUSDT": -13.71105533915681
+          },
+          "exit_reasons": {
+            "STOP": 68,
+            "PARTIAL": 2
+          }
+        }
+      },
+      "REGIME": {
+        "base": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -15.023823041452127,
+          "closed_net_usdt": -15.023823041452127,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.469494470045379,
+          "profit_factor": 0.3376420984893544,
+          "wins": 5,
+          "mean_holding_hours": 13.340625,
+          "symbols": {
+            "BNBUSDT": -2.129721535487737,
+            "BTCUSDT": -4.038596551890595,
+            "DOGEUSDT": -5.846990310027954,
+            "LTCUSDT": 0.3114386564846159,
+            "SOLUSDT": 2.8014409799579236,
+            "XRPUSDT": -6.121394280488381
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        },
+        "stress": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -16.971112052112783,
+          "closed_net_usdt": -16.971112052112783,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.5303472516285245,
+          "profit_factor": 0.29659568284279236,
+          "wins": 4,
+          "mean_holding_hours": 13.340625,
+          "symbols": {
+            "BNBUSDT": -2.382517404867231,
+            "BTCUSDT": -4.4584833102717765,
+            "DOGEUSDT": -6.325017010034305,
+            "LTCUSDT": 0.021246407795351363,
+            "SOLUSDT": 2.56429971365324,
+            "XRPUSDT": -6.390640448388063
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        }
+      },
+      "STRUCTURE": {
+        "base": {
+          "admitted": 70,
+          "closed": 70,
+          "censored": 0,
+          "net_usdt": -51.48335201275223,
+          "closed_net_usdt": -51.48335201275223,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.36773822866251593,
+          "profit_factor": 0.4247024927830737,
+          "wins": 26,
+          "mean_holding_hours": 11.827619047619047,
+          "symbols": {
+            "BNBUSDT": -8.994640858011557,
+            "BTCUSDT": -8.1985836662712,
+            "DOGEUSDT": -10.019658152056424,
+            "LTCUSDT": -8.307536554366052,
+            "SOLUSDT": -3.787069529013781,
+            "XRPUSDT": -12.175863253033214
+          },
+          "exit_reasons": {
+            "STOP": 70
+          }
+        },
+        "stress": {
+          "admitted": 70,
+          "closed": 70,
+          "censored": 0,
+          "net_usdt": -62.55294343557157,
+          "closed_net_usdt": -62.55294343557157,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.44680673882551125,
+          "profit_factor": 0.3555172815436758,
+          "wins": 22,
+          "mean_holding_hours": 11.827619047619047,
+          "symbols": {
+            "BNBUSDT": -11.578248406086095,
+            "BTCUSDT": -10.03552384777349,
+            "DOGEUSDT": -11.277949051271863,
+            "LTCUSDT": -10.15731519915253,
+            "SOLUSDT": -5.333722120637569,
+            "XRPUSDT": -14.170184810650024
+          },
+          "exit_reasons": {
+            "STOP": 70
+          }
+        }
+      },
+      "REGIME_STRUCTURE": {
+        "base": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -16.725675417783716,
+          "closed_net_usdt": -16.725675417783716,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.5226773568057411,
+          "profit_factor": 0.26261223654557697,
+          "wins": 5,
+          "mean_holding_hours": 13.920833333333333,
+          "symbols": {
+            "BNBUSDT": -2.129721535487737,
+            "BTCUSDT": -4.038596551890595,
+            "DOGEUSDT": -5.846990310027954,
+            "LTCUSDT": -0.723182600088738,
+            "SOLUSDT": 2.1342098601996904,
+            "XRPUSDT": -6.121394280488381
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        },
+        "stress": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -18.672118193795022,
+          "closed_net_usdt": -18.672118193795022,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.5835036935560944,
+          "profit_factor": 0.22609381709020274,
+          "wins": 4,
+          "mean_holding_hours": 13.920833333333333,
+          "symbols": {
+            "BNBUSDT": -2.382517404867231,
+            "BTCUSDT": -4.4584833102717765,
+            "DOGEUSDT": -6.325017010034305,
+            "LTCUSDT": -1.012859958581326,
+            "SOLUSDT": 1.8973999383476794,
+            "XRPUSDT": -6.390640448388063
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        }
+      }
+    },
+    "SECOND_HALF": {
+      "CONTROL": {
+        "base": {
+          "admitted": 71,
+          "closed": 71,
+          "censored": 0,
+          "net_usdt": 11.134970331983274,
+          "closed_net_usdt": 11.134970331983274,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": 0.07841528402805122,
+          "profit_factor": 1.1853072575382726,
+          "wins": 40,
+          "mean_holding_hours": 8.069014084507042,
+          "symbols": {
+            "BNBUSDT": 6.812729349287193,
+            "BTCUSDT": 3.308185936198888,
+            "DOGEUSDT": 0.25925131409230084,
+            "LTCUSDT": 8.583559899986561,
+            "SOLUSDT": -4.7436409260569645,
+            "XRPUSDT": -3.0851152415247047
+          },
+          "exit_reasons": {
+            "STOP": 63,
+            "PARTIAL": 8
+          }
+        },
+        "stress": {
+          "admitted": 71,
+          "closed": 71,
+          "censored": 0,
+          "net_usdt": -0.414300630488094,
+          "closed_net_usdt": -0.414300630488094,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.002917610073859817,
+          "profit_factor": 0.993650013419449,
+          "wins": 36,
+          "mean_holding_hours": 8.069014084507042,
+          "symbols": {
+            "BNBUSDT": 4.204359021229128,
+            "BTCUSDT": 1.2254059707785225,
+            "DOGEUSDT": -1.467688772590525,
+            "LTCUSDT": 6.780590429100793,
+            "SOLUSDT": -6.286426915786198,
+            "XRPUSDT": -4.870540363219814
+          },
+          "exit_reasons": {
+            "STOP": 63,
+            "PARTIAL": 8
+          }
+        }
+      },
+      "REGIME": {
+        "base": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -13.23809817705091,
+          "closed_net_usdt": -13.23809817705091,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.36772494936252526,
+          "profit_factor": 0.46660932991339765,
+          "wins": 6,
+          "mean_holding_hours": 7.848148148148148,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -7.327193645542551,
+            "DOGEUSDT": 0.2830820127616964,
+            "LTCUSDT": 1.9319762736483217,
+            "SOLUSDT": -4.077442844619134,
+            "XRPUSDT": -4.048519973299243
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        },
+        "stress": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -16.07492238033057,
+          "closed_net_usdt": -16.07492238033057,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4465256216758492,
+          "profit_factor": 0.39400103647847035,
+          "wins": 6,
+          "mean_holding_hours": 7.848148148148148,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -8.505196688675193,
+            "DOGEUSDT": -0.2606518635663373,
+            "LTCUSDT": 1.448775058304124,
+            "SOLUSDT": -4.591785950104404,
+            "XRPUSDT": -4.166062936288761
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        }
+      },
+      "STRUCTURE": {
+        "base": {
+          "admitted": 71,
+          "closed": 71,
+          "censored": 0,
+          "net_usdt": 31.268087107767034,
+          "closed_net_usdt": 31.268087107767034,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": 0.22019779653357066,
+          "profit_factor": 1.5203609257732178,
+          "wins": 40,
+          "mean_holding_hours": 12.93568075117371,
+          "symbols": {
+            "BNBUSDT": 12.624046691791026,
+            "BTCUSDT": 5.017745533376567,
+            "DOGEUSDT": 1.8831183216761735,
+            "LTCUSDT": 12.811701763088378,
+            "SOLUSDT": -6.853043578537553,
+            "XRPUSDT": 5.784518376372442
+          },
+          "exit_reasons": {
+            "STOP": 71
+          }
+        },
+        "stress": {
+          "admitted": 71,
+          "closed": 71,
+          "censored": 0,
+          "net_usdt": 19.705691732720485,
+          "closed_net_usdt": 19.705691732720485,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": 0.13877247699098932,
+          "profit_factor": 1.3020291760498484,
+          "wins": 36,
+          "mean_holding_hours": 12.93568075117371,
+          "symbols": {
+            "BNBUSDT": 10.013201021741764,
+            "BTCUSDT": 2.933125514281688,
+            "DOGEUSDT": 0.15404218490342292,
+            "LTCUSDT": 11.00624829469854,
+            "SOLUSDT": -8.395904881271983,
+            "XRPUSDT": 3.994979598367052
+          },
+          "exit_reasons": {
+            "STOP": 71
+          }
+        }
+      },
+      "REGIME_STRUCTURE": {
+        "base": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -14.704395368830614,
+          "closed_net_usdt": -14.704395368830614,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.40845542691196146,
+          "profit_factor": 0.4075291485150367,
+          "wins": 6,
+          "mean_holding_hours": 10.03888888888889,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -7.318593987433356,
+            "DOGEUSDT": -0.3756372987333392,
+            "LTCUSDT": 1.4174523672225396,
+            "SOLUSDT": -4.379096476587216,
+            "XRPUSDT": -4.048519973299243
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        },
+        "stress": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -17.54201199458742,
+          "closed_net_usdt": -17.54201199458742,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4872781109607617,
+          "profit_factor": 0.33869409535627204,
+          "wins": 6,
+          "mean_holding_hours": 10.03888888888889,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -8.496601304517524,
+            "DOGEUSDT": -0.919694914648364,
+            "LTCUSDT": 0.933932231954427,
+            "SOLUSDT": -4.893585071087198,
+            "XRPUSDT": -4.166062936288761
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        }
+      }
+    }
+  },
+  "regimes": {
+    "UP": {
+      "CONTROL": {
+        "base": {
+          "admitted": 50,
+          "closed": 50,
+          "censored": 0,
+          "net_usdt": -23.606317250792603,
+          "closed_net_usdt": -23.606317250792603,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.23606317250792602,
+          "profit_factor": 0.5923001809720175,
+          "wins": 21,
+          "mean_holding_hours": 9.408333333333333,
+          "symbols": {
+            "BNBUSDT": -6.489185234750739,
+            "BTCUSDT": -0.9311790826579169,
+            "DOGEUSDT": -2.7693446462465183,
+            "LTCUSDT": -6.447685026669237,
+            "SOLUSDT": 0.48805672007728085,
+            "XRPUSDT": -7.456979980545472
+          },
+          "exit_reasons": {
+            "STOP": 46,
+            "PARTIAL": 4
+          }
+        },
+        "stress": {
+          "admitted": 50,
+          "closed": 50,
+          "censored": 0,
+          "net_usdt": -31.080666691696756,
+          "closed_net_usdt": -31.080666691696756,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.31080666691696757,
+          "profit_factor": 0.5002499115646235,
+          "wins": 20,
+          "mean_holding_hours": 9.408333333333333,
+          "symbols": {
+            "BNBUSDT": -8.483945334280131,
+            "BTCUSDT": -2.835030800756402,
+            "DOGEUSDT": -3.249091114323464,
+            "LTCUSDT": -7.478707490868686,
+            "SOLUSDT": -0.8817068366931984,
+            "XRPUSDT": -8.152185114774873
+          },
+          "exit_reasons": {
+            "STOP": 46,
+            "PARTIAL": 4
+          }
+        }
+      },
+      "REGIME": {
+        "base": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -12.46532001420588,
+          "closed_net_usdt": -12.46532001420588,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.3462588892834967,
+          "profit_factor": 0.44962673694288435,
+          "wins": 7,
+          "mean_holding_hours": 9.392592592592592,
+          "symbols": {
+            "BNBUSDT": -2.129721535487737,
+            "BTCUSDT": -5.069194891619305,
+            "DOGEUSDT": -3.776008858898712,
+            "LTCUSDT": 1.8142591669729258,
+            "SOLUSDT": 2.7797499133554666,
+            "XRPUSDT": -6.084403808528519
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        },
+        "stress": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -15.142492334369473,
+          "closed_net_usdt": -15.142492334369473,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4206247870658187,
+          "profit_factor": 0.3740269287859671,
+          "wins": 6,
+          "mean_holding_hours": 9.392592592592592,
+          "symbols": {
+            "BNBUSDT": -2.382517404867231,
+            "BTCUSDT": -6.118963836306077,
+            "DOGEUSDT": -4.126562947351711,
+            "LTCUSDT": 1.2886290922960792,
+            "SOLUSDT": 2.4773936690911964,
+            "XRPUSDT": -6.28047090723173
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        }
+      },
+      "STRUCTURE": {
+        "base": {
+          "admitted": 50,
+          "closed": 50,
+          "censored": 0,
+          "net_usdt": -27.33263404033459,
+          "closed_net_usdt": -27.33263404033459,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.2733263404033459,
+          "profit_factor": 0.5279437350004973,
+          "wins": 21,
+          "mean_holding_hours": 11.228666666666667,
+          "symbols": {
+            "BNBUSDT": -6.160458436901214,
+            "BTCUSDT": -1.0464473150485218,
+            "DOGEUSDT": -3.426628850966048,
+            "LTCUSDT": -7.432792841831413,
+            "SOLUSDT": -1.80932661504192,
+            "XRPUSDT": -7.456979980545472
+          },
+          "exit_reasons": {
+            "STOP": 50
+          }
+        },
+        "stress": {
+          "admitted": 50,
+          "closed": 50,
+          "censored": 0,
+          "net_usdt": -34.80637214753891,
+          "closed_net_usdt": -34.80637214753891,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.34806372147538905,
+          "profit_factor": 0.4403438082139289,
+          "wins": 20,
+          "mean_holding_hours": 11.228666666666667,
+          "symbols": {
+            "BNBUSDT": -8.155033707832938,
+            "BTCUSDT": -2.9503427588111575,
+            "DOGEUSDT": -3.9067009918608475,
+            "LTCUSDT": -8.463340710047786,
+            "SOLUSDT": -3.1787688642113032,
+            "XRPUSDT": -8.152185114774873
+          },
+          "exit_reasons": {
+            "STOP": 50
+          }
+        }
+      },
+      "REGIME_STRUCTURE": {
+        "base": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -14.109059291017093,
+          "closed_net_usdt": -14.109059291017093,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.3919183136393637,
+          "profit_factor": 0.3770517730941632,
+          "wins": 7,
+          "mean_holding_hours": 10.491666666666667,
+          "symbols": {
+            "BNBUSDT": -2.129721535487737,
+            "BTCUSDT": -5.06059523351011,
+            "DOGEUSDT": -3.776008858898712,
+            "LTCUSDT": 0.8291513518107507,
+            "SOLUSDT": 2.1125187935972334,
+            "XRPUSDT": -6.084403808528519
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        },
+        "stress": {
+          "admitted": 18,
+          "closed": 18,
+          "censored": 0,
+          "net_usdt": -16.785429944696467,
+          "closed_net_usdt": -16.785429944696467,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4662619429082352,
+          "profit_factor": 0.30610979341353206,
+          "wins": 6,
+          "mean_holding_hours": 10.491666666666667,
+          "symbols": {
+            "BNBUSDT": -2.382517404867231,
+            "BTCUSDT": -6.11036845214841,
+            "DOGEUSDT": -4.126562947351711,
+            "LTCUSDT": 0.30399587311697895,
+            "SOLUSDT": 1.8104938937856356,
+            "XRPUSDT": -6.28047090723173
+          },
+          "exit_reasons": {
+            "STOP": 18
+          }
+        }
+      }
+    },
+    "DOWN": {
+      "CONTROL": {
+        "base": {
+          "admitted": 66,
+          "closed": 66,
+          "censored": 0,
+          "net_usdt": -5.212639230386362,
+          "closed_net_usdt": -5.212639230386362,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.039489691139290614,
+          "profit_factor": 0.9194012376157348,
+          "wins": 33,
+          "mean_holding_hours": 9.082323232323233,
+          "symbols": {
+            "BNBUSDT": 2.7074680850521315,
+            "BTCUSDT": -8.811835314456912,
+            "DOGEUSDT": -0.6074636171547498,
+            "LTCUSDT": 6.75300824011582,
+            "SOLUSDT": -3.7206244399985104,
+            "XRPUSDT": -1.5331921839441396
+          },
+          "exit_reasons": {
+            "STOP": 61,
+            "PARTIAL": 5
+          }
+        },
+        "stress": {
+          "admitted": 66,
+          "closed": 66,
+          "censored": 0,
+          "net_usdt": -16.432061150962937,
+          "closed_net_usdt": -16.432061150962937,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.12448531174971922,
+          "profit_factor": 0.7680834030486079,
+          "wins": 28,
+          "mean_holding_hours": 9.082323232323233,
+          "symbols": {
+            "BNBUSDT": 0.5608435269468184,
+            "BTCUSDT": -10.529743778373197,
+            "DOGEUSDT": -2.2380449508527445,
+            "LTCUSDT": 4.6035038609822685,
+            "SOLUSDT": -5.129032220359383,
+            "XRPUSDT": -3.6995875893066996
+          },
+          "exit_reasons": {
+            "STOP": 61,
+            "PARTIAL": 5
+          }
+        }
+      },
+      "REGIME": {
+        "base": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -15.796601204297158,
+          "closed_net_usdt": -15.796601204297158,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.4936437876342862,
+          "profit_factor": 0.3643794957603126,
+          "wins": 4,
+          "mean_holding_hours": 11.603125,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -6.296595305813841,
+            "DOGEUSDT": -1.7878994383675462,
+            "LTCUSDT": 0.4291557631600118,
+            "SOLUSDT": -4.055751778016678,
+            "XRPUSDT": -4.0855104452591045
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        },
+        "stress": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -17.90354209807388,
+          "closed_net_usdt": -17.90354209807388,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.5594856905648088,
+          "profit_factor": 0.32345264445410793,
+          "wins": 4,
+          "mean_holding_hours": 11.603125,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -6.844716162640892,
+            "DOGEUSDT": -2.459105926248931,
+            "LTCUSDT": 0.181392373803396,
+            "SOLUSDT": -4.50487990554236,
+            "XRPUSDT": -4.276232477445094
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        }
+      },
+      "STRUCTURE": {
+        "base": {
+          "admitted": 66,
+          "closed": 66,
+          "censored": 0,
+          "net_usdt": 13.735047731830882,
+          "closed_net_usdt": 13.735047731830882,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": 0.10405339190780971,
+          "profit_factor": 1.2123737706651772,
+          "wins": 33,
+          "mean_holding_hours": 13.267171717171717,
+          "symbols": {
+            "BNBUSDT": 5.324599464761095,
+            "BTCUSDT": -5.95258141009501,
+            "DOGEUSDT": 1.548853354804484,
+            "LTCUSDT": 10.882225886888708,
+            "SOLUSDT": -4.690901364971643,
+            "XRPUSDT": 6.622851800443249
+          },
+          "exit_reasons": {
+            "STOP": 66
+          }
+        },
+        "stress": {
+          "admitted": 66,
+          "closed": 66,
+          "censored": 0,
+          "net_usdt": 2.504647591704681,
+          "closed_net_usdt": 2.504647591704681,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": 0.018974602967459706,
+          "profit_factor": 1.0353497556206825,
+          "wins": 28,
+          "mean_holding_hours": 13.267171717171717,
+          "symbols": {
+            "BNBUSDT": 3.1770347513530965,
+            "BTCUSDT": -7.671934916642132,
+            "DOGEUSDT": -0.08359804114054363,
+            "LTCUSDT": 8.73030249980083,
+            "SOLUSDT": -6.099385540377094,
+            "XRPUSDT": 4.452228838710523
+          },
+          "exit_reasons": {
+            "STOP": 66
+          }
+        }
+      },
+      "REGIME_STRUCTURE": {
+        "base": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -17.321011495597233,
+          "closed_net_usdt": -17.321011495597233,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.5412816092374135,
+          "profit_factor": 0.30304057699589243,
+          "wins": 4,
+          "mean_holding_hours": 13.411458333333334,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -6.296595305813841,
+            "DOGEUSDT": -2.4466187498625818,
+            "LTCUSDT": -0.1348815846769491,
+            "SOLUSDT": -4.357405409984758,
+            "XRPUSDT": -4.0855104452591045
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        },
+        "stress": {
+          "admitted": 16,
+          "closed": 16,
+          "censored": 0,
+          "net_usdt": -19.428700243685977,
+          "closed_net_usdt": -19.428700243685977,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.6071468826151868,
+          "profit_factor": 0.2658192608169031,
+          "wins": 4,
+          "mean_holding_hours": 13.411458333333334,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": -6.844716162640892,
+            "DOGEUSDT": -3.1181489773309576,
+            "LTCUSDT": -0.382923599743878,
+            "SOLUSDT": -4.806679026525154,
+            "XRPUSDT": -4.276232477445094
+          },
+          "exit_reasons": {
+            "STOP": 16
+          }
+        }
+      }
+    },
+    "RANGE": {
+      "CONTROL": {
+        "base": {
+          "admitted": 25,
+          "closed": 25,
+          "censored": 0,
+          "net_usdt": -9.15813329116249,
+          "closed_net_usdt": -9.15813329116249,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.1831626658232498,
+          "profit_factor": 0.6608605512133852,
+          "wins": 12,
+          "mean_holding_hours": 8.93,
+          "symbols": {
+            "BNBUSDT": 2.653044382415932,
+            "BTCUSDT": 4.406235365190199,
+            "DOGEUSDT": -6.193849837428204,
+            "LTCUSDT": -0.07175059329547595,
+            "SOLUSDT": -4.139885127537771,
+            "XRPUSDT": -5.811927480507169
+          },
+          "exit_reasons": {
+            "STOP": 24,
+            "PARTIAL": 1
+          }
+        },
+        "stress": {
+          "admitted": 25,
+          "closed": 25,
+          "censored": 0,
+          "net_usdt": -13.083938850247474,
+          "closed_net_usdt": -13.083938850247474,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.26167877700494946,
+          "profit_factor": 0.5528041802780512,
+          "wins": 10,
+          "mean_holding_hours": 8.93,
+          "symbols": {
+            "BNBUSDT": 1.6019091741077376,
+            "BTCUSDT": 4.10804299075626,
+            "DOGEUSDT": -7.068663983026798,
+            "LTCUSDT": -0.5439314364684671,
+            "SOLUSDT": -4.451472597321156,
+            "XRPUSDT": -6.729822998295051
+          },
+          "exit_reasons": {
+            "STOP": 24,
+            "PARTIAL": 1
+          }
+        }
+      },
+      "REGIME": {
+        "base": {
+          "admitted": 0,
+          "closed": 0,
+          "censored": 0,
+          "net_usdt": 0,
+          "closed_net_usdt": 0,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": null,
+          "profit_factor": null,
+          "wins": 0,
+          "mean_holding_hours": null,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": 0,
+            "DOGEUSDT": 0,
+            "LTCUSDT": 0,
+            "SOLUSDT": 0,
+            "XRPUSDT": 0
+          },
+          "exit_reasons": {}
+        },
+        "stress": {
+          "admitted": 0,
+          "closed": 0,
+          "censored": 0,
+          "net_usdt": 0,
+          "closed_net_usdt": 0,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": null,
+          "profit_factor": null,
+          "wins": 0,
+          "mean_holding_hours": null,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": 0,
+            "DOGEUSDT": 0,
+            "LTCUSDT": 0,
+            "SOLUSDT": 0,
+            "XRPUSDT": 0
+          },
+          "exit_reasons": {}
+        }
+      },
+      "STRUCTURE": {
+        "base": {
+          "admitted": 25,
+          "closed": 25,
+          "censored": 0,
+          "net_usdt": -6.617678596481488,
+          "closed_net_usdt": -6.617678596481488,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.13235357192962977,
+          "profit_factor": 0.7549374091744817,
+          "wins": 12,
+          "mean_holding_hours": 12.372,
+          "symbols": {
+            "BNBUSDT": 4.465264805919588,
+            "BTCUSDT": 3.8181905922489,
+            "DOGEUSDT": -6.258764334218686,
+            "LTCUSDT": 1.054732163665029,
+            "SOLUSDT": -4.139885127537771,
+            "XRPUSDT": -5.557216696558548
+          },
+          "exit_reasons": {
+            "STOP": 25
+          }
+        },
+        "stress": {
+          "admitted": 25,
+          "closed": 25,
+          "censored": 0,
+          "net_usdt": -10.545527147016863,
+          "closed_net_usdt": -10.545527147016863,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": -0.21091054294033726,
+          "profit_factor": 0.6395645293908515,
+          "wins": 10,
+          "mean_holding_hours": 12.372,
+          "symbols": {
+            "BNBUSDT": 3.41295157213551,
+            "BTCUSDT": 3.519879341961486,
+            "DOGEUSDT": -7.133607833367048,
+            "LTCUSDT": 0.5819713057929674,
+            "SOLUSDT": -4.451472597321156,
+            "XRPUSDT": -6.475248936218623
+          },
+          "exit_reasons": {
+            "STOP": 25
+          }
+        }
+      },
+      "REGIME_STRUCTURE": {
+        "base": {
+          "admitted": 0,
+          "closed": 0,
+          "censored": 0,
+          "net_usdt": 0,
+          "closed_net_usdt": 0,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": null,
+          "profit_factor": null,
+          "wins": 0,
+          "mean_holding_hours": null,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": 0,
+            "DOGEUSDT": 0,
+            "LTCUSDT": 0,
+            "SOLUSDT": 0,
+            "XRPUSDT": 0
+          },
+          "exit_reasons": {}
+        },
+        "stress": {
+          "admitted": 0,
+          "closed": 0,
+          "censored": 0,
+          "net_usdt": 0,
+          "closed_net_usdt": 0,
+          "censored_mark_usdt": 0,
+          "mean_closed_r": null,
+          "profit_factor": null,
+          "wins": 0,
+          "mean_holding_hours": null,
+          "symbols": {
+            "BNBUSDT": 0,
+            "BTCUSDT": 0,
+            "DOGEUSDT": 0,
+            "LTCUSDT": 0,
+            "SOLUSDT": 0,
+            "XRPUSDT": 0
+          },
+          "exit_reasons": {}
+        }
+      }
+    }
+  },
+  "tradeoff": {
+    "REGIME": {
+      "rejected": 107,
+      "prevented_losses_usdt": 102.07809170750235,
+      "missed_profits_usdt": 92.36292315366394
+    },
+    "REGIME_STRUCTURE": {
+      "rejected": 107,
+      "prevented_losses_usdt": 102.07809170750235,
+      "missed_profits_usdt": 113.29289758913148
+    }
+  }
+}
