@@ -1,0 +1,6 @@
+{
+  "logical_content_unchanged": true,
+  "reason": "Windows artifact CRLF versus Git LF serialization; no strategy or parameter change",
+  "original_artifact_sha256": "2b58730113a6d5caf7630a6e80ae296e59285d465945f455788de9b5d1f7424e",
+  "git_blob_sha256": "8fc286377188aa12e06dbea89d003b0ef9c93946e26337c6312fbcb665eb6305"
+}
