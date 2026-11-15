@@ -1,0 +1,33 @@
+[Unit]
+Description=Isolated RANGE OI and aggressor-flow matched shadow labels
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_range_oi_flow/code
+Environment=PYTHONPATH=/root/bot_range_oi_flow/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/bin/python3 /root/bot_range_oi_flow/code/scripts/range_oi_flow_resource_guard.py
+ExecStart=/usr/bin/python3 -m trading_bot.research.range_oi_flow_shadow --data-dir /root/bot_range_oi_flow/data
+TimeoutStartSec=45
+Nice=19
+CPUQuota=5%
+MemoryHigh=32M
+MemoryMax=48M
+MemorySwapMax=8M
+TasksMax=4
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/bot_range_oi_flow/data /root/bot_diversified_v3/data /root/bot_market_evidence/data
+ReadOnlyPaths=/root/bot_range_oi_flow/code /root/bot_diversified_v3/data/shadow.sqlite3 /root/bot_diversified_v3/data/status.json /root/bot_market_evidence/data/market_evidence.sqlite3 /root/bot_market_evidence/data/status.json
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

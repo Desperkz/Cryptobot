@@ -1,0 +1,25 @@
+{
+  "classification": "HISTORICAL_DIAGNOSIS_ONLY_ALREADY_OBSERVED_OUTCOMES_NOT_FORWARD_ENTRIES",
+  "frozen_at_utc": "2026-11-15T06:16:33.272191+00:00",
+  "gate_sha256": "765e8433288c91172f8e83a2e2a21d65c71f06753c54e133eed6f02d095315cd",
+  "gate_rule": {
+    "name": "range-oi-flow-confirmation-v1",
+    "order_capability": false,
+    "decision_time": "unchanged source opened_ms; feature received_ms and exchange time must not exceed this as-of time",
+    "oi": "latest valid sample received by decision and latest received by decision-5min; each endpoint at most90s old; strict decline",
+    "flow": "last completed UTC minute; LONG buy_quote>sell_quote; SHORT sell_quote>buy_quote; equality rejects",
+    "flow_quality": "one same-session target segment, full contiguous ID span/messages, adjacent previous-last and successor-first IDs; all used observations received by decision",
+    "connection_quality": "same session starts before flow minute, covers minute and known successor; no recorded lifecycle, ID-gap or invalid-stream issue in five-minute context plus endpoint age allowance",
+    "unknown": "missing, malformed, stale, late-mutated or uncertified evidence is UNKNOWN, never a rejection or zero return",
+    "costs": "unchanged source entries, exits, quantity, risk and modeled costs; no replacement trades",
+    "scope": "as-of paired observational label; delayed source publication is not proof of executable timing",
+    "future_safety": "future rows cannot add feature information; a final target aggregate containing post-decision receipts is UNKNOWN because its past prefix cannot be reconstructed",
+    "market_scope": "observed Binance aggTrade stream only, not all exchange transactions or complete liquidation volumes"
+  },
+  "export_sha256": "3580dfdf0fc8f367f0c283c149cdeaeb18935d729abece9ec2f3a0fc05b32659",
+  "diagnostic_script_sha256": "8c3034a0c31c96dbb649552785e9eb283f4060ae15dd7833e189f320c650a740",
+  "selection": "All exported RANGE_REBOUND_V3 source entries, no symbol/direction/outcome selection",
+  "threshold_search": "NONE; no threshold or strategy changes after this diagnosis",
+  "unknown_accounting": "UNKNOWN remains separate; no zero outcome or avoided loss credit",
+  "future_entries": "None; source plans/outcomes are historical descriptive evidence only"
+}

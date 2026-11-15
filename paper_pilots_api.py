@@ -354,6 +354,94 @@ def api_sqz_entry_quality_shadow(
         return {**unavailable, 'source_error': type(exc).__name__}
 
 
+def api_range_oi_flow_shadow(
+    path: Path = Path('/root/bot_range_oi_flow/data/status.json'),
+    *, now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Bounded passive reader; unknown controls are never treated as rejections."""
+    absent = {'study': 'range-oi-flow-shadow-v1', 'health': 'UNAVAILABLE',
+              'mode': 'SHADOW', 'order_capability': False, 'combined_with_main_balance': False}
+    try:
+        with path.open('rb') as saved:
+            raw = saved.read(128 * 1024 + 1)
+        if len(raw) > 128 * 1024:
+            raise ValueError('OVERSIZED_STATUS')
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('DUPLICATE_JSON_KEY')
+                result[key] = value
+            return result
+
+        # Reject non-finite values anywhere, including protocol/detail fields.
+        data = _strict_json(raw)
+        json.loads(raw, object_pairs_hook=unique_object)
+        if (not isinstance(data, dict) or data.get('study') != absent['study']
+                or data.get('mode') != 'SHADOW' or data.get('order_capability') is not False
+                or data.get('combined_with_main_balance') is not False
+                or data.get('health') not in ('OK', 'DEGRADED')):
+            raise ValueError('UNEXPECTED_RANGE_STUDY')
+        count = lambda x: isinstance(x, int) and not isinstance(x, bool) and x >= 0
+        finite = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and _number(x) is not None
+        now = int(time.time() * 1000) if now_ms is None else now_ms
+        registered, generated = data.get('registered_ms'), data.get('generated_at_ms')
+        if (not count(registered) or not count(generated)
+                or not 0 < registered <= generated <= now + 60_000):
+            raise ValueError('INVALID_RANGE_CLOCK')
+        counts, results, source = (data.get(k) for k in ('counts', 'results', 'source'))
+        if not all(isinstance(x, dict) for x in (counts, results, source)):
+            raise ValueError('INVALID_RANGE_RESULTS')
+        for key in ('observed', 'accepted', 'rejected', 'unscorable', 'pending', 'closed_pairs'):
+            if not count(counts.get(key)):
+                raise ValueError('INVALID_RANGE_COUNTS')
+        for key in ('known_closed_pairs', 'unscorable_closed_pairs'):
+            if not count(results.get(key)):
+                raise ValueError('INVALID_RANGE_CLOSED_COUNTS')
+        if (counts['observed'] != counts['accepted'] + counts['rejected'] + counts['unscorable']
+                or counts['observed'] != counts['pending'] + counts['closed_pairs']
+                or counts['closed_pairs'] != results['known_closed_pairs'] + results['unscorable_closed_pairs']
+                or results['known_closed_pairs'] > counts['accepted'] + counts['rejected']
+                or results['unscorable_closed_pairs'] > counts['unscorable']):
+            raise ValueError('RANGE_COHORT_IDENTITY_FAILED')
+        keys = ('control_net_usdt', 'accepted_control_net_usdt', 'prevented_losses_usdt',
+                'missed_profits_usdt', 'paired_delta_usdt', 'all_control_net_usdt',
+                'unscorable_control_net_usdt')
+        if any(not finite(results.get(key)) for key in keys):
+            raise ValueError('INVALID_RANGE_PNL')
+        if results['prevented_losses_usdt'] < 0 or results['missed_profits_usdt'] < 0:
+            raise ValueError('NEGATIVE_RANGE_EFFECT_COMPONENT')
+        if (abs(results['paired_delta_usdt'] - results['accepted_control_net_usdt'] + results['control_net_usdt']) > 1e-6
+                or abs(results['paired_delta_usdt'] - results['prevented_losses_usdt'] + results['missed_profits_usdt']) > 1e-6
+                or abs(results['all_control_net_usdt'] - results['control_net_usdt'] - results['unscorable_control_net_usdt']) > 1e-6):
+            raise ValueError('RANGE_PNL_IDENTITY_FAILED')
+        if results['known_closed_pairs'] == 0 and any(abs(results[key]) > 1e-9 for key in keys[:5]):
+            raise ValueError('RANGE_PNL_WITHOUT_CLOSED_PAIRS')
+        if results['unscorable_closed_pairs'] == 0 and abs(results['unscorable_control_net_usdt']) > 1e-9:
+            raise ValueError('RANGE_UNKNOWN_PNL_WITHOUT_CLOSED_CONTROL')
+        if ((counts['accepted'] == 0 and abs(results['accepted_control_net_usdt']) > 1e-9)
+                or (counts['rejected'] == 0 and (results['prevented_losses_usdt'] > 1e-9 or results['missed_profits_usdt'] > 1e-9))):
+            raise ValueError('RANGE_PNL_WITHOUT_MATCHING_DECISION')
+        source_age = source.get('age_seconds')
+        if (source.get('health') not in ('OK', 'DEGRADED', 'STALE', 'UNAVAILABLE')
+                or (source_age is not None and (not finite(source_age) or source_age < 0))
+                or (source.get('health') == 'OK' and source_age is None)
+                or (data['health'] == 'OK' and source['health'] != 'OK')
+                or not isinstance(data.get('errors'), list)
+                or any(not isinstance(error, (str, dict)) for error in data['errors'])
+                or not isinstance(data.get('limitations'), list)
+                or any(not isinstance(item, str) for item in data['limitations'])):
+            raise ValueError('INVALID_RANGE_HEALTH_OR_LIMITATIONS')
+        data['age_seconds'] = max(0, (now - generated) / 1000)
+        data['stale_after_seconds'] = 900
+        if data['age_seconds'] > 900:
+            data['health'] = 'STALE'
+        return data
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError) as exc:
+        return {**absent, 'source_error': type(exc).__name__}
+
+
 def api_funding_carry_shadow(
     path: Path = Path('/root/bot_funding_carry_shadow/data/status.json'),
     *, now_ms: int | None = None,

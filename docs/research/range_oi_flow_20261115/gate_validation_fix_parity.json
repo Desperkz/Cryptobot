@@ -1,0 +1,131 @@
+{
+  "passed": true,
+  "old_sha256": "765e8433288c91172f8e83a2e2a21d65c71f06753c54e133eed6f02d095315cd",
+  "new_sha256": "d7ee785bd2287ee4b588c998277d1f6c652097a5872ff25ab775a0c505a49540",
+  "reason": "validation-only finite-derived-OI-evidence guard; strategy thresholds and RULE unchanged",
+  "export_sha256": "3580dfdf0fc8f367f0c283c149cdeaeb18935d729abece9ec2f3a0fc05b32659",
+  "observations": 20,
+  "all_outputs_identical": true,
+  "results": [
+    {
+      "source_id": 18,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 28,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 31,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 37,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 49,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 52,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 55,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 62,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 85,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 86,
+      "decision": "UNKNOWN",
+      "reason": "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 106,
+      "decision": "REJECT",
+      "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 112,
+      "decision": "REJECT",
+      "reason": "FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 115,
+      "decision": "REJECT",
+      "reason": "OI_NOT_DECLINING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 117,
+      "decision": "REJECT",
+      "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 119,
+      "decision": "REJECT",
+      "reason": "FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 145,
+      "decision": "REJECT",
+      "reason": "FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 148,
+      "decision": "REJECT",
+      "reason": "OI_NOT_DECLINING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 150,
+      "decision": "REJECT",
+      "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 152,
+      "decision": "REJECT",
+      "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+      "identical_full_output": true
+    },
+    {
+      "source_id": 168,
+      "decision": "ACCEPT",
+      "reason": "CONFIRMED",
+      "identical_full_output": true
+    }
+  ]
+}

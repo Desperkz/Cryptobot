@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from trading_bot.operational import start_watchdog_thread
-from paper_pilots_api import api_paper_pilots, api_runner_comparison, api_diversified_shadow, api_breakout_recheck_shadow, api_sqz_entry_quality_shadow, api_research_storage, api_funding_carry_shadow
+from paper_pilots_api import api_paper_pilots, api_runner_comparison, api_diversified_shadow, api_breakout_recheck_shadow, api_sqz_entry_quality_shadow, api_research_storage, api_funding_carry_shadow, api_range_oi_flow_shadow
 
 HOST = os.getenv("BOT_CONTROL_HOST", "127.0.0.1")
 PORT = int(os.getenv("BOT_CONTROL_PORT", "8890"))
@@ -3678,6 +3678,7 @@ def _production_unlock_path() -> str:
 
 
 ROUTES = {
+    "/range-oi-flow-shadow": api_range_oi_flow_shadow,
     "/breakout-recheck-shadow": api_breakout_recheck_shadow,
     "/sqz-entry-quality-shadow": api_sqz_entry_quality_shadow,
     "/funding-carry-shadow": api_funding_carry_shadow,

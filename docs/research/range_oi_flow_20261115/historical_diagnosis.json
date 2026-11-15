@@ -1,0 +1,590 @@
+{
+  "classification": "HISTORICAL_DIAGNOSIS_ONLY_ALREADY_OBSERVED_OUTCOMES_NOT_FORWARD_ENTRIES",
+  "threshold_search": "NONE",
+  "source_watermark": 168,
+  "gate_sha256": "765e8433288c91172f8e83a2e2a21d65c71f06753c54e133eed6f02d095315cd",
+  "export_sha256": "3580dfdf0fc8f367f0c283c149cdeaeb18935d729abece9ec2f3a0fc05b32659",
+  "all": {
+    "entries": 20,
+    "closed": 19,
+    "open_or_other": 1,
+    "decision_counts": {
+      "UNKNOWN": 10,
+      "REJECT": 9,
+      "ACCEPT": 1
+    },
+    "reason_counts": {
+      "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 10,
+      "OI_AND_FLOW_NOT_CONFIRMING": 4,
+      "FLOW_NOT_CONFIRMING": 3,
+      "OI_NOT_DECLINING": 2,
+      "CONFIRMED": 1
+    },
+    "all_control_net_usdt": 3.6065276369597195,
+    "known_closed_pairs": 9,
+    "control_net_usdt": -1.7925136289022063,
+    "accepted_closed_pairs": 0,
+    "accepted_control_net_usdt": 0,
+    "rejected_closed_pairs": 9,
+    "unscorable_closed_pairs": 10,
+    "unscorable_control_net_usdt": 5.399041265861926,
+    "prevented_losses_usdt": 9.946774922587554,
+    "missed_profits_usdt": 8.154261293685348,
+    "paired_delta_usdt": 1.7925136289022063
+  },
+  "after_collector_registration": {
+    "entries": 10,
+    "closed": 9,
+    "open_or_other": 1,
+    "decision_counts": {
+      "REJECT": 9,
+      "ACCEPT": 1
+    },
+    "reason_counts": {
+      "OI_AND_FLOW_NOT_CONFIRMING": 4,
+      "FLOW_NOT_CONFIRMING": 3,
+      "OI_NOT_DECLINING": 2,
+      "CONFIRMED": 1
+    },
+    "all_control_net_usdt": -1.7925136289022063,
+    "known_closed_pairs": 9,
+    "control_net_usdt": -1.7925136289022063,
+    "accepted_closed_pairs": 0,
+    "accepted_control_net_usdt": 0,
+    "rejected_closed_pairs": 9,
+    "unscorable_closed_pairs": 0,
+    "unscorable_control_net_usdt": 0,
+    "prevented_losses_usdt": 9.946774922587554,
+    "missed_profits_usdt": 8.154261293685348,
+    "paired_delta_usdt": 1.7925136289022063
+  },
+  "by_symbol": {
+    "BNBUSDT": {
+      "entries": 2,
+      "closed": 1,
+      "open_or_other": 1,
+      "decision_counts": {
+        "UNKNOWN": 1,
+        "ACCEPT": 1
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 1,
+        "CONFIRMED": 1
+      },
+      "all_control_net_usdt": 1.716980153794201,
+      "known_closed_pairs": 0,
+      "control_net_usdt": 0,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 0,
+      "unscorable_closed_pairs": 1,
+      "unscorable_control_net_usdt": 1.716980153794201,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 0,
+      "paired_delta_usdt": 0
+    },
+    "DOGEUSDT": {
+      "entries": 5,
+      "closed": 5,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 2,
+        "REJECT": 3
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 2,
+        "OI_AND_FLOW_NOT_CONFIRMING": 2,
+        "OI_NOT_DECLINING": 1
+      },
+      "all_control_net_usdt": 1.3111546853736522,
+      "known_closed_pairs": 3,
+      "control_net_usdt": -3.128896395180841,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 3,
+      "unscorable_closed_pairs": 2,
+      "unscorable_control_net_usdt": 4.440051080554493,
+      "prevented_losses_usdt": 3.9760982980634267,
+      "missed_profits_usdt": 0.8472019028825857,
+      "paired_delta_usdt": 3.128896395180841
+    },
+    "LTCUSDT": {
+      "entries": 7,
+      "closed": 7,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 6,
+        "REJECT": 1
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 6,
+        "FLOW_NOT_CONFIRMING": 1
+      },
+      "all_control_net_usdt": -0.7817899237706396,
+      "known_closed_pairs": 1,
+      "control_net_usdt": -1.9898364973300637,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 1,
+      "unscorable_closed_pairs": 6,
+      "unscorable_control_net_usdt": 1.2080465735594241,
+      "prevented_losses_usdt": 1.9898364973300637,
+      "missed_profits_usdt": 0,
+      "paired_delta_usdt": 1.9898364973300637
+    },
+    "SOLUSDT": {
+      "entries": 3,
+      "closed": 3,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 1,
+        "REJECT": 2
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 1,
+        "OI_AND_FLOW_NOT_CONFIRMING": 1,
+        "FLOW_NOT_CONFIRMING": 1
+      },
+      "all_control_net_usdt": 3.6071457199759367,
+      "known_closed_pairs": 2,
+      "control_net_usdt": 5.573182262022129,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 2,
+      "unscorable_closed_pairs": 1,
+      "unscorable_control_net_usdt": -1.9660365420461925,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 5.573182262022129,
+      "paired_delta_usdt": -5.573182262022129
+    },
+    "XRPUSDT": {
+      "entries": 3,
+      "closed": 3,
+      "open_or_other": 0,
+      "decision_counts": {
+        "REJECT": 3
+      },
+      "reason_counts": {
+        "OI_NOT_DECLINING": 1,
+        "FLOW_NOT_CONFIRMING": 1,
+        "OI_AND_FLOW_NOT_CONFIRMING": 1
+      },
+      "all_control_net_usdt": -2.246962998413431,
+      "known_closed_pairs": 3,
+      "control_net_usdt": -2.246962998413431,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 3,
+      "unscorable_closed_pairs": 0,
+      "unscorable_control_net_usdt": 0,
+      "prevented_losses_usdt": 3.980840127194064,
+      "missed_profits_usdt": 1.733877128780633,
+      "paired_delta_usdt": 2.246962998413431
+    }
+  },
+  "by_direction": {
+    "LONG": {
+      "entries": 10,
+      "closed": 10,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 3,
+        "REJECT": 7
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 3,
+        "OI_NOT_DECLINING": 2,
+        "OI_AND_FLOW_NOT_CONFIRMING": 3,
+        "FLOW_NOT_CONFIRMING": 2
+      },
+      "all_control_net_usdt": -9.395829761266448,
+      "known_closed_pairs": 7,
+      "control_net_usdt": -7.365695890924336,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 7,
+      "unscorable_closed_pairs": 3,
+      "unscorable_control_net_usdt": -2.0301338703421123,
+      "prevented_losses_usdt": 9.946774922587554,
+      "missed_profits_usdt": 2.5810790316632186,
+      "paired_delta_usdt": 7.365695890924336
+    },
+    "SHORT": {
+      "entries": 10,
+      "closed": 9,
+      "open_or_other": 1,
+      "decision_counts": {
+        "UNKNOWN": 7,
+        "REJECT": 2,
+        "ACCEPT": 1
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 7,
+        "OI_AND_FLOW_NOT_CONFIRMING": 1,
+        "FLOW_NOT_CONFIRMING": 1,
+        "CONFIRMED": 1
+      },
+      "all_control_net_usdt": 13.002357398226167,
+      "known_closed_pairs": 2,
+      "control_net_usdt": 5.573182262022129,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 2,
+      "unscorable_closed_pairs": 7,
+      "unscorable_control_net_usdt": 7.429175136204038,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 5.573182262022129,
+      "paired_delta_usdt": -5.573182262022129
+    }
+  },
+  "by_exit_reason": {
+    "None": {
+      "entries": 1,
+      "closed": 0,
+      "open_or_other": 1,
+      "decision_counts": {
+        "ACCEPT": 1
+      },
+      "reason_counts": {
+        "CONFIRMED": 1
+      },
+      "all_control_net_usdt": 0,
+      "known_closed_pairs": 0,
+      "control_net_usdt": 0,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 0,
+      "unscorable_closed_pairs": 0,
+      "unscorable_control_net_usdt": 0,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 0,
+      "paired_delta_usdt": 0
+    },
+    "STOP": {
+      "entries": 9,
+      "closed": 9,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 4,
+        "REJECT": 5
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 4,
+        "OI_AND_FLOW_NOT_CONFIRMING": 2,
+        "FLOW_NOT_CONFIRMING": 2,
+        "OI_NOT_DECLINING": 1
+      },
+      "all_control_net_usdt": -17.84079038143158,
+      "known_closed_pairs": 5,
+      "control_net_usdt": -9.946774922587554,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 5,
+      "unscorable_closed_pairs": 4,
+      "unscorable_control_net_usdt": -7.8940154588440254,
+      "prevented_losses_usdt": 9.946774922587554,
+      "missed_profits_usdt": 0,
+      "paired_delta_usdt": 9.946774922587554
+    },
+    "TARGET": {
+      "entries": 9,
+      "closed": 9,
+      "open_or_other": 0,
+      "decision_counts": {
+        "UNKNOWN": 6,
+        "REJECT": 3
+      },
+      "reason_counts": {
+        "COLLECTOR_REGISTRATION_AFTER_REQUIRED_CONTEXT": 6,
+        "OI_AND_FLOW_NOT_CONFIRMING": 1,
+        "FLOW_NOT_CONFIRMING": 1,
+        "OI_NOT_DECLINING": 1
+      },
+      "all_control_net_usdt": 20.600116115508715,
+      "known_closed_pairs": 3,
+      "control_net_usdt": 7.307059390802762,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 3,
+      "unscorable_closed_pairs": 6,
+      "unscorable_control_net_usdt": 13.293056724705952,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 7.307059390802762,
+      "paired_delta_usdt": -7.307059390802762
+    },
+    "TIMEOUT": {
+      "entries": 1,
+      "closed": 1,
+      "open_or_other": 0,
+      "decision_counts": {
+        "REJECT": 1
+      },
+      "reason_counts": {
+        "OI_AND_FLOW_NOT_CONFIRMING": 1
+      },
+      "all_control_net_usdt": 0.8472019028825857,
+      "known_closed_pairs": 1,
+      "control_net_usdt": 0.8472019028825857,
+      "accepted_closed_pairs": 0,
+      "accepted_control_net_usdt": 0,
+      "rejected_closed_pairs": 1,
+      "unscorable_closed_pairs": 0,
+      "unscorable_control_net_usdt": 0,
+      "prevented_losses_usdt": 0,
+      "missed_profits_usdt": 0.8472019028825857,
+      "paired_delta_usdt": -0.8472019028825857
+    }
+  },
+  "cost_identity_checks": 19,
+  "future_admissions_created": 0,
+  "production_promotion": false,
+  "cost_decomposition": {
+    "price_gross_before_costs": 12.97794718555499,
+    "fees": 4.086677808844694,
+    "funding": 0.17639123420848146,
+    "both_slippages": 5.108350505542095,
+    "net_usdt": 3.6065276369597195
+  },
+  "worst_closed": [
+    {
+      "source_id": 152,
+      "symbol": "XRPUSDT",
+      "direction": "LONG",
+      "opened_utc": "2026-11-14T08:20:39.273000+00:00",
+      "source_net_usdt": -1.99528467429815,
+      "source_exit_reason": "STOP",
+      "gate": {
+        "decision": "REJECT",
+        "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+        "data_quality": "PASS",
+        "accepted": false,
+        "evidence": {
+          "decision_ms": 1794644439273,
+          "context_start_ms": 1794644049273,
+          "flow_minute_ms": 1794644340000,
+          "oi_baseline_anchor_ms": 1794644139273,
+          "oi": {
+            "previous": 302150597.0,
+            "recent": 302156986.2,
+            "change_fraction": 2.1145746735029617e-05,
+            "previous_received_ms": 1794644136344,
+            "recent_received_ms": 1794644436356,
+            "previous_exchange_ms": 1794644132765,
+            "recent_exchange_ms": 1794644433562,
+            "observed_interval_ms": 300797
+          },
+          "flow": {
+            "minute_ms": 1794644340000,
+            "minute_end_ms": 1794644400000,
+            "session": "1b4484add1ed4360b8cdf694b9c8ffe2",
+            "buy_quote": 102549.11283000001,
+            "sell_quote": 212461.2304,
+            "imbalance": -0.3489159004844147,
+            "first_id": 795247576,
+            "last_id": 795247703,
+            "messages": 128,
+            "last_received_ms": 1794644399694,
+            "successor_first_received_ms": 1794644400983,
+            "coverage": "CONTIGUOUS_SAME_SESSION_OBSERVED_AGGTRADE_INTERVAL"
+          },
+          "conditions": {
+            "oi_declines": false,
+            "flow_confirms": false
+          }
+        }
+      }
+    },
+    {
+      "source_id": 119,
+      "symbol": "LTCUSDT",
+      "direction": "LONG",
+      "opened_utc": "2026-11-12T07:16:27.317000+00:00",
+      "source_net_usdt": -1.9898364973300637,
+      "source_exit_reason": "STOP",
+      "gate": {
+        "decision": "REJECT",
+        "reason": "FLOW_NOT_CONFIRMING",
+        "data_quality": "PASS",
+        "accepted": false,
+        "evidence": {
+          "decision_ms": 1794467787317,
+          "context_start_ms": 1794467397317,
+          "flow_minute_ms": 1794467700000,
+          "oi_baseline_anchor_ms": 1794467487317,
+          "oi": {
+            "previous": 1192978.738,
+            "recent": 1192837.598,
+            "change_fraction": -0.00011830889814232381,
+            "previous_received_ms": 1794467485985,
+            "recent_received_ms": 1794467786932,
+            "previous_exchange_ms": 1794467480868,
+            "recent_exchange_ms": 1794467781536,
+            "observed_interval_ms": 300668
+          },
+          "flow": {
+            "minute_ms": 1794467700000,
+            "minute_end_ms": 1794467760000,
+            "session": "c3dd56214ce34310a18f77de9b7c67f1",
+            "buy_quote": 1876.91437,
+            "sell_quote": 8428.532109999998,
+            "imbalance": -0.6357432210933184,
+            "first_id": 429961879,
+            "last_id": 429961908,
+            "messages": 30,
+            "last_received_ms": 1794467754327,
+            "successor_first_received_ms": 1794467760401,
+            "coverage": "CONTIGUOUS_SAME_SESSION_OBSERVED_AGGTRADE_INTERVAL"
+          },
+          "conditions": {
+            "oi_declines": true,
+            "flow_confirms": false
+          }
+        }
+      }
+    },
+    {
+      "source_id": 117,
+      "symbol": "DOGEUSDT",
+      "direction": "LONG",
+      "opened_utc": "2026-11-12T07:16:24.276000+00:00",
+      "source_net_usdt": -1.9886746104614985,
+      "source_exit_reason": "STOP",
+      "gate": {
+        "decision": "REJECT",
+        "reason": "OI_AND_FLOW_NOT_CONFIRMING",
+        "data_quality": "PASS",
+        "accepted": false,
+        "evidence": {
+          "decision_ms": 1794467784276,
+          "context_start_ms": 1794467394276,
+          "flow_minute_ms": 1794467700000,
+          "oi_baseline_anchor_ms": 1794467484276,
+          "oi": {
+            "previous": 2464724589.0,
+            "recent": 2464814033.0,
+            "change_fraction": 3.6289652969417425e-05,
+            "previous_received_ms": 1794467483887,
+            "recent_received_ms": 1794467723667,
+            "previous_exchange_ms": 1794467477612,
+            "recent_exchange_ms": 1794467719035,
+            "observed_interval_ms": 241423
+          },
+          "flow": {
+            "minute_ms": 1794467700000,
+            "minute_end_ms": 1794467760000,
+            "session": "c3dd56214ce34310a18f77de9b7c67f1",
+            "buy_quote": 13008.363169999999,
+            "sell_quote": 28707.802730000003,
+            "imbalance": -0.37633946508013105,
+            "first_id": 1043938433,
+            "last_id": 1043938517,
+            "messages": 85,
+            "last_received_ms": 1794467759859,
+            "successor_first_received_ms": 1794467760601,
+            "coverage": "CONTIGUOUS_SAME_SESSION_OBSERVED_AGGTRADE_INTERVAL"
+          },
+          "conditions": {
+            "oi_declines": false,
+            "flow_confirms": false
+          }
+        }
+      }
+    },
+    {
+      "source_id": 148,
+      "symbol": "DOGEUSDT",
+      "direction": "LONG",
+      "opened_utc": "2026-11-13T23:45:31.564000+00:00",
+      "source_net_usdt": -1.9874236876019282,
+      "source_exit_reason": "STOP",
+      "gate": {
+        "decision": "REJECT",
+        "reason": "OI_NOT_DECLINING",
+        "data_quality": "PASS",
+        "accepted": false,
+        "evidence": {
+          "decision_ms": 1794613531564,
+          "context_start_ms": 1794613141564,
+          "flow_minute_ms": 1794613440000,
+          "oi_baseline_anchor_ms": 1794613231564,
+          "oi": {
+            "previous": 2365355455.0,
+            "recent": 2365816728.0,
+            "change_fraction": 0.00019501212768040395,
+            "previous_received_ms": 1794613177056,
+            "recent_received_ms": 1794613477141,
+            "previous_exchange_ms": 1794613169804,
+            "recent_exchange_ms": 1794613470211,
+            "observed_interval_ms": 300407
+          },
+          "flow": {
+            "minute_ms": 1794613440000,
+            "minute_end_ms": 1794613500000,
+            "session": "2444b10a1f2d4eec812994496ce085e7",
+            "buy_quote": 83816.11877999998,
+            "sell_quote": 59197.03443000005,
+            "imbalance": 0.17214559498488471,
+            "first_id": 1044212782,
+            "last_id": 1044212884,
+            "messages": 103,
+            "last_received_ms": 1794613500004,
+            "successor_first_received_ms": 1794613500375,
+            "coverage": "CONTIGUOUS_SAME_SESSION_OBSERVED_AGGTRADE_INTERVAL"
+          },
+          "conditions": {
+            "oi_declines": false,
+            "flow_confirms": true
+          }
+        }
+      }
+    },
+    {
+      "source_id": 145,
+      "symbol": "XRPUSDT",
+      "direction": "LONG",
+      "opened_utc": "2026-11-13T23:45:27.031000+00:00",
+      "source_net_usdt": -1.9855554528959138,
+      "source_exit_reason": "STOP",
+      "gate": {
+        "decision": "REJECT",
+        "reason": "FLOW_NOT_CONFIRMING",
+        "data_quality": "PASS",
+        "accepted": false,
+        "evidence": {
+          "decision_ms": 1794613527031,
+          "context_start_ms": 1794613137031,
+          "flow_minute_ms": 1794613440000,
+          "oi_baseline_anchor_ms": 1794613227031,
+          "oi": {
+            "previous": 293635079.3,
+            "recent": 293613850.5,
+            "change_fraction": -7.229653912811636e-05,
+            "previous_received_ms": 1794613175058,
+            "recent_received_ms": 1794613475050,
+            "previous_exchange_ms": 1794613171214,
+            "recent_exchange_ms": 1794613467561,
+            "observed_interval_ms": 296347
+          },
+          "flow": {
+            "minute_ms": 1794613440000,
+            "minute_end_ms": 1794613500000,
+            "session": "2444b10a1f2d4eec812994496ce085e7",
+            "buy_quote": 127895.53934999999,
+            "sell_quote": 172247.90325000003,
+            "imbalance": -0.1477705576900051,
+            "first_id": 795150355,
+            "last_id": 795150525,
+            "messages": 171,
+            "last_received_ms": 1794613499674,
+            "successor_first_received_ms": 1794613500555,
+            "coverage": "CONTIGUOUS_SAME_SESSION_OBSERVED_AGGTRADE_INTERVAL"
+          },
+          "conditions": {
+            "oi_declines": true,
+            "flow_confirms": false
+          }
+        }
+      }
+    }
+  ]
+}

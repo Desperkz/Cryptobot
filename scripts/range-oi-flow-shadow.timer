@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh separate RANGE OI and flow matched labels
+
+[Timer]
+OnBootSec=45
+OnUnitInactiveSec=59
+AccuracySec=1
+Unit=range-oi-flow-shadow.service
+
+[Install]
+WantedBy=timers.target

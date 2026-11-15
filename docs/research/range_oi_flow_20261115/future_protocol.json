@@ -1,0 +1,48 @@
+{
+  "frozen_utc": "2026-11-15T06:28:13.919996+00:00",
+  "rule": {
+    "study": "range-oi-flow-shadow-v1",
+    "cohort": "2026-11-15-range-oi-flow-shadow-v1",
+    "mode": "SHADOW",
+    "order_capability": false,
+    "combined_with_main_balance": false,
+    "source_strategy": "RANGE_REBOUND_V3",
+    "source_cohort": "2026-10-21-diversified-v3-shadow-r2",
+    "selection": "source id above registration watermark AND source observed_ms/bar_ms at or after registration; no old entries or replacement admissions",
+    "timing": "as-of source opened_ms; decisions committed before reading outcomes; source may publish120s late and observer discovery>180s is UNKNOWN; observational labels not executable fills",
+    "comparison": "known ACCEPT+REJECT closed controls versus accepted identical closed controls; UNKNOWN controls kept separately",
+    "costs": "source unchanged: 2USDT cost-aware risk budget;4bp fees eachside;5bp adverse entry/exit slip;adverse1bp/8h funding; no portfolioROI claim",
+    "gate": {
+      "name": "range-oi-flow-confirmation-v1",
+      "order_capability": false,
+      "decision_time": "unchanged source opened_ms; feature received_ms and exchange time must not exceed this as-of time",
+      "oi": "latest valid sample received by decision and latest received by decision-5min; each endpoint at most90s old; strict decline",
+      "flow": "last completed UTC minute; LONG buy_quote>sell_quote; SHORT sell_quote>buy_quote; equality rejects",
+      "flow_quality": "one same-session target segment, full contiguous ID span/messages, adjacent previous-last and successor-first IDs; all used observations received by decision",
+      "connection_quality": "same session starts before flow minute, covers minute and known successor; no recorded lifecycle, ID-gap or invalid-stream issue in five-minute context plus endpoint age allowance",
+      "unknown": "missing, malformed, stale, late-mutated or uncertified evidence is UNKNOWN, never a rejection or zero return",
+      "costs": "unchanged source entries, exits, quantity, risk and modeled costs; no replacement trades",
+      "scope": "as-of paired observational label; delayed source publication is not proof of executable timing",
+      "future_safety": "future rows cannot add feature information; a final target aggregate containing post-decision receipts is UNKNOWN because its past prefix cannot be reconstructed",
+      "market_scope": "observed Binance aggTrade stream only, not all exchange transactions or complete liquidation volumes"
+    },
+    "promotion": "none; descriptive first review after14 elapsed days and50known closed pairs, never automatic paper promotion"
+  },
+  "code_sha256": {
+    "src/trading_bot/research/range_oi_flow_gate.py": "d7ee785bd2287ee4b588c998277d1f6c652097a5872ff25ab775a0c505a49540",
+    "src/trading_bot/research/range_oi_flow_shadow.py": "6ee1d79d21f58c8dd02e069680167c3b34e17e9130a88cf894fe46ff0bb03c11"
+  },
+  "source_manifest_sha256": "7254d8a4904cb905ae8c6f0b8dc7f87f2ab286c8352d6e6afb04c78d43e1b7a0",
+  "market_manifest_sha256": "2d4676395c80334c2c89e30585e16df1afdd9c380138227e9b754a244befa60b",
+  "historical_source_max_id_seen": 168,
+  "historical_classification": "diagnostic only; observed before future cohort; no accepted closed outcomes",
+  "registration": "actual server time and CURRENT source max-ID frozen atomically at initialization; must be >=168; no backfill",
+  "validation_fix": "finite derived OI evidence only, no threshold changes; original gate archived and20/20 historical outputs identical",
+  "checks": {
+    "full_pytest_passed": 1047,
+    "wal_read_only_clean_reopen": true,
+    "source_plan_contracts": 20
+  },
+  "profitability_claim": false,
+  "automatic_promotion": false
+}

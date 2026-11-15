@@ -10,6 +10,9 @@
 Dockerfile text eol=lf
 scripts/market-evidence-collector.service text eol=lf
 docs/research/sqz_regime_20261110/* text eol=lf
+scripts/range-oi-flow-shadow.service text eol=lf
+scripts/range-oi-flow-shadow.timer text eol=lf
+docs/research/range_oi_flow_20261115/* text eol=lf
 
 *.bat text eol=crlf
 *.cmd text eol=crlf
