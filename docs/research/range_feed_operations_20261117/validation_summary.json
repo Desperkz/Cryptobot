@@ -1,0 +1,55 @@
+{
+  "classification": "technical reliability and retrospective diagnosis; not profitability proof",
+  "deployed_runtime_revision": "a5f62b2e04fdd57433828fa4ec28cf08ca0b77e3",
+  "verification_at_ms": 1794913143828,
+  "tests_passed": 1078,
+  "same_case_file_and_frozen_reader": true,
+  "before": {
+    "completed": 0,
+    "timeouts": 5,
+    "deadline_seconds": 8,
+    "elapsed_seconds": [
+      8.101177393924445,
+      8.005961243063211,
+      8.302664225921035,
+      8.000952314119786,
+      8.1879402610939
+    ]
+  },
+  "after": {
+    "completed": 5,
+    "timeouts": 0,
+    "deadline_seconds": 8,
+    "elapsed_seconds": [
+      0.20191057887859643,
+      0.08841124293394387,
+      0.20862639299593866,
+      0.19077636278234422,
+      0.009985795943066478
+    ]
+  },
+  "content_preservation_proof": "Separate paused-database migration: all six table row counts/hashes and sampled original query results unchanged. Pre-benchmark had no result digest because all cases timed out.",
+  "frozen_cohorts_preserved": 17,
+  "existing_pairs_preserved": 4,
+  "main_trading_files_and_pids_unchanged": true,
+  "collector_clean_restarts": 1,
+  "observer_idle_seconds": 20,
+  "observed_full_cycle_intervals_seconds": [
+    34.072235107421875,
+    35.424989013671876,
+    32.500087890625,
+    33.510778076171874,
+    31.156471923828125,
+    34.334509033203126,
+    35.65689013671875
+  ],
+  "healthy_automatic_cycles": 8,
+  "natural_websocket_close_observed": false,
+  "previous_network_disconnection_cause": "not established; diagnostic instrumentation deployed",
+  "trading_rules_changed": false,
+  "expenses_changed": false,
+  "past_decisions_reevaluated": false,
+  "price_path_source_exit_reproduced": 5,
+  "price_path_cost_identities_passed": 25,
+  "profitability_proven": false
+}

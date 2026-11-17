@@ -1,0 +1,119 @@
+{
+  "passed": true,
+  "database": "/root/bot_market_evidence/data/market_evidence.sqlite3",
+  "manifest_sha256": "2d4676395c80334c2c89e30585e16df1afdd9c380138227e9b754a244befa60b",
+  "logical_tables_before": {
+    "meta": {
+      "rows": 2,
+      "sha256": "47e1122a5d2cce4f9d5ed456d74d8e1ed30d685e4dc901923e112f3c89219639"
+    },
+    "segments": {
+      "rows": 81994,
+      "sha256": "a9fdc94a375b5cdd9eeff108604c27b0b2883972f838b0d371cac54dfdf5a6a3"
+    },
+    "snapshots": {
+      "rows": 244377,
+      "sha256": "f308a598aeaae0f31014cc3fa2ca2979491412e7244da3b1b1c6f657fa817d43"
+    },
+    "liquidations": {
+      "rows": 38597,
+      "sha256": "251af52c29cb5177633628b02b505297be03661a00d454032f13a7f1aa43adf6"
+    },
+    "issues": {
+      "rows": 4691,
+      "sha256": "c6ec1b5d113ad4db000fb88ce5b8942f30989ed42628b5fb1be45d51ccb83dd4"
+    },
+    "connections": {
+      "rows": 123,
+      "sha256": "2bf727abc6f44bffcfb7c7a62407e350d98b3df35eff8bf66cf3a48d1474ee87"
+    }
+  },
+  "logical_tables_after": {
+    "meta": {
+      "rows": 2,
+      "sha256": "47e1122a5d2cce4f9d5ed456d74d8e1ed30d685e4dc901923e112f3c89219639"
+    },
+    "segments": {
+      "rows": 81994,
+      "sha256": "a9fdc94a375b5cdd9eeff108604c27b0b2883972f838b0d371cac54dfdf5a6a3"
+    },
+    "snapshots": {
+      "rows": 244377,
+      "sha256": "f308a598aeaae0f31014cc3fa2ca2979491412e7244da3b1b1c6f657fa817d43"
+    },
+    "liquidations": {
+      "rows": 38597,
+      "sha256": "251af52c29cb5177633628b02b505297be03661a00d454032f13a7f1aa43adf6"
+    },
+    "issues": {
+      "rows": 4691,
+      "sha256": "c6ec1b5d113ad4db000fb88ce5b8942f30989ed42628b5fb1be45d51ccb83dd4"
+    },
+    "connections": {
+      "rows": 123,
+      "sha256": "2bf727abc6f44bffcfb7c7a62407e350d98b3df35eff8bf66cf3a48d1474ee87"
+    }
+  },
+  "context_digests": {
+    "168": "9814f83cb46ba262c58f7a678d5304426f59bddc4ecfa23a5bb4b2ad2cbeec56",
+    "172": "a3494e37022a132eaa9cda4221e4bbbd05d3afbb98e7822e058abf53c8178ec0",
+    "173": "7264fbc16595e62f1a50cd16d18fb0f5d2a5b84af2c7bf32d96bb1741f5a2033",
+    "201": "256f86eaf11d142a949a9db037c6b6b8580b0b9fea0ea36437ae4fca0bece19f",
+    "204": "7d6eb1ee7c48614d8dceca057e77a633e0f43a9d8710feb95e33580c0df2c96a"
+  },
+  "contexts_identical": true,
+  "indexes": {
+    "market_evidence_segments_symbol_minute": "CREATE INDEX market_evidence_segments_symbol_minute ON segments(symbol,minute_ms,session)",
+    "market_evidence_issues_time_id": "CREATE INDEX market_evidence_issues_time_id ON issues(at_ms,id)"
+  },
+  "query_plans_before": {
+    "segments": [
+      [
+        4,
+        0,
+        0,
+        "SCAN segments"
+      ],
+      [
+        23,
+        0,
+        0,
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    ],
+    "issues": [
+      [
+        4,
+        0,
+        0,
+        "SCAN issues"
+      ],
+      [
+        25,
+        0,
+        0,
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    ]
+  },
+  "query_plans_after": {
+    "segments": [
+      [
+        5,
+        0,
+        0,
+        "SEARCH segments USING INDEX market_evidence_segments_symbol_minute (symbol=? AND minute_ms>? AND minute_ms<?)"
+      ]
+    ],
+    "issues": [
+      [
+        5,
+        0,
+        0,
+        "SEARCH issues USING INDEX market_evidence_issues_time_id (at_ms>? AND at_ms<?)"
+      ]
+    ]
+  },
+  "elapsed_seconds": 37.068575681885704,
+  "data_or_protocol_rows_modified": false
+}
