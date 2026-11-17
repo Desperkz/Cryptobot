@@ -7,6 +7,7 @@
 *.html text eol=lf
 *.md text eol=lf
 *.toml text eol=lf
+*.conf text eol=lf
 Dockerfile text eol=lf
 scripts/market-evidence-collector.service text eol=lf
 docs/research/sqz_regime_20261110/* text eol=lf
