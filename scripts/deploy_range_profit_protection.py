@@ -68,9 +68,14 @@ def readonly(path):
     return db
 
 
-def resource_check():
-    available = next(int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines()
-                     if line.startswith('MemAvailable:'))
+def resource_check(*, wait_seconds=30):
+    deadline = time.monotonic()+wait_seconds
+    while True:
+        available = next(int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines()
+                         if line.startswith('MemAvailable:'))
+        if available >= 80*1024**2 or time.monotonic() >= deadline:
+            break
+        time.sleep(1)
     free_disk = shutil.disk_usage('/root').free
     require(available >= 80*1024**2, 'Less than 80 MiB MemAvailable; rollout paused')
     require(free_disk >= 1024**3, 'Less than 1 GiB free disk; rollout paused')
