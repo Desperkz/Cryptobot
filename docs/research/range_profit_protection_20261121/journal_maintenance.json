@@ -1,0 +1,24 @@
+{
+  "journal": {
+    "started_ms": 1795256462932,
+    "free_before": 1662767104,
+    "archive_location": "/root/journal_preservation_20261121",
+    "journal_content_left_on_same_server": true,
+    "passed": true,
+    "finished_ms": 1795256631010,
+    "free_after": 4351381504,
+    "collector_database_unchanged_by_maintenance": true,
+    "collector_start_requested": true,
+    "journal_policy": "[Journal]\nSystemMaxUse=768M\nSystemKeepFree=3G\n",
+    "raw_bytes": 3204448256,
+    "compressed_bytes": 515460722
+  },
+  "collector_health": "OK",
+  "collector_errors": [],
+  "status_age_seconds": 1.403206787109375,
+  "registered_ms": 1794301807296,
+  "collector_bytes": 245321048,
+  "free_disk": 4349046784,
+  "existing_lab": false,
+  "python": "Python 3.10.12"
+}

@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "runtime_revision": "6267ea661ba2960a70c3bf9da2ae2610d6980a5a",
+  "registered_ms": 1795257054292,
+  "started_local": "2026-11-21T15:30:54.292000+05:00",
+  "source_watermark": 275,
+  "protocol_identity_sha256": "c0e1c3ef39a3aadba47ca8c59b34681b3448023ef7a0adf591b3a454e0998b73",
+  "tests_passed": 1158,
+  "old_studies_preserved": 17,
+  "old_oi_admissions_preserved": 17,
+  "healthy_automatic_cycles": 6,
+  "future_pairs_at_verification": 0,
+  "public_minutes_smoke_passed": true,
+  "live_browser_widths": [
+    1440,
+    1280,
+    390
+  ],
+  "horizontal_overflow": false,
+  "main_bot_monitor_producer_not_restarted": true,
+  "controller_restarted_for_ui": true,
+  "collector_restarted_to_restore_failed_service": true,
+  "profitability_proven": false
+}

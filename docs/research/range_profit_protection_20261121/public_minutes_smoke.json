@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "public_symbol": "BTCUSDT",
+  "closed_minutes": 3,
+  "response_sha256": "7c02d68d7a9b8151934a27132b154db7d4d8573cd2d58637e175a668de2f198d",
+  "received_ms": 1795257175968,
+  "production_databases_opened": false,
+  "orders_possible": false
+}

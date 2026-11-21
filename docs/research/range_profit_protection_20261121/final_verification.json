@@ -1,0 +1,99 @@
+{
+  "passed": true,
+  "at_ms": 1795257205486,
+  "runtime_revision": "6267ea661ba2960a70c3bf9da2ae2610d6980a5a",
+  "registered_ms": 1795257054292,
+  "started_local": "2026-11-21T15:30:54.292000+05:00",
+  "source_watermark": 275,
+  "identity_sha256": "c0e1c3ef39a3aadba47ca8c59b34681b3448023ef7a0adf591b3a454e0998b73",
+  "old_studies_preserved": 17,
+  "old_oi_admissions_preserved": 17,
+  "main_bot_monitor_producer_not_restarted": true,
+  "controller_restarted_for_ui": true,
+  "healthy_automatic_cycles": 6,
+  "stored_future_pairs": 0,
+  "api": {
+    "cohort": "2026-11-21-range-close-1r-entry-stop-v1",
+    "combined_with_main_balance": false,
+    "counts": {
+      "closed_pairs": 0,
+      "eligible": 0,
+      "observed": 0,
+      "open_pairs": 0,
+      "skipped": 0,
+      "unscorable": 0
+    },
+    "errors": [],
+    "generated_at_ms": 1795257182192,
+    "health": "OK",
+    "limitations": [
+      "Сравниваются только новые исходные RANGE-входы. Ранний выход не добавляет новых входов.",
+      "Стоп на цене входа не гарантирует безубыток после комиссий, проскальзывания и funding.",
+      "Итоги сравнения включают только пары с двумя закрытыми вариантами и проверенным контролем.",
+      "Минутные свечи и отложенная публикация входа не доказывают реальное исполнение. Пропуски данных не считаются нулём.",
+      "Модельные суммы коррелированных наблюдений не являются доходностью реального портфеля."
+    ],
+    "mode": "SHADOW",
+    "order_capability": false,
+    "protocol": {
+      "adverse_funding_bps_per_8h": 1,
+      "arm_at_r": 1,
+      "arm_on": "CLOSED_1M_CLOSE",
+      "effective": "NEXT_FULL_MINUTE",
+      "fees_bps_per_side": 4,
+      "protected_stop": "ENTRY",
+      "risk_usdt": 2,
+      "slippage_bps_per_side": 5
+    },
+    "recent_pairs": [],
+    "registered_ms": 1795257054292,
+    "results": {
+      "improved_pairs": 0,
+      "paired_control_net_usdt": 0,
+      "paired_delta_usdt": 0,
+      "protected_net_usdt": 0,
+      "unchanged_pairs": 0,
+      "unscorable_control_net_usdt": 0,
+      "unscorable_controls_closed": 0,
+      "worsened_pairs": 0
+    },
+    "review": {
+      "automatic_promotion": false,
+      "elapsed_days": 0.001480324074074074,
+      "ready": false,
+      "required_closed_pairs": 50,
+      "required_days": 14
+    },
+    "source": {
+      "age_seconds": 19.299,
+      "health": "OK"
+    },
+    "source_watermark": 275,
+    "study": "range-profit-protection-shadow-v1",
+    "age_seconds": 23.261,
+    "stale_after_seconds": 900
+  },
+  "timer": {
+    "ActiveState": "active"
+  },
+  "unit": {
+    "Result": "success",
+    "NRestarts": "0",
+    "ExecMainStatus": "0",
+    "MemoryCurrent": "11321344"
+  },
+  "memory": [
+    "MemAvailable:     145580 kB",
+    "SwapFree:         719804 kB"
+  ],
+  "collector_health": "OK",
+  "collector_registered_ms": 1794301807296,
+  "collector_bytes": 248612928,
+  "journal_preservation": {
+    "verified_files": 59,
+    "uncompressed_bytes": 3204448256,
+    "compressed_bytes": 515460722,
+    "archive_location": "/root/journal_preservation_20261121",
+    "content_not_transferred_off_server": true
+  }
+}
