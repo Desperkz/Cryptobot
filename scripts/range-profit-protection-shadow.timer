@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh separate RANGE profit-protection shadow comparison
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=20s
+AccuracySec=1s
+Unit=range-profit-protection-shadow.service
+
+[Install]
+WantedBy=timers.target

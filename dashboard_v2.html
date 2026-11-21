@@ -96,6 +96,27 @@ td:not(:first-child) { font-variant-numeric:tabular-nums; }
 @media(max-width:1100px) { .quality-metrics.carry-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:760px) { .quality-metrics.carry-metrics { grid-template-columns:1fr; } }
 .quality-counts { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; }
+.protection-card { border-top:3px solid var(--blue); }
+.protection-eyebrow { color:var(--blue); font-size:13px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; margin-bottom:5px; }
+.protection-card h2 { font-size:22px; }
+.protection-rule { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.protection-step { display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--border); border-radius:9px; background:var(--bg); min-width:0; }
+.protection-step strong { display:block; font-size:15px; font-weight:600; }
+.protection-step p { font-size:14px; color:var(--text-muted); margin-top:4px; }
+.protection-step-number { display:grid; place-items:center; width:25px; height:25px; border-radius:50%; background:var(--bg3); color:var(--blue); font-size:13px; font-weight:650; flex-shrink:0; }
+.protection-summary { display:flex; align-items:center; flex-wrap:wrap; gap:10px 22px; margin:16px 0; }
+.protection-summary span { color:var(--text-muted); font-size:14px; }
+.protection-summary strong { color:var(--text); font-size:16px; font-weight:600; }
+.protection-progress { display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px; padding:13px 16px; border:1px solid var(--border); background:var(--bg); border-radius:9px; font-size:14px; }
+.protection-progress strong { color:var(--text); }
+.protection-progress span { color:var(--text-muted); }
+.protection-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:15px; }
+.protection-pair { border:1px solid var(--border); border-radius:9px; padding:14px 16px; min-width:0; }
+.protection-pair-header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:start; gap:8px; margin-bottom:10px; }
+.protection-pair dl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; font-size:14px; margin:0; }
+.protection-pair dt { color:var(--text-muted); } .protection-pair dd { margin:0; font-variant-numeric:tabular-nums; }
+.protection-pair .muted { margin-top:10px; overflow-wrap:anywhere; }
+@media(max-width:760px) { .protection-rule,.protection-pairs { grid-template-columns:1fr; } .protection-card h2 { font-size:20px; } }
 .quality-buckets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
 .quality-bucket { border:1px solid var(--border); border-radius:9px; padding:16px; min-width:0; }
 .quality-bucket h3 { margin-bottom:8px; }
@@ -203,6 +224,31 @@ footer { padding:0 28px 24px; color:var(--text-muted); font-size:14px; }
 </section>
 
 <section id="view-research" role="tabpanel" aria-labelledby="tab-research" hidden>
+  <div class="card protection-card" id="range-protection-card">
+    <div class="card-header"><div><p class="protection-eyebrow">Новый эксперимент · Shadow</p><h2>RANGE · защита возникшей прибыли</h2></div><span class="scope">Сравнение выходов на одинаковых входах</span></div>
+    <div class="card-content">
+      <p class="research-note">Проверяем, помогает ли перенос стопа сохранить движение в нашу сторону. Текущая стратегия остаётся контролем. Новые сделки сравниваются попарно; прошлые результаты в эту серию не переносятся.</p>
+      <div class="protection-rule" aria-label="Правило проверки">
+        <div class="protection-step"><span class="protection-step-number" aria-hidden="true">1</span><div><strong>Дождаться закрытия минуты на +1R</strong><p>Один R — исходное расстояние от цены входа до стопа. Одного касания уровня недостаточно.</p></div></div>
+        <div class="protection-step"><span class="protection-step-number" aria-hidden="true">2</span><div><strong>Перенести стоп на цену входа</strong><p>Защита действует со следующей полной минуты. Исходная цель остаётся прежней.</p></div></div>
+        <div class="protection-step"><span class="protection-step-number" aria-hidden="true">3</span><div><strong>Сравнить оба завершённых выхода</strong><p>Комиссии и проскальзывание сохраняются. Выход у цены входа может дать чистый убыток.</p></div></div>
+      </div>
+      <p id="range-protection-status" class="muted" aria-live="polite">Ожидание регистрации новой серии</p>
+      <p id="range-protection-alert" class="alert detail-block" role="status" hidden></p>
+      <div class="quality-metrics">
+        <div class="metric-card"><div class="metric-label">Контроль · прежнее сопровождение</div><div id="range-protection-control" class="metric-value">—</div><div class="metric-sub">Net, USDT · только завершённые пары</div></div>
+        <div class="metric-card"><div class="metric-label">Вариант · защита на цене входа</div><div id="range-protection-variant" class="metric-value">—</div><div class="metric-sub">Те же входы, объём и модель расходов</div></div>
+        <div class="metric-card"><div class="metric-label">Разница с контролем</div><div id="range-protection-delta" class="metric-value">—</div><div class="metric-sub">Плюс — защита помогла; минус — ухудшила результат</div></div>
+      </div>
+      <div id="range-protection-counts" class="quality-counts"></div>
+      <p id="range-protection-effects" class="research-note detail-block">Пока нет завершённых пар. Польза нового сопровождения ещё не оценена.</p>
+      <p id="range-protection-unknown" class="muted"></p>
+      <div id="range-protection-review" class="protection-progress detail-block"><strong>Собираем новую серию</strong><span>Первый разбор — после 14 дней и 50 закрытых пар.</span></div>
+      <p class="muted detail-block">Риск 2 USDT на исходный вход. Это отдельная виртуальная проверка выхода, без фильтрации по OI и потоку сделок. Она не добавляется к основному paper-балансу и не переводится в paper автоматически. Прибыльность пока не подтверждена.</p>
+      <details class="detail-block"><summary>Последние пары и состояние сравнения</summary><div id="range-protection-pairs" class="protection-pairs"><p class="muted">Новых наблюдений пока нет.</p></div></details>
+      <details class="detail-block"><summary>Зафиксированные правила и состояние источника</summary><div id="range-protection-protocol" class="detail-block"></div></details>
+    </div>
+  </div>
   <details class="card" id="range-flow-card">
     <summary class="card-content"><strong>Отскок в диапазоне · OI и поток сделок · отдельный Shadow</strong></summary>
     <div class="card-content">
@@ -313,7 +359,7 @@ const INTERVAL=30,PAGE_SIZE=10;
 let activeView='overview',refreshInFlight=null,refreshQueued=false,cdownVal=INTERVAL,cdownTimer,lastCurve=[],startEquity=250,statusMisses=0,lastHealthyStatusAt=0,resizeRaf=0;
 function setHTML(id,html){const el=$(id);if(el.innerHTML!==html)el.innerHTML=html;}
 function stamp(route){return updated[route]?'Данные: '+new Date(updated[route]).toLocaleTimeString('ru-RU'):'Ожидание данных';}
-const routeNames={'/range-oi-flow-shadow':'подтверждение отскока OI / поток','/funding-carry-shadow':'funding BTC / ETH','/sqz-entry-quality-shadow':'качество входа SQZ','/research-storage':'архив истории исследований','/breakout-recheck-shadow':'проверка пробоя SQZ','/runner-comparison':'сравнение выходов','/paper-pilots':'paper-пилоты','/status':'состояние бота','/config':'конфигурация','/stats':'основная статистика','/positions':'позиции','/trades':'история сделок','/strategy-scorecard':'стратегии и shadow','/strategy-allocator':'рекомендации по риску','/monthly-target-plan':'месячный сценарий','/signals':'сигналы','/logs':'журнал','/rejections':'отказы','/rejection-stats':'счётчики отказов'};
+const routeNames={'/range-profit-protection-shadow':'защита прибыли RANGE','/range-oi-flow-shadow':'подтверждение отскока OI / поток','/funding-carry-shadow':'funding BTC / ETH','/sqz-entry-quality-shadow':'качество входа SQZ','/research-storage':'архив истории исследований','/breakout-recheck-shadow':'проверка пробоя SQZ','/runner-comparison':'сравнение выходов','/paper-pilots':'paper-пилоты','/status':'состояние бота','/config':'конфигурация','/stats':'основная статистика','/positions':'позиции','/trades':'история сделок','/strategy-scorecard':'стратегии и shadow','/strategy-allocator':'рекомендации по риску','/monthly-target-plan':'месячный сценарий','/signals':'сигналы','/logs':'журнал','/rejections':'отказы','/rejection-stats':'счётчики отказов'};
 async function get(path){const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),15000);try{const r=await fetch(API+path,{cache:'no-store',signal:ctrl.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const data=await r.json();if(data?.error||Array.isArray(data)&&data[0]?.error)throw new Error('Источник вернул ошибку');cache[path]=data;updated[path]=Date.now();errors.delete(path);return data;}catch(e){errors.set(path,e.message||'Нет связи');throw e;}finally{clearTimeout(timer);}}
 function renderErrors(){const entries=[...errors.keys()];$('data-alert').hidden=!entries.length;if(entries.length)$('data-alert').textContent='Не обновлены: '+entries.map(k=>routeNames[k]||k).join(', ')+'. Последние сохранённые значения могут быть устаревшими.';}
 function toggleTheme(){const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;$('theme-btn').textContent=theme==='dark'?'Светлая тема':'Тёмная тема';try{localStorage.setItem('botTheme',theme);}catch{}drawEquity(lastCurve);}
@@ -344,6 +390,46 @@ function renderMonthly(){const d=cache['/monthly-target-plan'];if(!d)return;cons
 function renderSignals(){const rows=cache['/signals'];if(!rows)return;setHTML('sig-body',rows.slice(0,20).map(s=>{const m=metadata(s.metadata),sm=m.signal_metadata||m;return `<div class="sig-row"><span class="sig-time">${fmtLocalTime(s.created_at)}</span><strong>${esc(s.symbol)}</strong><span class="${dirCls(s.direction)}">${dirLabel(s.direction)}</span><span class="sig-reason">${sm.strategy_mode==='shadow'?'<span class="badge">Shadow</span> ':''}${esc(s.reason||'Причина не указана')}</span></div>`;}).join('')||'<div class="empty">Нет сигналов в ответе API</div>');}
 function renderRejections(){const data=cache['/rejections'],stats=cache['/rejection-stats'];if(stats){$('rj-total').textContent=(stats.total??0)+' за всю историю';setHTML('rj-stats',Object.entries(stats.by_type||{}).map(([k,v])=>`<span class="rj-badge">${esc(k)} <span class="rj-count">${v}</span></span>`).join(''));}if(!data)return;const visible=paginate(data.slice(0,50),'rejection','rejection-pagination');setHTML('rj-body',visible.length?visible.map(r=>`<tr><td>${fmtLocalTime(r.created_at)}</td><td>${esc(r.symbol)}</td><td>${dirLabel(r.direction)}</td><td>${esc(stratName(r.strategy))}</td><td>${esc(r.filter_type)}</td><td>${esc(r.reason||'Не указана')}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">Нет отказов в ответе API</td></tr>');}
 function renderLogs(){const data=cache['/logs'];if(!data)return;setHTML('log-wrap',data.slice(-80).map(line=>`<div class="ll ${line.includes('ERROR')||line.includes('Traceback')?'err':line.includes('WARNING')?'warn':''}">${esc(line)}</div>`).join('')||'<p class="muted">Нет строк журнала</p>');const sq={};data.forEach(line=>{const m=line.match(/SQZ\s+([A-Z0-9]+):\s+squeeze=(True|False)(?:\s+release=(True|False))?\s+bars=(\d+)(?:\s+min=(\d+))?/);if(m)sq[m[1]]={active:m[2]==='True',release:m[3]==='True',bars:Number(m[4])};});setHTML('sq-grid',Object.entries(sq).slice(0,8).map(([sym,s])=>`<div class="sq-item"><div class="sq-sym">${esc(sym)}</div><div class="sq-val">${s.bars}</div><div class="sq-label">${s.release?'Релиз':s.active?'Баров сжатия':'Нет сжатия'}</div></div>`).join('')||'<div class="empty">Нет squeeze-данных в последних строках лога</div>');}
+function renderRangeProfitProtection(){
+ const route='/range-profit-protection-shadow',d=cache[route],alert=$('range-protection-alert');
+ if(!d&&!errors.has(route))return;
+ if(!d||d.health==='UNAVAILABLE'||!d.counts||!d.results){
+  $('range-protection-status').textContent='Нет подтверждённых данных проверки защиты прибыли';
+  alert.hidden=false;alert.textContent='Источник недоступен. Отсутствие данных не считается нулевым результатом.';
+  ['range-protection-control','range-protection-variant','range-protection-delta'].forEach(id=>{$(id).textContent='—';$(id).className='metric-value';});
+  ['range-protection-counts','range-protection-unknown','range-protection-protocol'].forEach(id=>setHTML(id,''));
+  $('range-protection-effects').textContent='Нет подтверждённых завершённых пар. Польза нового сопровождения ещё не оценена.';
+  setHTML('range-protection-review','<strong>Данные не подтверждены</strong><span>Проверка результатов временно недоступна.</span>');
+  setHTML('range-protection-pairs','<p class="muted">Источник недоступен. Открытые позиции не считаются закрытыми.</p>');return;
+ }
+ const c=d.counts,r=d.results,closed=c.closed_pairs,delayed=d.health==='STALE'||errors.has(route);
+ alert.hidden=d.health==='OK'&&!delayed;
+ alert.textContent=delayed?'Данные задержаны; показано последнее сохранённое состояние.':
+  'Есть проблемы с источником данных. Неопределённые входы показаны отдельно; подробности доступны в состоянии источника.';
+ $('range-protection-status').textContent=(delayed?'Данные задержаны':d.health==='OK'?'Наблюдение работает':'Требует проверки')+
+  ' · Серия с '+msTime(d.registered_ms)+' · Обновлено '+msTime(d.generated_at_ms)+' · Правило v1';
+ for(const [id,key] of [['range-protection-control','paired_control_net_usdt'],['range-protection-variant','protected_net_usdt'],['range-protection-delta','paired_delta_usdt']]){
+  $(id).textContent=closed?signedFmt(r[key]):'—';$(id).className='metric-value'+(closed?' '+pnlCls(r[key]):'');
+ }
+ const badges=[['Новых входов',c.observed],['В сравнении',c.eligible],['Незавершённые сравнения',c.open_pairs],['Закрыто пар',closed],['Пропущено',c.skipped],['Не удалось оценить',c.unscorable]];
+ setHTML('range-protection-counts',badges.map(([label,n])=>'<span class="badge">'+label+': <strong>'+n+'</strong></span>').join(''));
+ $('range-protection-effects').textContent=closed?
+  `Защита улучшила результат: ${r.improved_pairs} · Ухудшила: ${r.worsened_pairs} · Без изменения: ${r.unchanged_pairs}. Разница считается только после завершения обоих вариантов каждой пары.`:
+  'Пока нет завершённых проверенных пар. Даже если один вариант уже закрылся, его результат ждёт закрытия второго варианта и проверки контроля.';
+ $('range-protection-unknown').textContent=`Отдельно, без оценки варианта: закрытых контролей ${r.unscorable_controls_closed} · Их результат ${r.unscorable_controls_closed?signedFmt(r.unscorable_control_net_usdt)+' USDT':'—'}. Эти исходы не входят в разницу с контролем. Пропущенные источники также не считаются нулевой сделкой.`;
+ const review=d.review,days=Number(review.elapsed_days).toFixed(1);
+ setHTML('range-protection-review','<strong>'+(review.ready?'Готово к первому разбору':'Собираем новую серию')+'</strong><span>Прошло '+days+' / '+review.required_days+' дней</span><span>Закрыто '+closed+' / '+review.required_closed_pairs+' пар</span><span>'+(review.ready?'Это повод для анализа, а не подтверждение прибыльности.':'Для первого разбора нужны оба условия.')+'</span>');
+ const num=n=>n==null?'—':signedFmt(n)+' USDT';
+ const exitLabel=(reason,unknown)=>reason?({STOP:'Исходный стоп',TARGET:'Цель',TIME:'Лимит времени',TIMEOUT:'Лимит времени',PROTECTED_STOP:'Стоп на цене входа',PROFIT_PROTECTION_STOP:'Стоп на цене входа'})[reason]||'Сохранённый выход':unknown?'не оценено':'ожидает';
+ const unknownLabel=reason=>({SOURCE_DISCOVERY_AFTER_180_SECONDS:'Источник обнаружен слишком поздно',MISSING_MINUTE:'Не хватает минутных данных',CANDLE_GAP:'Есть пропуск минутных данных',SOURCE_UNAVAILABLE:'Источник недоступен',INVALID_PLAN:'Исходный план не прошёл проверку'})[reason]||'Недостаточно данных для сравнения';
+ const pairHtml=(d.recent_pairs||[]).map(p=>{
+  const state=p.state==='CLOSED'?'Оба варианта закрыты':p.state==='UNKNOWN'?'Не удалось оценить':'Пара ещё не завершена';
+  const note=p.state==='UNKNOWN'?unknownLabel(p.reason||p.error):p.armed_ms?'Условие защиты выполнено: '+msTime(p.armed_ms):'Защита ещё не включалась';
+  return '<article class="protection-pair"><div class="protection-pair-header"><div><strong>'+esc(p.symbol)+' · '+esc(p.direction)+'</strong><p class="muted">ID '+p.id+' · '+esc(msTime(p.opened_ms))+'</p></div><span class="badge">'+state+'</span></div><dl><dt>Контроль · закрытый результат</dt><dd>'+esc(num(p.control_net_usdt))+'</dd><dt>С защитой · закрытый результат</dt><dd>'+esc(num(p.protected_net_usdt))+'</dd><dt>Разница завершённой пары</dt><dd class="'+(p.delta_usdt==null?'':pnlCls(p.delta_usdt))+'">'+esc(num(p.delta_usdt))+'</dd></dl><p class="muted">'+esc(note)+'</p>'+(p.control_reason||p.protected_reason?'<p class="muted">Выходы: контроль '+esc(exitLabel(p.control_reason,false))+' · защита '+esc(exitLabel(p.protected_reason,p.state==='UNKNOWN'))+'</p>':'')+(p.error&&p.state!=='UNKNOWN'?'<p class="muted">Обновление оценки задержано; подробности в состоянии источника.</p>':'')+'</article>';
+ }).join('');
+ setHTML('range-protection-pairs',pairHtml||'<p class="muted">Новых наблюдений пока нет. Старые сделки в эту серию не добавляются.</p>');
+ setHTML('range-protection-protocol','<pre>'+esc(JSON.stringify(d,null,2))+'</pre>');
+}
 function renderRangeOiFlow(){
  const route='/range-oi-flow-shadow',d=cache[route],alert=$('range-flow-alert');
  if(!d&&!errors.has(route))return;
@@ -482,8 +568,8 @@ function renderDiversified(){
  setHTML('lab-controls',(revised?'<p class="muted">Предыдущая серия V2 сохранена отдельно и продолжает работать как контроль. Её сделки не входят в новые счётчики. Риск 2 USDT, комиссии и модель проскальзывания сохранены.</p>':'<p class="muted">Контроли: исходные правила сигналов, общее исполнение лаборатории. Повторные виртуальные наблюдения не суммируются в портфель.</p>')+groups.filter(g=>g.control).map(g=>`<p>${esc(g.strategy.replace('_CONTROL',''))}: входов ${g.entries}, закрыто ${g.closed}, чистый результат ${g.closed?signedFmt(g.net_usdt):'—'}</p>`).join(''));
  setHTML('lab-positions',(d.open_positions||[]).map(p=>`<p><strong>${esc(p.symbol)}</strong> · ${esc(names[p.strategy]||p.strategy)} · ${esc(p.direction)} · ${msTime(p.opened_ms)}</p>`).join('')||'<p class="muted">Открытых позиций нет</p>');
 }
-function renderAll(){renderRangeOiFlow();renderFundingCarry();renderSqzEntryQuality();renderResearchStorage();renderBreakoutRecheck();renderDiversified();renderRunner();renderPilots();renderStatus();renderStats();renderPositions();renderTrades();renderStrategies();renderMonthly();renderSignals();renderRejections();renderLogs();renderErrors();}
-async function refreshAll(){if(refreshInFlight)return refreshInFlight;const selected=activeView;$('refresh-btn').disabled=true;$('last-update').textContent='Обновляем…';const routes=['/status','/stats','/positions'];if(!cache['/config'])routes.push('/config');if(selected==='trades')routes.push('/trades');if(selected==='pilots')routes.push('/paper-pilots','/runner-comparison');if(selected==='strategies'||selected==='research')routes.push('/strategy-scorecard');if(selected==='research')routes.push('/range-oi-flow-shadow','/funding-carry-shadow','/monthly-target-plan','/diversified-shadow','/breakout-recheck-shadow','/sqz-entry-quality-shadow','/research-storage');if(selected==='diagnostics')routes.push('/signals','/logs','/rejections','/rejection-stats');refreshInFlight=(async()=>{const result=await Promise.allSettled(routes.map(get));const failedStatus=result[routes.indexOf('/status')].status==='rejected';if(failedStatus){statusMisses++;value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Состояние не подтверждено';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}else{const bot=cache['/status']?.bot;if(bot==='active'||['activating','reloading'].includes(bot)){statusMisses=0;lastHealthyStatusAt=Date.now();}else statusMisses++;}renderAll();if(failedStatus){value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Последний статус мог устареть';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}$('last-update').textContent=result.every(r=>r.status==='fulfilled')?'Обновлено '+new Date().toLocaleTimeString('ru-RU'):'Обновлено частично';resetCountdown();})().finally(()=>{refreshInFlight=null;$('refresh-btn').disabled=false;if(refreshQueued||selected!==activeView){refreshQueued=false;refreshAll();}});return refreshInFlight;}
+function renderAll(){renderRangeProfitProtection();renderRangeOiFlow();renderFundingCarry();renderSqzEntryQuality();renderResearchStorage();renderBreakoutRecheck();renderDiversified();renderRunner();renderPilots();renderStatus();renderStats();renderPositions();renderTrades();renderStrategies();renderMonthly();renderSignals();renderRejections();renderLogs();renderErrors();}
+async function refreshAll(){if(refreshInFlight)return refreshInFlight;const selected=activeView;$('refresh-btn').disabled=true;$('last-update').textContent='Обновляем…';const routes=['/status','/stats','/positions'];if(!cache['/config'])routes.push('/config');if(selected==='trades')routes.push('/trades');if(selected==='pilots')routes.push('/paper-pilots','/runner-comparison');if(selected==='strategies'||selected==='research')routes.push('/strategy-scorecard');if(selected==='research')routes.push('/range-profit-protection-shadow','/range-oi-flow-shadow','/funding-carry-shadow','/monthly-target-plan','/diversified-shadow','/breakout-recheck-shadow','/sqz-entry-quality-shadow','/research-storage');if(selected==='diagnostics')routes.push('/signals','/logs','/rejections','/rejection-stats');refreshInFlight=(async()=>{const result=await Promise.allSettled(routes.map(get));const failedStatus=result[routes.indexOf('/status')].status==='rejected';if(failedStatus){statusMisses++;value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Состояние не подтверждено';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}else{const bot=cache['/status']?.bot;if(bot==='active'||['activating','reloading'].includes(bot)){statusMisses=0;lastHealthyStatusAt=Date.now();}else statusMisses++;}renderAll();if(failedStatus){value('m-health','Нет связи','yellow');$('m-health-sub').textContent='Последний статус мог устареть';$('status-dot').className='dot yellow';$('status-text').textContent='Нет связи с API';}$('last-update').textContent=result.every(r=>r.status==='fulfilled')?'Обновлено '+new Date().toLocaleTimeString('ru-RU'):'Обновлено частично';resetCountdown();})().finally(()=>{refreshInFlight=null;$('refresh-btn').disabled=false;if(refreshQueued||selected!==activeView){refreshQueued=false;refreshAll();}});return refreshInFlight;}
 function resetCountdown(){clearInterval(cdownTimer);cdownVal=INTERVAL;$('cdown').textContent=cdownVal+' с';cdownTimer=setInterval(()=>{cdownVal--;$('cdown').textContent=cdownVal+' с';if(cdownVal<=0){clearInterval(cdownTimer);refreshAll();}},1000);}
 // Existing control endpoints are unchanged; no control action is called on load.
 async function emergencyStop(){if(!confirm('Активировать аварийную остановку?'))return;await fetch(API+'/emergency-stop',{method:'POST'});alert('Аварийная остановка активирована');refreshAll();}

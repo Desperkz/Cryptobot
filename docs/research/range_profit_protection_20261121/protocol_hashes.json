@@ -1,0 +1,12 @@
+{
+  "code_sha256": {
+    "range_oi_flow_gate.py": "d7ee785bd2287ee4b588c998277d1f6c652097a5872ff25ab775a0c505a49540",
+    "range_oi_flow_shadow.py": "6ee1d79d21f58c8dd02e069680167c3b34e17e9130a88cf894fe46ff0bb03c11",
+    "range_profit_execution.py": "8b8f32f2db50a541481aefd8868e53b13104909b88611f30ceccf59ebff81c18",
+    "range_profit_protection.py": "2270843b0c169503833ad674f2107adc2ece7e8029103500cb3e7e9a09b2f870"
+  },
+  "encoding": "UTF-8 without BOM; LF",
+  "identity_sha256": "c0e1c3ef39a3aadba47ca8c59b34681b3448023ef7a0adf591b3a454e0998b73",
+  "protocol_file_sha256": "933d7d0b9dc17affc5353a79849abd1ee5298aeafbaf4a5051b36eb1eec7e7f6",
+  "source_path": "/root/bot_diversified_v3/data/shadow.sqlite3"
+}

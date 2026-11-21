@@ -1,0 +1,32 @@
+[Unit]
+Description=Separate future-only RANGE entry-price stop protection comparison
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_range_profit_protection/code
+Environment=PYTHONPATH=/root/bot_range_profit_protection/code/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m trading_bot.research.range_profit_protection --data-dir /root/bot_range_profit_protection/data --source /root/bot_diversified_v3/data/shadow.sqlite3
+TimeoutStartSec=75
+Nice=19
+CPUQuota=5%
+MemoryHigh=48M
+MemoryMax=64M
+MemorySwapMax=8M
+TasksMax=4
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/bot_range_profit_protection/data /root/bot_diversified_v3/data
+ReadOnlyPaths=/root/bot_range_profit_protection/code /root/bot_diversified_v3/data/shadow.sqlite3 /root/bot_diversified_v3/data/status.json
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
