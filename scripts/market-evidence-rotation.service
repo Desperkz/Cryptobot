@@ -1,0 +1,31 @@
+[Unit]
+Description=Verified lossless archive of market evidence with live overlap
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/bot_market_evidence_rotation/code
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=market-evidence-rotation
+ExecStart=/usr/bin/flock -n /run/market-evidence-rotation/lock /usr/bin/python3 /root/bot_market_evidence_rotation/code/market_evidence_rotation_maintenance.py
+ExecStopPost=/usr/bin/python3 /root/bot_market_evidence_rotation/code/market_evidence_rotation_maintenance.py --recover
+TimeoutStartSec=240
+Nice=19
+CPUQuota=25%
+MemoryHigh=48M
+MemoryMax=80M
+MemorySwapMax=16M
+TasksMax=12
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/bot_market_evidence_rotation/code /root/bot_market_evidence/code
+ReadWritePaths=/root/bot_market_evidence_rotation/data /root/bot_market_evidence/data /root/bot_market_evidence/archives /root/bot_range_oi_flow/data
+ReadOnlyPaths=/root/bot_range_oi_flow/data/range_oi_flow.sqlite3 /root/bot_range_oi_flow/data/status.json
+
+[Install]
+WantedBy=multi-user.target

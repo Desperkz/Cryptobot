@@ -5,6 +5,20 @@ import pytest
 
 from paper_pilots_api import api_sqz_entry_quality_shadow, api_research_storage
 
+
+def test_storage_reports_current_space_without_rewriting_old_report(tmp_path,monkeypatch):
+    import paper_pilots_api as api
+    from types import SimpleNamespace
+    path=tmp_path/'status.json'
+    data={'study':'research-storage-maintenance-v1','order_capability':False,
+          'generated_at_ms':1000,'last_success_ms':1000,'health':'OK','errors':[],
+          'free_disk_bytes':123}
+    path.write_text(json.dumps(data));original=path.read_bytes()
+    monkeypatch.setattr(api.shutil,'disk_usage',lambda p:SimpleNamespace(free=456))
+    value=api.api_research_storage(path,now_ms=2000)
+    assert value['free_disk_bytes']==456 and value['free_disk_bytes_at_last_check']==123
+    assert path.read_bytes()==original
+
 NOW = 2_000_000
 
 

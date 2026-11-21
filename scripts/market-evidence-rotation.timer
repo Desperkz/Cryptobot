@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly market evidence capacity check
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=1h
+AccuracySec=30s
+Unit=market-evidence-rotation.service
+
+[Install]
+WantedBy=timers.target

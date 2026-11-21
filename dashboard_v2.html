@@ -526,9 +526,16 @@ function renderResearchStorage(){
  }
  const delayed=d.health==='STALE'||errors.has(route),warning=delayed||d.health==='DEGRADED';
  el.className='muted detail-block'+(warning?' yellow':'');
- const free=Number.isFinite(d.free_disk_bytes)?' · Свободно '+fmt(d.free_disk_bytes/1024**3,2)+' ГиБ':'';
+ const free=Number.isFinite(d.free_disk_bytes)?' · Сейчас свободно '+fmt(d.free_disk_bytes/1024**3,2)+' ГиБ':'';
  el.textContent='Архив истории: '+(delayed?'данные задержаны':d.health==='DEGRADED'?'требует проверки':d.health==='IDLE'?'ожидает планового запуска':'проверка работает')+
   (d.last_success_ms?' · Последняя успешная проверка '+msTime(d.last_success_ms):' · Успешная проверка ещё не подтверждена')+free;
+ const rotation=d.market_rotation;
+ if(rotation&&rotation.health!=='UNAVAILABLE'){
+  el.textContent+=' · Сборщик: '+(rotation.health==='OK'?'ротация работает':'проверить ротацию')+
+   (Number.isFinite(rotation.active_bytes)?', активная база '+fmt(rotation.active_bytes/1024**2,1)+' МиБ':'')+
+   (Number.isFinite(rotation.archive_count)?', архивов '+rotation.archive_count:'');
+  if(rotation.health!=='OK')el.className='muted detail-block yellow';
+ }
 }
 function renderBreakoutRecheck(){
  const d=cache['/breakout-recheck-shadow'];if(!d)return;

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import sqlite3
 import threading
 import time
@@ -548,6 +549,31 @@ def api_research_storage(path: Path = Path('/root/bot_research_storage/data/stat
                 or not 0 < data['last_success_ms'] <= data['generated_at_ms']):
             raise ValueError('INVALID_LAST_SUCCESS')
         data['age_seconds'] = max(0, (current-data['generated_at_ms'])/1000)
+        # The archived report keeps its original disk measurement; the screen
+        # must show current headroom rather than a six-hour-old value.
+        data['free_disk_bytes_at_last_check'] = data['free_disk_bytes']
+        data['free_disk_bytes'] = shutil.disk_usage(path.parent).free
+        data['free_disk_measured_at_ms'] = current
+        rotation_path = Path('/root/bot_market_evidence_rotation/data/status.json')
+        try:
+            with rotation_path.open('rb') as saved:
+                rotation_raw = saved.read(65537)
+            if len(rotation_raw) > 65536:
+                raise ValueError('ROTATION_STATUS_TOO_LARGE')
+            rotation = _strict_json(rotation_raw)
+            if (rotation.get('study') != 'market-evidence-rotation-v1'
+                    or rotation.get('order_capability') is not False
+                    or rotation.get('health') not in ('OK', 'DEGRADED')
+                    or not all(isinstance(rotation.get(k), int) and not isinstance(rotation[k], bool)
+                               and rotation[k] >= 0 for k in ('generated_at_ms', 'active_bytes', 'archive_count'))
+                    or rotation['generated_at_ms'] > current+60000):
+                raise ValueError('INVALID_ROTATION_STATUS')
+            data['market_rotation'] = {k:rotation.get(k) for k in
+                ('health', 'generated_at_ms', 'active_bytes', 'archive_count', 'last_success_ms', 'errors')}
+            if current-rotation['generated_at_ms'] > 3*3600000:
+                data['market_rotation']['health'] = 'STALE'
+        except (OSError, ValueError, TypeError, KeyError):
+            data['market_rotation'] = {'health': 'UNAVAILABLE'}
         if data['age_seconds'] > 48*3600:
             data['health'] = 'STALE'
         return data
