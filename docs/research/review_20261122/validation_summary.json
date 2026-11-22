@@ -1,0 +1,16 @@
+{
+  "asof_ms": 1795336046586,
+  "cost_identities_verified": 300,
+  "tests_passed": 1168,
+  "rotation_verified_next_day": true,
+  "old_frozen_studies_preserved": 18,
+  "strategy_rules_changed": false,
+  "profitability_proven": false,
+  "quality_sources_unscorable": 14,
+  "live_visual_widths": [
+    1440,
+    1280,
+    390
+  ],
+  "old_oi_decisions_rechecked_after_one_day": 17
+}

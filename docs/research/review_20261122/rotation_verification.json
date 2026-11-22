@@ -1,0 +1,1098 @@
+{
+  "initial": {
+    "passed": true,
+    "at_ms": 1795258897922,
+    "before": {
+      "frozen": {
+        "/root/bot_sqz_c2_high_paper/data/mainnet_paper_lab.sqlite3": "e4dedf48955d62d4fce19a898d1f8cd4e940d2fcbeec72c3c1ea043f8f0854c8",
+        "/root/bot_breakout_recheck_shadow/data/breakout_recheck_shadow.sqlite3": "45e823cba1014bb333ba33860592ee1cf4bb3d9d51dc946d867c416841645274",
+        "/root/bot_sqz_direction_paper/data/mainnet_paper_lab.sqlite3": "d202fccd95a86c0a13e83ce723dd6d9ec86837cc353c9644850c4e60391d9af6",
+        "/root/bot_sqz_confirmation_paper/data/mainnet_paper_lab.sqlite3": "c9a821e7edcd924ffa3ce47c220c376ab8f27dd31b4120aefd506dd5b42aca78",
+        "/root/bot_runner_comparison/data/runner_comparison.sqlite3": "ef7d082d2cc191aa657eb3f05121e4782bce6a0c3bc0f480161c83de7a4ba3ca",
+        "/root/bot_mainnet_early/data/mainnet_paper_lab.sqlite3": "0867fc532ef88f0f6c231796d0df4989398b133fc5ea478d73a6d0e8996b72dd",
+        "/root/bot_btc_rs_paper/data/mainnet_paper_lab.sqlite3": "9b6a3bdff783f1a31982cb3d8736cfb6884af1c13481fc0e952c721351c8ee51",
+        "/root/bot_market_evidence/data/market_evidence.sqlite3": "883c880be717c3e34fd9f17e3f2b4afed75b46b28304492536e650eb346acf94",
+        "/root/bot_sqz_promotion_paper/data/mainnet_paper_lab.sqlite3": "e965c3ce5e19f2dda220f2a76f8672479d35a3c50e0c06c62cd5e7e5efd76212",
+        "/root/bot_range_oi_flow/data/range_oi_flow.sqlite3": "bc04e5040dd18911a36ffd53059cd725f28c39183491ea7b8d33b792e942e290",
+        "/root/bot_diversified_shadow/data/shadow.sqlite3": "28cc27d701f1da33cf84f8ac62da54a2c947ac27bf5436972e5b91c0ea628067",
+        "/root/bot_diversified_v3/data/shadow.sqlite3": "229283dec6dbb42ad122e1e8bfbafc596bb7523c4f37b755e87779d473956f6b",
+        "/root/bot_sqz_entry_quality_shadow/data/sqz_entry_quality_shadow.sqlite3": "1c75bf6932d236ae1f2e18d0979a2a3ff0ada30f45d5c10bd8636068eee2a3ab",
+        "/root/bot_candidate_observer/data/candidate_observer.sqlite3": "65d88002331a6ef497d4bc6e568927e3c0d7614a1a255079236c481e78f1d5f9",
+        "/root/bot_funding_carry_shadow/data/funding_carry.sqlite3": "608304c9f9f2b1b613fdc1b9d159ae3333cdec22736660e772bb7806e811c125",
+        "/root/bot_mainnet_paper/data/mainnet_paper_lab.sqlite3": "8490bb55167a0f95f4be871f2ecade6a9ec566618cd0d13130fc0aad1942c602",
+        "/root/bot_range_profit_protection/data/range_profit_protection.sqlite3": "e8dd2f6a2f5bf66dfcfa54dd6422ca44fa485d89986b6b5e9f847212f2d76685",
+        "/root/bot_candidate_outcomes/data/candidate_outcomes.sqlite3": "bb7a53180061d7303adfa1d18f79b39bae3485c56f7292a08615c24cb6bf8f26"
+      },
+      "oi_decisions": {
+        "172": "249183a59c2d39aedb815d096484021354b15836720bdc1a5be5995bfe8c1af8",
+        "173": "0a4331ea9e83537f72c8ae18d2cf22ab59ae481bc2af9d2bffbfa5a0d8bf798c",
+        "201": "f4eb9a0b9fa1b95efa82e4d8456945301bede60c4448d3db7789d5e3cae2fac5",
+        "204": "c49215769ef31281b11813093f48b74f87abc9e2cb0b787c6e229fcb48b03540",
+        "221": "478952e0c42aab17f1d7e9630e2e605c85d4fedc16761a45b11b576b9193148a",
+        "228": "e5e4cf72b3a8ed346c95771a357dd34342d0684a0d2b5b4bfc1c5198efd8daba",
+        "229": "d0d872afdec77dfee38a9f944f9389d156690edbdf4c48c255684bf69e446a04",
+        "234": "a371da62efdd95960fbc2e125aff9ab78d9f9f31c73283d5a92787f8c9ca23c9",
+        "236": "ff8acd52f059ea69e2c00f34a12fe3bedd7e470c725d2030356feea395b91003",
+        "237": "1651db862bd3c6fc2cb49db5c60d997fdbd3ef7d1b55a0b70de5316ed598d79f",
+        "238": "4fe76041bb9d3912ecbce7ed7e0fc070f6a9801a3cf751606495c1b2aa778abe",
+        "239": "403cd8431e7bef92068691d551f8e5a4ca118b633eeb0a33870ae35cbe759a9f",
+        "241": "46f26f599cd4a8b6e89006f38af3f911ac4275dc70b6f1019060d1bb3e4afc8b",
+        "243": "f566e61fdc8e4103341a0ae3a7df6dce245e4a3b6f1d9c2528a322fda9acf854",
+        "252": "23b42264fd7717fbf600ed18a32f0241a200d9c3babed34f0549229a598732cd",
+        "260": "3c8495111256d87fe584f526139428319acdc8afbcae19732692d2cbe3aacf0e",
+        "261": "a108b36abe81147af93e5cf05b245b3fc4387553af606e90fa35eff6168bf2bc"
+      },
+      "services": {
+        "trading-bot-v2-1": "MainPID=567\nNRestarts=0\nActiveState=active",
+        "paper-monitor-v2-1": "MainPID=600441\nNRestarts=1\nActiveState=active",
+        "mainnet-paper-lab": "MainPID=570\nNRestarts=0\nActiveState=active",
+        "bot-control-v2-1": "MainPID=4160409\nNRestarts=0\nActiveState=active"
+      }
+    },
+    "after": {
+      "frozen": {
+        "/root/bot_sqz_c2_high_paper/data/mainnet_paper_lab.sqlite3": "e4dedf48955d62d4fce19a898d1f8cd4e940d2fcbeec72c3c1ea043f8f0854c8",
+        "/root/bot_breakout_recheck_shadow/data/breakout_recheck_shadow.sqlite3": "45e823cba1014bb333ba33860592ee1cf4bb3d9d51dc946d867c416841645274",
+        "/root/bot_sqz_direction_paper/data/mainnet_paper_lab.sqlite3": "d202fccd95a86c0a13e83ce723dd6d9ec86837cc353c9644850c4e60391d9af6",
+        "/root/bot_sqz_confirmation_paper/data/mainnet_paper_lab.sqlite3": "c9a821e7edcd924ffa3ce47c220c376ab8f27dd31b4120aefd506dd5b42aca78",
+        "/root/bot_runner_comparison/data/runner_comparison.sqlite3": "ef7d082d2cc191aa657eb3f05121e4782bce6a0c3bc0f480161c83de7a4ba3ca",
+        "/root/bot_mainnet_early/data/mainnet_paper_lab.sqlite3": "0867fc532ef88f0f6c231796d0df4989398b133fc5ea478d73a6d0e8996b72dd",
+        "/root/bot_btc_rs_paper/data/mainnet_paper_lab.sqlite3": "9b6a3bdff783f1a31982cb3d8736cfb6884af1c13481fc0e952c721351c8ee51",
+        "/root/bot_market_evidence/data/market_evidence.sqlite3": "883c880be717c3e34fd9f17e3f2b4afed75b46b28304492536e650eb346acf94",
+        "/root/bot_sqz_promotion_paper/data/mainnet_paper_lab.sqlite3": "e965c3ce5e19f2dda220f2a76f8672479d35a3c50e0c06c62cd5e7e5efd76212",
+        "/root/bot_range_oi_flow/data/range_oi_flow.sqlite3": "bc04e5040dd18911a36ffd53059cd725f28c39183491ea7b8d33b792e942e290",
+        "/root/bot_diversified_shadow/data/shadow.sqlite3": "28cc27d701f1da33cf84f8ac62da54a2c947ac27bf5436972e5b91c0ea628067",
+        "/root/bot_diversified_v3/data/shadow.sqlite3": "229283dec6dbb42ad122e1e8bfbafc596bb7523c4f37b755e87779d473956f6b",
+        "/root/bot_sqz_entry_quality_shadow/data/sqz_entry_quality_shadow.sqlite3": "1c75bf6932d236ae1f2e18d0979a2a3ff0ada30f45d5c10bd8636068eee2a3ab",
+        "/root/bot_candidate_observer/data/candidate_observer.sqlite3": "65d88002331a6ef497d4bc6e568927e3c0d7614a1a255079236c481e78f1d5f9",
+        "/root/bot_funding_carry_shadow/data/funding_carry.sqlite3": "608304c9f9f2b1b613fdc1b9d159ae3333cdec22736660e772bb7806e811c125",
+        "/root/bot_mainnet_paper/data/mainnet_paper_lab.sqlite3": "8490bb55167a0f95f4be871f2ecade6a9ec566618cd0d13130fc0aad1942c602",
+        "/root/bot_range_profit_protection/data/range_profit_protection.sqlite3": "e8dd2f6a2f5bf66dfcfa54dd6422ca44fa485d89986b6b5e9f847212f2d76685",
+        "/root/bot_candidate_outcomes/data/candidate_outcomes.sqlite3": "bb7a53180061d7303adfa1d18f79b39bae3485c56f7292a08615c24cb6bf8f26"
+      },
+      "oi_decisions": {
+        "172": "249183a59c2d39aedb815d096484021354b15836720bdc1a5be5995bfe8c1af8",
+        "173": "0a4331ea9e83537f72c8ae18d2cf22ab59ae481bc2af9d2bffbfa5a0d8bf798c",
+        "201": "f4eb9a0b9fa1b95efa82e4d8456945301bede60c4448d3db7789d5e3cae2fac5",
+        "204": "c49215769ef31281b11813093f48b74f87abc9e2cb0b787c6e229fcb48b03540",
+        "221": "478952e0c42aab17f1d7e9630e2e605c85d4fedc16761a45b11b576b9193148a",
+        "228": "e5e4cf72b3a8ed346c95771a357dd34342d0684a0d2b5b4bfc1c5198efd8daba",
+        "229": "d0d872afdec77dfee38a9f944f9389d156690edbdf4c48c255684bf69e446a04",
+        "234": "a371da62efdd95960fbc2e125aff9ab78d9f9f31c73283d5a92787f8c9ca23c9",
+        "236": "ff8acd52f059ea69e2c00f34a12fe3bedd7e470c725d2030356feea395b91003",
+        "237": "1651db862bd3c6fc2cb49db5c60d997fdbd3ef7d1b55a0b70de5316ed598d79f",
+        "238": "4fe76041bb9d3912ecbce7ed7e0fc070f6a9801a3cf751606495c1b2aa778abe",
+        "239": "403cd8431e7bef92068691d551f8e5a4ca118b633eeb0a33870ae35cbe759a9f",
+        "241": "46f26f599cd4a8b6e89006f38af3f911ac4275dc70b6f1019060d1bb3e4afc8b",
+        "243": "f566e61fdc8e4103341a0ae3a7df6dce245e4a3b6f1d9c2528a322fda9acf854",
+        "252": "23b42264fd7717fbf600ed18a32f0241a200d9c3babed34f0549229a598732cd",
+        "260": "3c8495111256d87fe584f526139428319acdc8afbcae19732692d2cbe3aacf0e",
+        "261": "a108b36abe81147af93e5cf05b245b3fc4387553af606e90fa35eff6168bf2bc"
+      },
+      "services": {
+        "trading-bot-v2-1": "MainPID=567\nNRestarts=0\nActiveState=active",
+        "paper-monitor-v2-1": "MainPID=600441\nNRestarts=1\nActiveState=active",
+        "mainnet-paper-lab": "MainPID=570\nNRestarts=0\nActiveState=active",
+        "bot-control-v2-1": "MainPID=4164854\nNRestarts=0\nActiveState=active"
+      }
+    },
+    "maintenance": {
+      "study": "market-evidence-rotation-v1",
+      "order_capability": false,
+      "generated_at_ms": 1795258895632,
+      "active_bytes": 573440,
+      "trigger_bytes": 201326592,
+      "limit_bytes": 268435456,
+      "free_disk_bytes": 4283510784,
+      "keep_overlap_ms": 3600000,
+      "last_success_ms": 1795258895632,
+      "archive_count": 1,
+      "health": "OK",
+      "action": "ROTATED",
+      "errors": [],
+      "latest_archive": "/root/bot_market_evidence/archives/1795258722909-6de34c31/full.sqlite3.gz",
+      "archived_rows": {
+        "meta": 2,
+        "segments": 125576,
+        "snapshots": 374295,
+        "liquidations": 64544,
+        "issues": 5787,
+        "connections": 184
+      },
+      "recent_contexts_identical": true,
+      "registration_state_and_decisions_preserved": true,
+      "main_bot_monitor_producer_controller_not_restarted": true
+    },
+    "main_bot_monitor_producer_not_restarted": true,
+    "old_frozen_studies_preserved": 18,
+    "old_oi_decisions_preserved": 17,
+    "free_disk_bytes": 4466135040,
+    "hashes": {
+      "market_evidence_rotation.py": "1623fb49a7847af3bd4a5a68301b4aa13edb13c35f33f0c5f79add35c4e7e253",
+      "market_evidence_rotation_maintenance.py": "5acd265a928e8da73d5a803bbf96a5caca28736d35422a59ebc31ab4dfb00e92",
+      "paper_pilots_api.py": "0c386ba5200cb9d74080284333717301a46cd3c3c0f58015dd1ef7a38d0dcf6e",
+      "dashboard_v2.html": "7a782d0f104497b6343357a3670c156408f31043bd3bc7bcda244c27ff79482e",
+      "scripts/market-evidence-rotation.service": "d1b19787b36d9d17e2fc25671c4bfa18dcbabff5dafa73fac36638f64e6fb201",
+      "scripts/market-evidence-rotation.timer": "8c609e61809af92b992042b29d8583c4a9ee3a80ab1923d98f07574a4c184fea"
+    }
+  },
+  "next_day": {
+    "at_ms": 1795335981449,
+    "free_disk_bytes": 3693617152,
+    "rotation": {
+      "study": "market-evidence-rotation-v1",
+      "order_capability": false,
+      "generated_at_ms": 1795334517610,
+      "active_bytes": 23748608,
+      "trigger_bytes": 201326592,
+      "limit_bytes": 268435456,
+      "free_disk_bytes": 3714879488,
+      "keep_overlap_ms": 3600000,
+      "last_success_ms": 1795258895632,
+      "archive_count": 1,
+      "health": "OK",
+      "action": "CHECK_ONLY",
+      "errors": []
+    },
+    "collector": {
+      "connected": true,
+      "counts": {
+        "agg_trades": 59574071,
+        "id_gaps": 1658,
+        "invalid_events": 4386,
+        "liquidation_snapshots": 67812,
+        "rest_snapshots": 405131
+      },
+      "errors": [],
+      "generated_at_ms": 1795335974597,
+      "health": "OK",
+      "last_agg_received_ms": {
+        "ADAUSDT": 1795335974130,
+        "BNBUSDT": 1795335973952,
+        "BTCUSDT": 1795335974551,
+        "DOGEUSDT": 1795335974428,
+        "ETHUSDT": 1795335974483,
+        "LTCUSDT": 1795335974349,
+        "SOLUSDT": 1795335974246,
+        "XRPUSDT": 1795335973796
+      },
+      "last_issue": {
+        "at_ms": 1795335475076,
+        "kind": "REST_ERROR",
+        "symbol": "LTCUSDT"
+      },
+      "latest_public_snapshots": {
+        "ADAUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335958083,
+              "T": 1795335958080,
+              "asks": [
+                [
+                  "0.14380",
+                  "583117"
+                ],
+                [
+                  "0.14390",
+                  "1178853"
+                ],
+                [
+                  "0.14400",
+                  "1200303"
+                ],
+                [
+                  "0.14410",
+                  "1601808"
+                ],
+                [
+                  "0.14420",
+                  "2513434"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.14370",
+                  "426881"
+                ],
+                [
+                  "0.14360",
+                  "1023859"
+                ],
+                [
+                  "0.14350",
+                  "1483737"
+                ],
+                [
+                  "0.14340",
+                  "2330328"
+                ],
+                [
+                  "0.14330",
+                  "1037737"
+                ]
+              ],
+              "lastUpdateId": 12199217264915
+            },
+            "received_ms": 1795335958262,
+            "request_started_ms": 1795335957561
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "0.14272372",
+              "indexPrice": "0.14380854",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "-0.00012564",
+              "markPrice": "0.14379076",
+              "nextFundingTime": 1795363200000,
+              "symbol": "ADAUSDT",
+              "time": 1795335958001
+            },
+            "received_ms": 1795335958913,
+            "request_started_ms": 1795335958262
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "417158101",
+              "symbol": "ADAUSDT",
+              "time": 1795335948539
+            },
+            "received_ms": 1795335957561,
+            "request_started_ms": 1795335956897
+          }
+        },
+        "BNBUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335947295,
+              "T": 1795335947289,
+              "asks": [
+                [
+                  "545.440",
+                  "12.92"
+                ],
+                [
+                  "545.450",
+                  "3.55"
+                ],
+                [
+                  "545.490",
+                  "4.92"
+                ],
+                [
+                  "545.500",
+                  "10.23"
+                ],
+                [
+                  "545.510",
+                  "9.22"
+                ]
+              ],
+              "bids": [
+                [
+                  "545.430",
+                  "2.90"
+                ],
+                [
+                  "545.420",
+                  "0.26"
+                ],
+                [
+                  "545.410",
+                  "0.48"
+                ],
+                [
+                  "545.400",
+                  "0.07"
+                ],
+                [
+                  "545.390",
+                  "0.01"
+                ]
+              ],
+              "lastUpdateId": 12199216045687
+            },
+            "received_ms": 1795335947472,
+            "request_started_ms": 1795335946799
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "541.78522416",
+              "indexPrice": "545.63138055",
+              "interestRate": "0.00000000",
+              "lastFundingRate": "0.00000000",
+              "markPrice": "545.62000000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "BNBUSDT",
+              "time": 1795335947001
+            },
+            "received_ms": 1795335948139,
+            "request_started_ms": 1795335947472
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "500576.47",
+              "symbol": "BNBUSDT",
+              "time": 1795335942722
+            },
+            "received_ms": 1795335946798,
+            "request_started_ms": 1795335946077
+          }
+        },
+        "BTCUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335942094,
+              "T": 1795335942009,
+              "asks": [
+                [
+                  "59698.10",
+                  "2.055"
+                ],
+                [
+                  "59700.10",
+                  "2.427"
+                ],
+                [
+                  "59700.30",
+                  "0.956"
+                ],
+                [
+                  "59701.00",
+                  "2.863"
+                ],
+                [
+                  "59702.10",
+                  "2.416"
+                ]
+              ],
+              "bids": [
+                [
+                  "59697.90",
+                  "0.001"
+                ],
+                [
+                  "59697.60",
+                  "0.002"
+                ],
+                [
+                  "59697.50",
+                  "0.161"
+                ],
+                [
+                  "59697.40",
+                  "0.793"
+                ],
+                [
+                  "59697.30",
+                  "0.036"
+                ]
+              ],
+              "lastUpdateId": 12199215130318
+            },
+            "received_ms": 1795335942287,
+            "request_started_ms": 1795335941613
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "59274.56074270",
+              "indexPrice": "59729.25391304",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "0.00005986",
+              "markPrice": "59709.30000000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "BTCUSDT",
+              "time": 1795335943000
+            },
+            "received_ms": 1795335943236,
+            "request_started_ms": 1795335942307
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "92496.602",
+              "symbol": "BTCUSDT",
+              "time": 1795335937814
+            },
+            "received_ms": 1795335941612,
+            "request_started_ms": 1795335940895
+          }
+        },
+        "DOGEUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335953558,
+              "T": 1795335953551,
+              "asks": [
+                [
+                  "0.054760",
+                  "242962"
+                ],
+                [
+                  "0.054770",
+                  "579239"
+                ],
+                [
+                  "0.054780",
+                  "1415950"
+                ],
+                [
+                  "0.054790",
+                  "1303020"
+                ],
+                [
+                  "0.054800",
+                  "1842699"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.054750",
+                  "671324"
+                ],
+                [
+                  "0.054740",
+                  "967530"
+                ],
+                [
+                  "0.054730",
+                  "1040157"
+                ],
+                [
+                  "0.054720",
+                  "2029110"
+                ],
+                [
+                  "0.054710",
+                  "1788193"
+                ]
+              ],
+              "lastUpdateId": 12199216776972
+            },
+            "received_ms": 1795335953726,
+            "request_started_ms": 1795335953037
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "0.05445932",
+              "indexPrice": "0.05480146",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "0.00000887",
+              "markPrice": "0.05476000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "DOGEUSDT",
+              "time": 1795335954000
+            },
+            "received_ms": 1795335954500,
+            "request_started_ms": 1795335953726
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "2311085289",
+              "symbol": "DOGEUSDT",
+              "time": 1795335950884
+            },
+            "received_ms": 1795335953036,
+            "request_started_ms": 1795335952300
+          }
+        },
+        "ETHUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335945173,
+              "T": 1795335945170,
+              "asks": [
+                [
+                  "1684.28",
+                  "30.023"
+                ],
+                [
+                  "1684.29",
+                  "0.045"
+                ],
+                [
+                  "1684.30",
+                  "0.014"
+                ],
+                [
+                  "1684.32",
+                  "0.014"
+                ],
+                [
+                  "1684.34",
+                  "0.016"
+                ]
+              ],
+              "bids": [
+                [
+                  "1684.27",
+                  "60.270"
+                ],
+                [
+                  "1684.26",
+                  "0.060"
+                ],
+                [
+                  "1684.25",
+                  "0.027"
+                ],
+                [
+                  "1684.24",
+                  "0.048"
+                ],
+                [
+                  "1684.23",
+                  "0.022"
+                ]
+              ],
+              "lastUpdateId": 12199215792943
+            },
+            "received_ms": 1795335945416,
+            "request_started_ms": 1795335943999
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "1672.08539807",
+              "indexPrice": "1685.37325581",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "-0.00000844",
+              "markPrice": "1684.77000000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "ETHUSDT",
+              "time": 1795335945000
+            },
+            "received_ms": 1795335946076,
+            "request_started_ms": 1795335945416
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "2316055.362",
+              "symbol": "ETHUSDT",
+              "time": 1795335942844
+            },
+            "received_ms": 1795335943996,
+            "request_started_ms": 1795335943237
+          }
+        },
+        "LTCUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335955973,
+              "T": 1795335955967,
+              "asks": [
+                [
+                  "39.36",
+                  "48.040"
+                ],
+                [
+                  "39.37",
+                  "523.117"
+                ],
+                [
+                  "39.38",
+                  "1241.392"
+                ],
+                [
+                  "39.39",
+                  "847.272"
+                ],
+                [
+                  "39.40",
+                  "1035.116"
+                ]
+              ],
+              "bids": [
+                [
+                  "39.35",
+                  "362.872"
+                ],
+                [
+                  "39.34",
+                  "706.891"
+                ],
+                [
+                  "39.33",
+                  "1572.597"
+                ],
+                [
+                  "39.32",
+                  "909.494"
+                ],
+                [
+                  "39.31",
+                  "1264.050"
+                ]
+              ],
+              "lastUpdateId": 12199217048784
+            },
+            "received_ms": 1795335956204,
+            "request_started_ms": 1795335955204
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "39.16763007",
+              "indexPrice": "39.38323529",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "-0.00005447",
+              "markPrice": "39.35000000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "LTCUSDT",
+              "time": 1795335956000
+            },
+            "received_ms": 1795335956896,
+            "request_started_ms": 1795335956205
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "1228499.043",
+              "symbol": "LTCUSDT",
+              "time": 1795335948382
+            },
+            "received_ms": 1795335955203,
+            "request_started_ms": 1795335954503
+          }
+        },
+        "SOLUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335949299,
+              "T": 1795335949286,
+              "asks": [
+                [
+                  "69.8900",
+                  "1811.55"
+                ],
+                [
+                  "69.9000",
+                  "3352.32"
+                ],
+                [
+                  "69.9100",
+                  "5226.47"
+                ],
+                [
+                  "69.9200",
+                  "4656.74"
+                ],
+                [
+                  "69.9300",
+                  "6065.71"
+                ]
+              ],
+              "bids": [
+                [
+                  "69.8800",
+                  "536.49"
+                ],
+                [
+                  "69.8700",
+                  "1418.93"
+                ],
+                [
+                  "69.8600",
+                  "5459.87"
+                ],
+                [
+                  "69.8500",
+                  "3317.50"
+                ],
+                [
+                  "69.8400",
+                  "7509.01"
+                ]
+              ],
+              "lastUpdateId": 12199216288512
+            },
+            "received_ms": 1795335949452,
+            "request_started_ms": 1795335948801
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "69.42848564",
+              "indexPrice": "69.94534284",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "0.00001788",
+              "markPrice": "69.87904389",
+              "nextFundingTime": 1795363200000,
+              "symbol": "SOLUSDT",
+              "time": 1795335949000
+            },
+            "received_ms": 1795335950157,
+            "request_started_ms": 1795335949453
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "7999574.84",
+              "symbol": "SOLUSDT",
+              "time": 1795335942919
+            },
+            "received_ms": 1795335948801,
+            "request_started_ms": 1795335948144
+          }
+        },
+        "XRPUSDT": {
+          "book5": {
+            "data": {
+              "E": 1795335951361,
+              "T": 1795335951353,
+              "asks": [
+                [
+                  "0.9252",
+                  "61044.4"
+                ],
+                [
+                  "0.9253",
+                  "30130.5"
+                ],
+                [
+                  "0.9254",
+                  "50591.6"
+                ],
+                [
+                  "0.9255",
+                  "83116.4"
+                ],
+                [
+                  "0.9256",
+                  "217376.3"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.9251",
+                  "9254.5"
+                ],
+                [
+                  "0.9250",
+                  "67634.4"
+                ],
+                [
+                  "0.9249",
+                  "115257.4"
+                ],
+                [
+                  "0.9248",
+                  "75297.3"
+                ],
+                [
+                  "0.9247",
+                  "104029.5"
+                ]
+              ],
+              "lastUpdateId": 12199216509891
+            },
+            "received_ms": 1795335951541,
+            "request_started_ms": 1795335950823
+          },
+          "mark_funding_indication": {
+            "data": {
+              "estimatedSettlePrice": "0.91824063",
+              "indexPrice": "0.92558564",
+              "interestRate": "0.00010000",
+              "lastFundingRate": "0.00004313",
+              "markPrice": "0.92510000",
+              "nextFundingTime": 1795363200000,
+              "symbol": "XRPUSDT",
+              "time": 1795335952000
+            },
+            "received_ms": 1795335952294,
+            "request_started_ms": 1795335951542
+          },
+          "open_interest": {
+            "data": {
+              "openInterest": "277339901.2",
+              "symbol": "XRPUSDT",
+              "time": 1795335944726
+            },
+            "received_ms": 1795335950823,
+            "request_started_ms": 1795335950157
+          }
+        }
+      },
+      "limitations": "Liquidation stream is sampled, not total liquidations. Book snapshots do not prove maker fills or queue position. Unknown/missing intervals are not zero. No backfilled observations or strategy decisions.",
+      "mode": "OBSERVATION_ONLY",
+      "order_capability": false,
+      "registered_ms": 1794301807296,
+      "study": "market-evidence-20261110-v1"
+    },
+    "oi": {
+      "cohort": "2026-11-15-range-oi-flow-shadow-v1",
+      "combined_with_main_balance": false,
+      "counts": {
+        "accepted": 4,
+        "closed_pairs": 20,
+        "observed": 20,
+        "pending": 0,
+        "rejected": 13,
+        "unscorable": 3
+      },
+      "decision_reasons": {
+        "CONFIRMED": 4,
+        "CONTEXT_WEBSOCKET_DISCONNECTED": 1,
+        "FLOW_NEIGHBOR_NOT_KNOWN_AS_OF_DECISION": 1,
+        "FLOW_NOT_CONFIRMING": 6,
+        "OI_AND_FLOW_NOT_CONFIRMING": 6,
+        "OI_NOT_DECLINING": 1,
+        "SOURCE_DISCOVERY_AFTER_180_SECONDS": 1
+      },
+      "errors": [],
+      "generated_at_ms": 1795335969791,
+      "health": "OK",
+      "limitations": [
+        "Признаки доступны к исходному времени входа; метка может публиковаться позже. Это наблюдение, а не доказательство исполнимого входа.",
+        "UNKNOWN не считается отказом. Его контрольный результат показан отдельно от сопоставимого сравнения.",
+        "Поток aggTrade наблюдаемый; ликвидации выборочные, редкий стакан не доказывает maker-исполнение.",
+        "Суммы коррелированных модельных наблюдений не являются доходностью реального портфеля."
+      ],
+      "mode": "SHADOW",
+      "order_capability": false,
+      "registered_ms": 1794724209006,
+      "results": {
+        "accepted_control_net_usdt": 2.946626026451504,
+        "all_control_net_usdt": -9.792747261848074,
+        "control_net_usdt": -7.461919319487096,
+        "known_closed_pairs": 17,
+        "missed_profits_usdt": 7.757219917400584,
+        "paired_delta_usdt": 10.4085453459386,
+        "prevented_losses_usdt": 18.165765263339182,
+        "unscorable_closed_pairs": 3,
+        "unscorable_control_net_usdt": -2.3308279423609766
+      },
+      "review": {
+        "automatic_promotion": false,
+        "elapsed_days": 7.080564641203703,
+        "ready": false,
+        "required_days": 14,
+        "required_known_closed_pairs": 50
+      },
+      "source": {
+        "age_seconds": 10.597,
+        "health": "OK",
+        "inputs": {
+          "collector": {
+            "age_seconds": 5.277,
+            "health": "OK"
+          },
+          "strategy": {
+            "age_seconds": 10.597,
+            "health": "OK"
+          }
+        }
+      },
+      "study": "range-oi-flow-shadow-v1"
+    },
+    "protection": {
+      "cohort": "2026-11-21-range-close-1r-entry-stop-v1",
+      "combined_with_main_balance": false,
+      "counts": {
+        "closed_pairs": 3,
+        "eligible": 3,
+        "observed": 3,
+        "open_pairs": 0,
+        "skipped": 0,
+        "unscorable": 0
+      },
+      "errors": [],
+      "generated_at_ms": 1795335958993,
+      "health": "OK",
+      "limitations": [
+        "Сравниваются только новые исходные RANGE-входы. Ранний выход не добавляет новых входов.",
+        "Стоп на цене входа не гарантирует безубыток после комиссий, проскальзывания и funding.",
+        "Итоги сравнения включают только пары с двумя закрытыми вариантами и проверенным контролем.",
+        "Минутные свечи и отложенная публикация входа не доказывают реальное исполнение. Пропуски данных не считаются нулём.",
+        "Модельные суммы коррелированных наблюдений не являются доходностью реального портфеля."
+      ],
+      "mode": "SHADOW",
+      "order_capability": false,
+      "protocol": {
+        "adverse_funding_bps_per_8h": 1,
+        "arm_at_r": 1,
+        "arm_on": "CLOSED_1M_CLOSE",
+        "effective": "NEXT_FULL_MINUTE",
+        "fees_bps_per_side": 4,
+        "protected_stop": "ENTRY",
+        "risk_usdt": 2,
+        "slippage_bps_per_side": 5
+      },
+      "recent_pairs": [
+        {
+          "admission": "ELIGIBLE",
+          "armed_ms": null,
+          "control_net_usdt": -0.4298265265706571,
+          "control_reason": "TIMEOUT",
+          "delta_usdt": 0.0,
+          "direction": "SHORT",
+          "error": null,
+          "id": 286,
+          "opened_ms": 1795275024241,
+          "protected_net_usdt": -0.4298265265706571,
+          "protected_reason": "TIMEOUT",
+          "reason": "FUTURE_RANGE_PAIR",
+          "state": "CLOSED",
+          "symbol": "DOGEUSDT"
+        },
+        {
+          "admission": "ELIGIBLE",
+          "armed_ms": null,
+          "control_net_usdt": -0.33908718421949774,
+          "control_reason": "TIMEOUT",
+          "delta_usdt": 0.0,
+          "direction": "SHORT",
+          "error": null,
+          "id": 284,
+          "opened_ms": 1795275021704,
+          "protected_net_usdt": -0.33908718421949774,
+          "protected_reason": "TIMEOUT",
+          "reason": "FUTURE_RANGE_PAIR",
+          "state": "CLOSED",
+          "symbol": "SOLUSDT"
+        },
+        {
+          "admission": "ELIGIBLE",
+          "armed_ms": null,
+          "control_net_usdt": -1.9901279473217155,
+          "control_reason": "STOP",
+          "delta_usdt": 0.0,
+          "direction": "SHORT",
+          "error": null,
+          "id": 282,
+          "opened_ms": 1795275019217,
+          "protected_net_usdt": -1.9901279473217155,
+          "protected_reason": "STOP",
+          "reason": "FUTURE_RANGE_PAIR",
+          "state": "CLOSED",
+          "symbol": "XRPUSDT"
+        }
+      ],
+      "registered_ms": 1795257054292,
+      "results": {
+        "improved_pairs": 0,
+        "paired_control_net_usdt": -2.75904165811187,
+        "paired_delta_usdt": 0.0,
+        "protected_net_usdt": -2.75904165811187,
+        "unchanged_pairs": 3,
+        "unscorable_control_net_usdt": 0,
+        "unscorable_controls_closed": 0,
+        "worsened_pairs": 0
+      },
+      "review": {
+        "automatic_promotion": false,
+        "elapsed_days": 0.9132488541666667,
+        "ready": false,
+        "required_closed_pairs": 50,
+        "required_days": 14
+      },
+      "source": {
+        "age_seconds": 41.297,
+        "health": "OK"
+      },
+      "source_watermark": 275,
+      "study": "range-profit-protection-shadow-v1"
+    },
+    "services": {
+      "market-evidence-collector": "MainPID=4164808\nNRestarts=0\nActiveState=active",
+      "market-evidence-rotation.timer": "ActiveState=active",
+      "range-oi-flow-shadow.timer": "ActiveState=active",
+      "range-profit-protection-shadow.timer": "ActiveState=active",
+      "trading-bot-v2-1": "MainPID=567\nNRestarts=0\nActiveState=active",
+      "paper-monitor-v2-1": "MainPID=600441\nNRestarts=1\nActiveState=active",
+      "bot-control-v2-1": "MainPID=4164854\nNRestarts=0\nActiveState=active"
+    },
+    "catalog": [
+      {
+        "version": 1,
+        "at_ms": 1795258722909,
+        "source": "/root/bot_market_evidence/data/market_evidence.sqlite3",
+        "archive": "/root/bot_market_evidence/archives/1795258722909-6de34c31/full.sqlite3.gz",
+        "candidate": "/root/bot_market_evidence/data/.rotation-1795258722909-6de34c31.sqlite3",
+        "manifest_sha256": "2d4676395c80334c2c89e30585e16df1afdd9c380138227e9b754a244befa60b",
+        "full_sha256": "c4ba4290302e2fbac920a01445870b9460b7774e6b6fa8b8757a34ca4e0e7189",
+        "archive_sha256": "9349e498ec42f243bcc46f89e658c5da53bbbc80000d683ff732780509328a57",
+        "archive_bytes": 65597976,
+        "source_bytes": 245239808,
+        "candidate_bytes": 573440,
+        "active_cutoff_ms": 1795255122909,
+        "full_tables": {
+          "meta": {
+            "rows": 2,
+            "sha256": "b69b87dc3e249edb97bf77afa2ed46810c3877a667ed0e1ea2d6da4bf7c91785"
+          },
+          "segments": {
+            "rows": 125576,
+            "sha256": "247cc3ed0e74fc029ba5b7bbcd48334e302ea259423a32e82f484d493b192db3"
+          },
+          "snapshots": {
+            "rows": 374295,
+            "sha256": "cada3d4404c37d82e3de9d7ded0ff7313a329f3711d088ffc45d4be8ceb2fbd9"
+          },
+          "liquidations": {
+            "rows": 64544,
+            "sha256": "1c4dd0b6b5191308c1b90eea9fa058e1c5737438c8b23148c5f569a6e22f987e"
+          },
+          "issues": {
+            "rows": 5787,
+            "sha256": "e2bf3c5700133269f0a2764500d84456a0ffdfb76b2e0027a3cac5aa50416228"
+          },
+          "connections": {
+            "rows": 184,
+            "sha256": "42d5055a4e93175868346f94eadd2bf110e85980b8b96ad0c56c43e6c80244ef"
+          }
+        },
+        "active_tables": {
+          "meta": {
+            "rows": 2,
+            "sha256": "b69b87dc3e249edb97bf77afa2ed46810c3877a667ed0e1ea2d6da4bf7c91785"
+          },
+          "segments": {
+            "rows": 288,
+            "sha256": "65e4834ac41d7542c53667afacfd0fbfeb3a429037e4ac051789e316a7c6cdc2"
+          },
+          "snapshots": {
+            "rows": 840,
+            "sha256": "8405c64b244a3c2f1f48ebadccf98b599b728e7d39d1619d9d79801791d51b68"
+          },
+          "liquidations": {
+            "rows": 87,
+            "sha256": "4c6b32d7139141a5f781e7bd07b5001f4dc04e4b860bcdf75f59e60e080ee823"
+          },
+          "issues": {
+            "rows": 10,
+            "sha256": "3f8f1bc0d0108d327e2180c7bd1b6d0185b8f6daf77ad9e4ce031b85f68ff046"
+          },
+          "connections": {
+            "rows": 1,
+            "sha256": "f4a3f61926aa9cf448f6be1d1ed8179c439ccf27b78a5f79b4083ea58a49e386"
+          }
+        },
+        "recent_context_samples": {
+          "BTCUSDT:1795258722909": "866f004b0082e8f31e7d048c2c96f6e6d77727822d7e5856eb5581d8fb460f7d",
+          "BTCUSDT:1795258542909": "0bd483ae094d4a68fb1fb49513a01c4d38447e4989d4d84eb1eb75cf53674402",
+          "BTCUSDT:1795256922909": "be2098630138376c4476bbe7828bffe0567fcc8d78818a1c62ef4ea501887d76",
+          "ETHUSDT:1795258722909": "d9152e74e90718d2d38c8ce5b2dc7b9d7d302534fbdc6157857b9288adef980c",
+          "ETHUSDT:1795258542909": "1f386ef8bf95da18067d6ae7df0d0d5c64bf4bfb49194e4b122f62991927f318",
+          "ETHUSDT:1795256922909": "fd2035fdb76785f2166a14e292c67805f3eb0f5ceefe8401de427dd430c5b746",
+          "BNBUSDT:1795258722909": "0b3029cbd2219dbf4e36c2c2593a50275b2c472bb494579a5c73332cae71cc5a",
+          "BNBUSDT:1795258542909": "6582cfd9a7b0ab8d1136984080577e7dc9d389717c0fb2c68e14d21ff1a9bb0e",
+          "BNBUSDT:1795256922909": "5b10cad797d12d6d0699a3fb4213788e45068f60fb0860818b89fabb7251a1f8",
+          "SOLUSDT:1795258722909": "9c6f10e224d51006eae8423dedc60b60f9feeb2dfe5e2dee142adf7ab3f8e3a6",
+          "SOLUSDT:1795258542909": "d05e52f94e8f1cb74cbc4aa794ce4a73876c944c8c2028e5cd257deb59eccb82",
+          "SOLUSDT:1795256922909": "0a6c46fa57351da4bf0dbd34d4c72ea39bb8b664511995843072dde20f82f495",
+          "XRPUSDT:1795258722909": "ab4eaa1aeb469564b4c444fd20a39ae9914a2d9868722ccf7f86f4320ce03e79",
+          "XRPUSDT:1795258542909": "7d25e5b6ab95c5f01c18ec406a944960ff88996ed9f692b7034881a437c28cf8",
+          "XRPUSDT:1795256922909": "6bd090973169f9533a90bea078179a41c7e3d00fb9189daeb2958dd2efa08ae0",
+          "DOGEUSDT:1795258722909": "3801f2fa915df325d6b1e1137911e0fb58357e84164dd9b9ede67441ba2d7b46",
+          "DOGEUSDT:1795258542909": "2db8c8050091e747f3695397dddc20efda73d6e15f4287e461fb614b6a057072",
+          "DOGEUSDT:1795256922909": "03259ffb7c18b0d94d76a7ff62ef15ecd74ec9e7507fc9a754bae51fcac4e6c7",
+          "LTCUSDT:1795258722909": "713640279c8acd2b75cdb375f2fe74379895ea35e86c18b444d7fccf72bf38f6",
+          "LTCUSDT:1795258542909": "d8bc39ee1722ea0c7da6f784b8163a444130bece3e9f9fa8be1bfdfb81441452",
+          "LTCUSDT:1795256922909": "46846acd3a7384d3675ede51ba5514640006ce9a1bcf8683b8a8d3370b047d15",
+          "ADAUSDT:1795258722909": "c1b548b485eebd16319c320acda18547f141b1da7fd33c4fc112e9de084cf7a5",
+          "ADAUSDT:1795258542909": "39303d00b5fb5addca62f9905f8b6afc7ccb348dd0487165c54e966a5f826b49",
+          "ADAUSDT:1795256922909": "5f0d6e1be0cde5f6fe1bde90e814f7bd008dde55dee96b00a602b77d0bac4467"
+        },
+        "archive_verified": true,
+        "registration_and_state_unchanged": true,
+        "activated": true,
+        "previous": "/root/bot_market_evidence/data/.previous-.rotation-1795258722909-6de34c31.sqlite3"
+      }
+    ]
+  }
+}

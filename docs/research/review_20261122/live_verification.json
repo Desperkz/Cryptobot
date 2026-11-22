@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "at_ms": 1795336413217,
+  "old_frozen_studies_preserved": 18,
+  "old_oi_decisions_preserved": 17,
+  "current_oi_decisions": 20,
+  "verified_archives": 1,
+  "rotation_health": "OK",
+  "active_bytes": 23748608,
+  "collector_health": "OK",
+  "main_bot_monitor_producer_not_restarted": true
+}
