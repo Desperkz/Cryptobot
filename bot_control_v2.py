@@ -24,6 +24,7 @@ from typing import Any
 from trading_bot.operational import start_watchdog_thread
 from paper_pilots_api import api_paper_pilots, api_runner_comparison, api_diversified_shadow, api_breakout_recheck_shadow, api_sqz_entry_quality_shadow, api_research_storage, api_funding_carry_shadow, api_range_oi_flow_shadow
 from range_profit_protection_api import api_range_profit_protection_shadow
+from diversified_v4_review_api import api_diversified_v4_review
 
 HOST = os.getenv("BOT_CONTROL_HOST", "127.0.0.1")
 PORT = int(os.getenv("BOT_CONTROL_PORT", "8890"))
@@ -3679,6 +3680,7 @@ def _production_unlock_path() -> str:
 
 
 ROUTES = {
+    "/diversified-v4-review": api_diversified_v4_review,
     "/range-oi-flow-shadow": api_range_oi_flow_shadow,
     "/range-profit-protection-shadow": api_range_profit_protection_shadow,
     "/breakout-recheck-shadow": api_breakout_recheck_shadow,

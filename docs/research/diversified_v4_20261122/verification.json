@@ -1,0 +1,46 @@
+{
+  "deployment": {
+    "at_ms": 1795340265620,
+    "new_trading_versions_started": 0,
+    "old_admissions_preserved": {
+      "range_oi_flow": 20,
+      "range_profit_protection": 3
+    },
+    "old_closed_v3_positions_preserved": 300,
+    "old_frozen_studies_preserved": 18,
+    "passed": true,
+    "public_artifact_sha256": "7bcd0554f02cc4895f29d6fd55308ac2ff3c4e5d64dc5d962c76784e602a4542",
+    "trading_bot_monitor_market_collector_not_restarted": true
+  },
+  "files_sha256": {
+    "declaration.json": "6ec3fe45d1a60b928a5df3b250db07c2903db2e5ec8df52fd263253fd81f449b",
+    "export_features_remote.py": "d17f5483b249ea95aa09853d5740252abe41ddc668aa0d5cbf33366a3473a229",
+    "historical_features.json": "d51f41f23e6145d11f38c222063570647f60dacb3745a2c400e5e3f771db0234",
+    "historical_review.json": "1336a504406d1bbb61a1c9fd626987b4ed7fd943cc8d5a7dd8696e73a966e57c",
+    "report.html": "ec8d6f3b176ab12dbcdf2f8c6fb77f308706480124aaeb7bcf8f4ac6c75f5805",
+    "source_outcomes.json": "7d464b2573392bdd5f1ddc66570cc89eb982221b4e05fb872629b4a547936bb2",
+    "summary.json": "7bcd0554f02cc4895f29d6fd55308ac2ff3c4e5d64dc5d962c76784e602a4542"
+  },
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "final_targeted_passed": 8,
+    "passed": 1197,
+    "seconds": 48.52
+  },
+  "visual": {
+    "exceptions": [],
+    "horizontal_overflow": [
+      false,
+      false,
+      false
+    ],
+    "live": true,
+    "passed": true,
+    "widths": [
+      1440,
+      1280,
+      390
+    ]
+  }
+}

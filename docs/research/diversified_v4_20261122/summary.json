@@ -1,0 +1,359 @@
+{
+  "automatic_paper_promotion": false,
+  "combined_with_main_balance": false,
+  "decision": "NO_VARIANT_PASSED",
+  "declaration_sha256": "6ec3fe45d1a60b928a5df3b250db07c2903db2e5ec8df52fd263253fd81f449b",
+  "feature_snapshot_ms": 1795339321932,
+  "features_sha256": "d51f41f23e6145d11f38c222063570647f60dacb3745a2c400e5e3f771db0234",
+  "gate_code_sha256": "5ad43997e4cbc6a263492102a72b13fd4eafc8e20bb4b5f3ad350cdd23f6dee4",
+  "health": "OK",
+  "live_variants": [],
+  "mode": "EXPLORATORY_PREVIOUSLY_REVIEWED_HISTORY",
+  "orders_possible": false,
+  "original_hourly_trend_parity": 255,
+  "outcomes_sha256": "7d464b2573392bdd5f1ddc66570cc89eb982221b4e05fb872629b4a547936bb2",
+  "parity_validated": 255,
+  "scope": "Matched V3 source IDs, source capacity retained, no replacement entries. Historical gate checks do not authorize paper promotion.",
+  "source_manifest_sha256": "7254d8a4904cb905ae8c6f0b8dc7f87f2ab286c8352d6e6afb04c78d43e1b7a0",
+  "source_snapshot_ms": 1795336046586,
+  "source_watermark": 300,
+  "stress_scope": "Same-ID cost stress: same exit trigger/time; 10bps adverse entry and exit, quantity recalculated for same 2USDT full-stop-and-expense budget.",
+  "study": "diversified-v4-review-20261122",
+  "unknown": 0,
+  "variants": [
+    {
+      "accepted": {
+        "average_r": 0.025368621869341933,
+        "closed": 26,
+        "gross_losses": 24.895850164473316,
+        "gross_wins": 26.215018501679097,
+        "losses": 15,
+        "net_usdt": 1.3191683372057805,
+        "profit_factor": 1.0529874789770486,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "accepted_expenses_usdt": 12.021328379569418,
+      "accepted_price_before_expenses_usdt": 13.340496716775197,
+      "calendar_end_ms": 1795275024241,
+      "calendar_split_ms": 1793957906551,
+      "calendar_start_ms": 1792640788861,
+      "change_ru": "Не входить против часового тренда",
+      "checks": {
+        "min_accepted_closed": true,
+        "min_accepted_utc_days": true,
+        "min_retained_fraction": true,
+        "nonnegative_10bps_net": false,
+        "nonnegative_both_calendar_halves": false,
+        "nonnegative_without_best_trade": false,
+        "positive_paired_delta": true,
+        "positive_primary_net": true
+      },
+      "conclusion_ru": "Почти весь запас прибыли съедают расходы. Положительный итог зависит от лучшей сделки и первой половины периода.",
+      "control": {
+        "average_r": -0.2563793702490569,
+        "closed": 54,
+        "gross_losses": 68.28089450773885,
+        "gross_wins": 40.59192252084071,
+        "losses": 37,
+        "net_usdt": -27.688971986898142,
+        "profit_factor": 0.5944843402167218,
+        "utc_days": 19,
+        "wins": 17
+      },
+      "control_expenses_usdt": 22.654489521896984,
+      "control_price_before_expenses_usdt": -5.034482465001158,
+      "failed_check_labels": [
+        "При проскальзывании 10 б.п. итог не отрицательный",
+        "Обе календарные половины не убыточны",
+        "Без лучшей сделки итог не отрицательный"
+      ],
+      "failed_checks": [
+        "nonnegative_10bps_net",
+        "nonnegative_both_calendar_halves",
+        "nonnegative_without_best_trade"
+      ],
+      "halves": [
+        {
+          "average_r": 0.3532482439771905,
+          "closed": 9,
+          "gross_losses": 5.930008222486894,
+          "gross_wins": 12.288476614076323,
+          "losses": 3,
+          "net_usdt": 6.35846839158943,
+          "profit_factor": 2.0722528794273494,
+          "utc_days": 5,
+          "wins": 6
+        },
+        {
+          "average_r": -0.14821470748187204,
+          "closed": 17,
+          "gross_losses": 18.965841941986422,
+          "gross_wins": 13.926541887602774,
+          "losses": 12,
+          "net_usdt": -5.0393000543836495,
+          "profit_factor": 0.7342960006838564,
+          "utc_days": 7,
+          "wins": 5
+        }
+      ],
+      "historical_launch_checks_passed": false,
+      "label": "Возврат к VWAP",
+      "missed_profit_usdt": 14.37690401916161,
+      "missed_profitable_trades": 6,
+      "paired_delta_usdt": 29.008140324103923,
+      "paper_promotion": false,
+      "prevented_losses_usdt": 43.385044343265534,
+      "rejected": {
+        "average_r": -0.51800250578757,
+        "closed": 28,
+        "gross_losses": 43.385044343265534,
+        "gross_wins": 14.37690401916161,
+        "losses": 22,
+        "net_usdt": -29.008140324103923,
+        "profit_factor": 0.3313792629877368,
+        "utc_days": 12,
+        "wins": 6
+      },
+      "retained_fraction": 0.48148148148148145,
+      "source_strategy": "VWAP_REVERSION_V3_RECLAIM",
+      "stress10": {
+        "average_r": -0.09594167955066263,
+        "closed": 26,
+        "gross_losses": 25.23663169975464,
+        "gross_wins": 20.247664363120183,
+        "losses": 15,
+        "net_usdt": -4.988967336634457,
+        "profit_factor": 0.8023124719657829,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "variant": "VWAP_REVERSION_V4_TREND_GUARD",
+      "without_best_net_usdt": -2.568741660769093
+    },
+    {
+      "accepted": {
+        "average_r": -0.5494319598341176,
+        "closed": 51,
+        "gross_losses": 73.59625547049848,
+        "gross_wins": 17.55419556741848,
+        "losses": 40,
+        "net_usdt": -56.042059903079995,
+        "profit_factor": 0.23852022708485743,
+        "utc_days": 25,
+        "wins": 11
+      },
+      "accepted_expenses_usdt": 19.9473010238722,
+      "accepted_price_before_expenses_usdt": -36.094758879207795,
+      "calendar_end_ms": 1795328102251,
+      "calendar_split_ms": 1793965191448,
+      "calendar_start_ms": 1792602280645,
+      "change_ru": "Закрытие за противоположным краем свечи выноса",
+      "checks": {
+        "min_accepted_closed": true,
+        "min_accepted_utc_days": true,
+        "min_retained_fraction": true,
+        "nonnegative_10bps_net": false,
+        "nonnegative_both_calendar_halves": false,
+        "nonnegative_without_best_trade": false,
+        "positive_paired_delta": true,
+        "positive_primary_net": false
+      },
+      "conclusion_ru": "Более строгое подтверждение не отделило удачные входы: средний R ухудшился. Убыток есть ещё до расходов.",
+      "control": {
+        "average_r": -0.503975951802969,
+        "closed": 116,
+        "gross_losses": 167.39204528222766,
+        "gross_wins": 50.469624463938864,
+        "losses": 90,
+        "net_usdt": -116.9224208182888,
+        "profit_factor": 0.30150551287455546,
+        "utc_days": 27,
+        "wins": 26
+      },
+      "control_expenses_usdt": 50.58910716992829,
+      "control_price_before_expenses_usdt": -66.3333136483605,
+      "failed_check_labels": [
+        "Чистый результат выше нуля",
+        "При проскальзывании 10 б.п. итог не отрицательный",
+        "Обе календарные половины не убыточны",
+        "Без лучшей сделки итог не отрицательный"
+      ],
+      "failed_checks": [
+        "positive_primary_net",
+        "nonnegative_10bps_net",
+        "nonnegative_both_calendar_halves",
+        "nonnegative_without_best_trade"
+      ],
+      "halves": [
+        {
+          "average_r": -0.08169259262524657,
+          "closed": 16,
+          "gross_losses": 15.52775301027597,
+          "gross_wins": 12.91359004626808,
+          "losses": 10,
+          "net_usdt": -2.6141629640078903,
+          "profit_factor": 0.8316457659857233,
+          "utc_days": 11,
+          "wins": 6
+        },
+        {
+          "average_r": -0.7632556705581729,
+          "closed": 35,
+          "gross_losses": 58.068502460222504,
+          "gross_wins": 4.6406055211503965,
+          "losses": 30,
+          "net_usdt": -53.427896939072106,
+          "profit_factor": 0.07991605301564746,
+          "utc_days": 14,
+          "wins": 5
+        }
+      ],
+      "historical_launch_checks_passed": false,
+      "label": "Ложный пробой",
+      "missed_profit_usdt": 32.91542889652038,
+      "missed_profitable_trades": 15,
+      "paired_delta_usdt": 60.880360915208804,
+      "paper_promotion": false,
+      "prevented_losses_usdt": 93.7957898117292,
+      "rejected": {
+        "average_r": -0.46831046857852926,
+        "closed": 65,
+        "gross_losses": 93.7957898117292,
+        "gross_wins": 32.91542889652038,
+        "losses": 50,
+        "net_usdt": -60.880360915208804,
+        "profit_factor": 0.3509265070701958,
+        "utc_days": 24,
+        "wins": 15
+      },
+      "retained_fraction": 0.4396551724137931,
+      "source_strategy": "SWEEP_RECLAIM_V3",
+      "stress10": {
+        "average_r": -0.5901505179832837,
+        "closed": 51,
+        "gross_losses": 74.38977107650733,
+        "gross_wins": 14.194418242212386,
+        "losses": 42,
+        "net_usdt": -60.19535283429494,
+        "profit_factor": 0.19081142523767028,
+        "utc_days": 25,
+        "wins": 9
+      },
+      "variant": "SWEEP_RECLAIM_V4_STRUCTURE",
+      "without_best_net_usdt": -59.22385915256721
+    },
+    {
+      "accepted": {
+        "average_r": -0.8125004251852993,
+        "closed": 22,
+        "gross_losses": 39.45604798158862,
+        "gross_wins": 3.7060292734354485,
+        "losses": 20,
+        "net_usdt": -35.75001870815317,
+        "profit_factor": 0.09392804051649556,
+        "utc_days": 8,
+        "wins": 2
+      },
+      "accepted_expenses_usdt": 9.52759122011741,
+      "accepted_price_before_expenses_usdt": -26.22242748803576,
+      "calendar_end_ms": 1795317325906,
+      "calendar_split_ms": 1793955617527,
+      "calendar_start_ms": 1792593909149,
+      "change_ru": "Не дальше одного часового ATR от EMA20",
+      "checks": {
+        "min_accepted_closed": true,
+        "min_accepted_utc_days": true,
+        "min_retained_fraction": true,
+        "nonnegative_10bps_net": false,
+        "nonnegative_both_calendar_halves": false,
+        "nonnegative_without_best_trade": false,
+        "positive_paired_delta": true,
+        "positive_primary_net": false
+      },
+      "conclusion_ru": "Ограничение удаления убрало 21 прибыльную сделку и оставило 20 убыточных из 22. На этой выборке гипотеза неверна.",
+      "control": {
+        "average_r": -0.39182588476868807,
+        "closed": 85,
+        "gross_losses": 122.32436231043003,
+        "gross_wins": 55.713961899753066,
+        "losses": 62,
+        "net_usdt": -66.61040041067697,
+        "profit_factor": 0.4554608816056145,
+        "utc_days": 22,
+        "wins": 23
+      },
+      "control_expenses_usdt": 32.84659436298336,
+      "control_price_before_expenses_usdt": -33.76380604769361,
+      "failed_check_labels": [
+        "Чистый результат выше нуля",
+        "При проскальзывании 10 б.п. итог не отрицательный",
+        "Обе календарные половины не убыточны",
+        "Без лучшей сделки итог не отрицательный"
+      ],
+      "failed_checks": [
+        "positive_primary_net",
+        "nonnegative_10bps_net",
+        "nonnegative_both_calendar_halves",
+        "nonnegative_without_best_trade"
+      ],
+      "halves": [
+        {
+          "average_r": -0.21792554390506433,
+          "closed": 5,
+          "gross_losses": 5.885284712486092,
+          "gross_wins": 3.7060292734354485,
+          "losses": 3,
+          "net_usdt": -2.1792554390506433,
+          "profit_factor": 0.629711127751019,
+          "utc_days": 2,
+          "wins": 2
+        },
+        {
+          "average_r": -0.9873753902677214,
+          "closed": 17,
+          "gross_losses": 33.57076326910253,
+          "gross_wins": 0,
+          "losses": 17,
+          "net_usdt": -33.57076326910253,
+          "profit_factor": 0.0,
+          "utc_days": 6,
+          "wins": 0
+        }
+      ],
+      "historical_launch_checks_passed": false,
+      "label": "Продолжение импульса",
+      "missed_profit_usdt": 52.00793262631762,
+      "missed_profitable_trades": 21,
+      "paired_delta_usdt": 30.860381702523803,
+      "paper_promotion": false,
+      "prevented_losses_usdt": 82.86831432884142,
+      "rejected": {
+        "average_r": -0.24492366430574447,
+        "closed": 63,
+        "gross_losses": 82.86831432884142,
+        "gross_wins": 52.00793262631762,
+        "losses": 42,
+        "net_usdt": -30.860381702523803,
+        "profit_factor": 0.6275973277305681,
+        "utc_days": 21,
+        "wins": 21
+      },
+      "retained_fraction": 0.25882352941176473,
+      "source_strategy": "MOMENTUM_CONTINUATION_V3",
+      "stress10": {
+        "average_r": -0.8333496408487502,
+        "closed": 22,
+        "gross_losses": 39.516862375902356,
+        "gross_wins": 2.8494781785573493,
+        "losses": 20,
+        "net_usdt": -36.66738419734501,
+        "profit_factor": 0.07210790551769565,
+        "utc_days": 8,
+        "wins": 2
+      },
+      "variant": "MOMENTUM_CONTINUATION_V4_EXTENSION",
+      "without_best_net_usdt": -37.69102983086481
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "before_results": true,
+  "comparison": "Accepted frozen closed source controls against all known frozen closed controls; UNKNOWN separate; report prevented losses and missed profits",
+  "declared_ms": 1795339117836,
+  "gate_code_sha256": "5ad43997e4cbc6a263492102a72b13fd4eafc8e20bb4b5f3ad350cdd23f6dee4",
+  "historical_checks": {
+    "automatic_paper_promotion": false,
+    "min_accepted_closed": 12,
+    "min_accepted_utc_days": 5,
+    "min_retained_fraction": 0.15,
+    "nonnegative_10bps_net": true,
+    "nonnegative_both_calendar_halves": true,
+    "nonnegative_without_best_trade": true,
+    "positive_paired_delta": true,
+    "positive_primary_net": true
+  },
+  "scope": "Predeclared exploratory filters on previously reviewed historical outcomes; no independent OOS claim; launch only future labels after a new registration",
+  "source_manifest_sha256": "7254d8a4904cb905ae8c6f0b8dc7f87f2ab286c8352d6e6afb04c78d43e1b7a0",
+  "source_rules": "frozen V3 plans, exits, quantity and baseline costs unchanged; no replacement admissions",
+  "stress": "10bps adverse entry+exit, same fixed stop/target/close time; size recomputed for same 2USDT cost-aware stop budget; same IDs, no stress admission replacement",
+  "variants": {
+    "MOMENTUM_CONTINUATION_V4_EXTENSION": {
+      "atr_period": 14,
+      "change": "Refuse chasing a breakout beyond one hourly ATR from hourly EMA20 in the trade direction.",
+      "ema_period": 20,
+      "maximum_signed_extension_atr": 1.0
+    },
+    "SWEEP_RECLAIM_V4_STRUCTURE": {
+      "change": "Require the final closed confirmation candle beyond the sweep setup opposite extreme, not merely beyond its close.",
+      "reject": "LONG close <= setup high; SHORT close >= setup low",
+      "strict_break": true
+    },
+    "VWAP_REVERSION_V4_TREND_GUARD": {
+      "change": "Reject an opposing hourly EMA20/EMA50 price-and-slope trend even when 6h efficiency is below the old conditional threshold.",
+      "ema_fast": 20,
+      "ema_slow": 50,
+      "reject": "direction * hourly_trend < 0",
+      "slope_bars": 3
+    }
+  }
+}
