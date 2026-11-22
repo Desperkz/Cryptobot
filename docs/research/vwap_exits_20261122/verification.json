@@ -1,0 +1,49 @@
+{
+  "deployment": {
+    "at_ms": 1795351316438,
+    "new_trading_versions_started": 0,
+    "old_admissions_preserved": {
+      "range_oi_flow": 21,
+      "range_profit_protection": 4
+    },
+    "old_closed_v3_positions_preserved": 300,
+    "old_frozen_studies_preserved": 18,
+    "passed": true,
+    "public_artifact_sha256": "828fe2af145af5ad7c6bd60bc5b11e3216cdbe6f6f4631b0ee9d963594729c55",
+    "trading_bot_monitor_market_collector_not_restarted": true
+  },
+  "files_sha256": {
+    "collect_minutes_remote.py": "8a636b9eada9f90888d88e3881fb9c632eb4c9e97b18bd7d8fd0ac4069f2ae3d",
+    "declaration.json": "1d043c78556362db2a12ba54ac9405f2f83a4731bc07ca662a4e858af5dbd93e",
+    "input_plans.json": "51ded0373a2fad0c00b3bd6bb85100c4a0a7080cb2cd03816331986b5ebad80f",
+    "minutes.json.gz": "967800774b67bbb067258f3e30f91d2ee16fe0c94ffec51cb71b7d71cf1e122c",
+    "report.html": "fd17bced5138d28e3350b74f519451c2d556df0e776f401a15adbe6be169b7c9",
+    "review.json": "376b62387d1e430e50685e04262e1a0d00aeea6967afa6d7f9f986d7e54743fc",
+    "summary.json": "828fe2af145af5ad7c6bd60bc5b11e3216cdbe6f6f4631b0ee9d963594729c55"
+  },
+  "tests": {
+    "errors": "0",
+    "failures": "0",
+    "hostname": "WIN-M39TPI9AR2S",
+    "name": "pytest",
+    "skipped": "0",
+    "tests": "1210",
+    "time": "49.762",
+    "timestamp": "2026-11-22T17:40:33.846400+05:00"
+  },
+  "visual": {
+    "exceptions": [],
+    "horizontal_overflow": [
+      false,
+      false,
+      false
+    ],
+    "live": true,
+    "passed": true,
+    "widths": [
+      1440,
+      1280,
+      390
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "before_price_path_download_and_exit_replay": true,
+  "checks": {
+    "automatic_paper_promotion": false,
+    "min_closed_pairs": 12,
+    "min_coverage_fraction": 0.9,
+    "min_utc_days": 5,
+    "nonnegative_both_calendar_halves": true,
+    "nonnegative_delta_without_best_improvement": true,
+    "nonnegative_net_without_best_trade": true,
+    "nonnegative_stress10_net": true,
+    "positive_paired_delta": true,
+    "positive_primary_net": true
+  },
+  "costs": "Original 4bps fee per side, 5bps adverse entry/exit, 1bp/8h adverse funding, source risk 2USDT and source quantity unchanged. Funding follows modeled exit time.",
+  "declared_ms": 1795350759923,
+  "execution_sha256": {
+    "diversified_v4_common.py": "9330fed9060bcaf771d7222f4432a052a3e4a0a51946e3a5edcae5e091ea4927",
+    "diversified_v4_gates.py": "5ad43997e4cbc6a263492102a72b13fd4eafc8e20bb4b5f3ad350cdd23f6dee4",
+    "range_profit_execution.py": "8b8f32f2db50a541481aefd8868e53b13104909b88611f30ceccf59ebff81c18",
+    "vwap_exit_execution.py": "f790fc85e98a7c7b4d716722592b7ef6c0bde52240df339501a96345daf50383"
+  },
+  "fixed_source_ids": [
+    5,
+    25,
+    26,
+    65,
+    66,
+    68,
+    84,
+    87,
+    89,
+    99,
+    111,
+    136,
+    171,
+    174,
+    178,
+    179,
+    182,
+    220,
+    231,
+    235,
+    240,
+    242,
+    278,
+    281,
+    283,
+    285
+  ],
+  "rules": {
+    "VWAP_PROTECT_1R": {
+      "arm": "Completed minute CLOSE at +1 initial price R",
+      "effective": "NEXT_FULL_MINUTE",
+      "horizon": "ORIGINAL",
+      "quantity": "ORIGINAL",
+      "stop_after_arm": "ORIGINAL_EFFECTIVE_ENTRY",
+      "target": "ORIGINAL"
+    },
+    "VWAP_TARGET_1R": {
+      "horizon": "ORIGINAL",
+      "quantity": "ORIGINAL",
+      "stop": "ORIGINAL",
+      "target": "Closer of original anchor and effective_entry + direction * initial_price_R"
+    }
+  },
+  "scope": "Exploratory already-reviewed historical cohort. No independent OOS claim. New prospective registration required for any live observation.",
+  "selection": "Exactly the 26 previously reviewed VWAP source entries accepted by frozen V4 hourly-trend guard; no replacement admissions, entry/quantity/stop/expiry unchanged.",
+  "source_inputs_sha256": {
+    "declaration.json": "6ec3fe45d1a60b928a5df3b250db07c2903db2e5ec8df52fd263253fd81f449b",
+    "historical_features.json": "d51f41f23e6145d11f38c222063570647f60dacb3745a2c400e5e3f771db0234",
+    "source_outcomes.json": "7d464b2573392bdd5f1ddc66570cc89eb982221b4e05fb872629b4a547936bb2"
+  },
+  "source_manifest_sha256": "7254d8a4904cb905ae8c6f0b8dc7f87f2ab286c8352d6e6afb04c78d43e1b7a0",
+  "source_watermark": 300,
+  "stress": "Same source IDs, levels and modeled exit times; reprice at 10bps adverse each side, recalculate source full-stop-and-expense quantity for same 2USDT budget; no replacement/stress readmission.",
+  "study": "vwap-exits-20261122"
+}

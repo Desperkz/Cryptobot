@@ -1,0 +1,234 @@
+{
+  "automatic_paper_promotion": false,
+  "calendar_end_ms": 1795275024241,
+  "calendar_split_ms": 1793957906551,
+  "calendar_start_ms": 1792640788861,
+  "combined_with_main_balance": false,
+  "decision": "BOTH_EXIT_RULES_REJECTED",
+  "declaration_sha256": "1d043c78556362db2a12ba54ac9405f2f83a4731bc07ca662a4e858af5dbd93e",
+  "diagnosis": {
+    "losers_closed_at_1r_before_exit": 1,
+    "losers_closed_at_half_r_before_exit": 2,
+    "source_losers": 15
+  },
+  "health": "OK",
+  "is_historical_snapshot": true,
+  "live_variants": [],
+  "minutes_sha256": "967800774b67bbb067258f3e30f91d2ee16fe0c94ffec51cb71b7d71cf1e122c",
+  "mode": "EXPLORATORY_PREVIOUSLY_REVIEWED_COHORT",
+  "orders_possible": false,
+  "parity_validated": 26,
+  "source_ids": [
+    5,
+    25,
+    26,
+    65,
+    66,
+    68,
+    84,
+    87,
+    89,
+    99,
+    111,
+    136,
+    171,
+    174,
+    178,
+    179,
+    182,
+    220,
+    231,
+    235,
+    240,
+    242,
+    278,
+    281,
+    283,
+    285
+  ],
+  "source_snapshot_ms": 1795336046586,
+  "study": "vwap-exits-20261122",
+  "unknown": [],
+  "variants": [
+    {
+      "checks": {
+        "min_closed_pairs": true,
+        "min_coverage_fraction": true,
+        "min_utc_days": true,
+        "nonnegative_both_calendar_halves": false,
+        "nonnegative_delta_without_best_improvement": false,
+        "nonnegative_net_without_best_trade": false,
+        "nonnegative_stress10_net": false,
+        "positive_paired_delta": false,
+        "positive_primary_net": false
+      },
+      "control": {
+        "average_r": 0.025368621869341933,
+        "closed": 26,
+        "losses": 15,
+        "net_usdt": 1.3191683372057805,
+        "profit_factor": 1.0529874789770486,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "control10": {
+        "average_r": -0.09594167955066263,
+        "closed": 26,
+        "losses": 15,
+        "net_usdt": -4.988967336634457,
+        "profit_factor": 0.8023124719657829,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "coverage_fraction": 1.0,
+      "delta_without_best_improvement_usdt": -13.337456153005235,
+      "failed_checks": [
+        "positive_primary_net",
+        "positive_paired_delta",
+        "nonnegative_stress10_net",
+        "nonnegative_both_calendar_halves",
+        "nonnegative_net_without_best_trade",
+        "nonnegative_delta_without_best_improvement"
+      ],
+      "gained_usdt": 4.055942193773941,
+      "given_up_usdt": 13.953815028150084,
+      "halves": [
+        {
+          "average_r": 0.031188683911182118,
+          "closed": 9,
+          "losses": 3,
+          "net_usdt": 0.5613963104012781,
+          "profit_factor": 1.09467041011384,
+          "utc_days": 5,
+          "wins": 6
+        },
+        {
+          "average_r": -0.26882649434034234,
+          "closed": 17,
+          "losses": 11,
+          "net_usdt": -9.14010080757164,
+          "profit_factor": 0.4617208742709156,
+          "utc_days": 7,
+          "wins": 6
+        }
+      ],
+      "historical_launch_checks_passed": false,
+      "improved_pairs": 3,
+      "label": "Более ранняя цель +1R",
+      "paired_delta_usdt": -9.897872834376143,
+      "paper_promotion": false,
+      "result": {
+        "average_r": -0.1649750864840454,
+        "closed": 26,
+        "losses": 14,
+        "net_usdt": -8.578704497170362,
+        "profit_factor": 0.6255514155378341,
+        "utc_days": 12,
+        "wins": 12
+      },
+      "stress10": {
+        "average_r": -0.25779950853509886,
+        "closed": 26,
+        "losses": 14,
+        "net_usdt": -13.405574443825142,
+        "profit_factor": 0.4234089136948044,
+        "utc_days": 12,
+        "wins": 12
+      },
+      "unchanged_pairs": 15,
+      "variant": "VWAP_TARGET_1R",
+      "without_best_net_usdt": -10.079082873008202,
+      "worsened_pairs": 8
+    },
+    {
+      "checks": {
+        "min_closed_pairs": true,
+        "min_coverage_fraction": true,
+        "min_utc_days": true,
+        "nonnegative_both_calendar_halves": false,
+        "nonnegative_delta_without_best_improvement": false,
+        "nonnegative_net_without_best_trade": false,
+        "nonnegative_stress10_net": false,
+        "positive_paired_delta": false,
+        "positive_primary_net": false
+      },
+      "control": {
+        "average_r": 0.025368621869341933,
+        "closed": 26,
+        "losses": 15,
+        "net_usdt": 1.3191683372057805,
+        "profit_factor": 1.0529874789770486,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "control10": {
+        "average_r": -0.09594167955066263,
+        "closed": 26,
+        "losses": 15,
+        "net_usdt": -4.988967336634457,
+        "profit_factor": 0.8023124719657829,
+        "utc_days": 12,
+        "wins": 11
+      },
+      "coverage_fraction": 1.0,
+      "delta_without_best_improvement_usdt": -7.123881855932948,
+      "failed_checks": [
+        "positive_primary_net",
+        "positive_paired_delta",
+        "nonnegative_stress10_net",
+        "nonnegative_both_calendar_halves",
+        "nonnegative_net_without_best_trade",
+        "nonnegative_delta_without_best_improvement"
+      ],
+      "gained_usdt": 1.7207169890176215,
+      "given_up_usdt": 7.12388185593295,
+      "halves": [
+        {
+          "average_r": 0.28360237301801267,
+          "closed": 9,
+          "losses": 4,
+          "net_usdt": 5.104842714324228,
+          "profit_factor": 1.8256633945542908,
+          "utc_days": 5,
+          "wins": 5
+        },
+        {
+          "average_r": -0.27025997776569927,
+          "closed": 17,
+          "losses": 14,
+          "net_usdt": -9.188839244033774,
+          "profit_factor": 0.485389541912277,
+          "utc_days": 7,
+          "wins": 3
+        }
+      ],
+      "historical_launch_checks_passed": false,
+      "improved_pairs": 1,
+      "label": "Защита стопом после +1R",
+      "paired_delta_usdt": -5.403164866915327,
+      "paper_promotion": false,
+      "result": {
+        "average_r": -0.07853839480210668,
+        "closed": 26,
+        "losses": 18,
+        "net_usdt": -4.083996529709547,
+        "profit_factor": 0.8301069271676499,
+        "utc_days": 12,
+        "wins": 8
+      },
+      "stress10": {
+        "average_r": -0.18821352462564372,
+        "closed": 26,
+        "losses": 18,
+        "net_usdt": -9.787103280533474,
+        "profit_factor": 0.6090524306944183,
+        "utc_days": 12,
+        "wins": 8
+      },
+      "unchanged_pairs": 22,
+      "variant": "VWAP_PROTECT_1R",
+      "without_best_net_usdt": -7.600522506296226,
+      "worsened_pairs": 3
+    }
+  ]
+}
