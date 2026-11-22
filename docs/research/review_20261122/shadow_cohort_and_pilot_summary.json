@@ -1,0 +1,71 @@
+{
+  "public_snapshot_ms": 1795336600724,
+  "conditional_cohorts": [
+    {
+      "name": "SQZ v1 HIGH",
+      "strategy": "SQZ_UPD_COND_HIGH_SHADOW",
+      "all_n": 121,
+      "all_net": 27.7624,
+      "current_n": 57,
+      "current_net": -3.9943,
+      "numeric_gate_candidate": true,
+      "policy_tier": "MEASUREMENT_SHADOW"
+    },
+    {
+      "name": "SQZ v1 MID",
+      "strategy": "SQZ_UPD_COND_MID_SHADOW",
+      "all_n": 155,
+      "all_net": 23.1699,
+      "current_n": 69,
+      "current_net": 3.2856,
+      "numeric_gate_candidate": false,
+      "policy_tier": "MEASUREMENT_SHADOW"
+    },
+    {
+      "name": "SQZ v2 MID",
+      "strategy": "SQZ_UPD_C2_COND_MID_SHADOW",
+      "all_n": 144,
+      "all_net": -1.3291,
+      "current_n": 64,
+      "current_net": -0.2237,
+      "numeric_gate_candidate": false,
+      "policy_tier": "MEASUREMENT_SHADOW"
+    },
+    {
+      "name": "SQZ v2 HIGH",
+      "strategy": "SQZ_UPD_C2_COND_HIGH_SHADOW",
+      "all_n": 77,
+      "all_net": 33.9734,
+      "current_n": 39,
+      "current_net": 2.0452,
+      "numeric_gate_candidate": true,
+      "policy_tier": "MEASUREMENT_SHADOW"
+    }
+  ],
+  "paper_pilots": [
+    {
+      "name": "SQZ v1 HIGH",
+      "n": 9,
+      "net": 4.407923673033283,
+      "pf": 1.6997151376843433
+    },
+    {
+      "name": "SQZ v1 MID",
+      "n": 17,
+      "net": 0.1423464103185217,
+      "pf": 1.0072444382504104
+    },
+    {
+      "name": "SQZ v2 MID",
+      "n": 16,
+      "net": -13.2398205189247,
+      "pf": 0.36953464155006593
+    },
+    {
+      "name": "SQZ v2 HIGH",
+      "n": 9,
+      "net": 0.9744587942219254,
+      "pf": 1.0977182212332646
+    }
+  ]
+}
