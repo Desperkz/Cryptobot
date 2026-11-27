@@ -28,7 +28,7 @@
 
 ## Воспроизведение
 
-Распакуйте `evidence.zip` в эту папку. Из корня репозитория с `src` в PYTHONPATH:
+В архиве отчёта, который передаётся отдельно, есть `evidence.zip`. Распакуйте его в эту папку. Из корня репозитория с `src` в PYTHONPATH:
 
 ```text
 python scripts/vwap_entry_audit.py docs/research/vwap_entry_20261127/evidence.json docs/research/vwap_entry_20261127/protocol.json docs/research/diversified_v4_20261122/historical_review.json --windows docs/research/vwap_entry_20261127/windows.json --minutes docs/research/vwap_entry_20261127/minutes.json --output analysis.json
