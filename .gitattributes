@@ -24,6 +24,8 @@ docs/research/review_20261122/* text eol=lf
 docs/research/diversified_v4_20261122/* text eol=lf
 docs/research/vwap_exits_20261122/*.json text eol=lf
 docs/research/vwap_exits_20261122/*.gz -text
+docs/research/vwap_entry_20261127/*.json text eol=lf
+docs/research/vwap_entry_20261127/*.zip binary
 
 *.bat text eol=crlf
 *.cmd text eol=crlf

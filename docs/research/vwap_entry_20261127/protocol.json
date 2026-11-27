@@ -1,0 +1,16 @@
+{
+  "study": "vwap-entry-recheck-20261127",
+  "source": "VWAP_REVERSION_V3_RECLAIM",
+  "source_manifest_sha256": "7254d8a4904cb905ae8c6f0b8dc7f87f2ab286c8352d6e6afb04c78d43e1b7a0",
+  "reference": "All 54 VWAP positions in the frozen November 22 V4 review",
+  "later_window": {"id_above": 300, "signal_after_ms": 1795339117836},
+  "admissions": {
+    "hourly_guard": "Frozen V4 rule: reject if trade direction opposes the confirmed closed H1 trend",
+    "target_headroom": "Require projected net reward / full-stop loss >= 0.8 at 10bps per side, with original midpoint, stop and target, original fees and full horizon funding on each possible exit"
+  },
+  "primary": "Original 5bps costs, entry, quantity, exits and source capacity, no replacement entries",
+  "stress": "Same selected IDs and modeled exit triggers and times, 10bps per side, resized to original 2 USDT stop budget",
+  "diagnostic_groups": ["hourly_alignment", "direction", "exit_reason"],
+  "candidate_evidence": "Positive net at primary and stress, higher mean R than known control, positive paired delta, both chronological halves nonnegative, net nonnegative without best trade, at least 12 retained closes across 5 UTC days and at least 15% retention. Compare the two fixed rules separately. New headroom rule uses the original 0.8 minimum at stressed prices, fixed before reading per-trade outcomes of this audit. No threshold search.",
+  "scope": "Later observed shadow data for the previously frozen hourly rule. Headroom comparison is retrospective, with aggregate source PnL known when it was specified. No claim of executable or live fills."
+}
